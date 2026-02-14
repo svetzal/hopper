@@ -4,7 +4,7 @@ import { addCommand } from "./commands/add.ts";
 import { listCommand } from "./commands/list.ts";
 import { createTitleGenerator } from "./titler.ts";
 
-const VERSION = "0.1.0";
+const VERSION = "0.1.1";
 
 export interface ParsedArgs {
   command: string;
