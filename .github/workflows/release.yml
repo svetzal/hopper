@@ -1,0 +1,199 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run tests
+        run: bun test
+
+      - name: Type check
+        run: bun run lint
+
+  build:
+    needs: test
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            target: bun-darwin-arm64
+            artifact: hopper-darwin-arm64
+          - os: macos-13
+            target: bun-darwin-x64
+            artifact: hopper-darwin-x64
+          - os: ubuntu-latest
+            target: bun-linux-x64
+            artifact: hopper-linux-x64
+          - os: windows-latest
+            target: bun-windows-x64
+            artifact: hopper-windows-x64.exe
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build binary
+        run: bun build src/cli.ts --compile --target=${{ matrix.target }} --outfile=${{ matrix.artifact }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Create tarballs
+        run: |
+          cd dist
+          cd hopper-darwin-arm64 && tar -czf ../hopper-darwin-arm64.tar.gz hopper-darwin-arm64 && cd ..
+          cd hopper-darwin-x64 && tar -czf ../hopper-darwin-x64.tar.gz hopper-darwin-x64 && cd ..
+          cd hopper-linux-x64 && tar -czf ../hopper-linux-x64.tar.gz hopper-linux-x64 && cd ..
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/hopper-darwin-arm64.tar.gz
+            dist/hopper-darwin-x64.tar.gz
+            dist/hopper-linux-x64.tar.gz
+            dist/hopper-windows-x64.exe/hopper-windows-x64.exe
+          generate_release_notes: true
+
+  update-homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.ref, '-') }}
+
+    steps:
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Download tarballs from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          gh release download "v${VERSION}" \
+            --repo svetzal/hopper \
+            --pattern "hopper-darwin-arm64.tar.gz" \
+            --pattern "hopper-darwin-x64.tar.gz" \
+            --pattern "hopper-linux-x64.tar.gz"
+
+      - name: Calculate SHA256
+        id: sha
+        run: |
+          echo "arm64=$(sha256sum hopper-darwin-arm64.tar.gz | cut -d ' ' -f 1)" >> $GITHUB_OUTPUT
+          echo "x64=$(sha256sum hopper-darwin-x64.tar.gz | cut -d ' ' -f 1)" >> $GITHUB_OUTPUT
+          echo "linux=$(sha256sum hopper-linux-x64.tar.gz | cut -d ' ' -f 1)" >> $GITHUB_OUTPUT
+
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@v4
+        with:
+          repository: svetzal/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update formula
+        env:
+          RELEASE_BASE_URL: https://github.com/svetzal/hopper/releases/download
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          SHA_ARM64=${{ steps.sha.outputs.arm64 }}
+          SHA_X64=${{ steps.sha.outputs.x64 }}
+          SHA_LINUX=${{ steps.sha.outputs.linux }}
+
+          cat > homebrew-tap/Formula/hopper.rb << FORMULA
+          # typed: false
+          # frozen_string_literal: true
+
+          class Hopper < Formula
+            desc "Personal work queue CLI with LLM-generated titles"
+            homepage "https://github.com/svetzal/hopper"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              on_arm do
+                url "${RELEASE_BASE_URL}/v#{version}/hopper-darwin-arm64.tar.gz"
+                sha256 "${SHA_ARM64}"
+
+                def install
+                  bin.install "hopper-darwin-arm64" => "hopper"
+                end
+              end
+
+              on_intel do
+                url "${RELEASE_BASE_URL}/v#{version}/hopper-darwin-x64.tar.gz"
+                sha256 "${SHA_X64}"
+
+                def install
+                  bin.install "hopper-darwin-x64" => "hopper"
+                end
+              end
+            end
+
+            on_linux do
+              on_intel do
+                url "${RELEASE_BASE_URL}/v#{version}/hopper-linux-x64.tar.gz"
+                sha256 "${SHA_LINUX}"
+
+                def install
+                  bin.install "hopper-linux-x64" => "hopper"
+                end
+              end
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/hopper --version")
+            end
+          end
+          FORMULA
+
+      - name: Commit and push
+        run: |
+          cd homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/hopper.rb
+          git commit -m "Update hopper to ${{ steps.version.outputs.version }}"
+          git push
