@@ -1,4 +1,5 @@
-import { OpenAIGateway, LlmBroker, Message, isOk } from "mojentic";
+const SYSTEM_PROMPT =
+  "Generate a concise, action-oriented title (max 8 words) for this work item. Respond with only the title.";
 
 const TITLE_SCHEMA = {
   type: "object",
@@ -6,29 +7,55 @@ const TITLE_SCHEMA = {
     title: { type: "string", description: "A concise, action-oriented title (max 8 words)" },
   },
   required: ["title"],
+  additionalProperties: false,
 };
-
-const SYSTEM_PROMPT =
-  "Generate a concise, action-oriented title (max 8 words) for this work item. Respond with only the title.";
 
 export interface TitleGenerator {
   generateTitle(description: string): Promise<string>;
 }
 
 export function createTitleGenerator(): TitleGenerator {
-  const gateway = new OpenAIGateway();
-  const broker = new LlmBroker("gpt-4.1-nano", gateway);
+  const apiKey = process.env.OPENAI_API_KEY ?? "";
 
   return {
     async generateTitle(description: string): Promise<string> {
-      try {
-        const result = await broker.generateObject<{ title: string }>(
-          [Message.system(SYSTEM_PROMPT), Message.user(description)],
-          TITLE_SCHEMA,
-        );
+      if (!apiKey) {
+        return description.slice(0, 60).trim();
+      }
 
-        if (isOk(result) && result.value.title) {
-          return result.value.title;
+      try {
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1-nano",
+            messages: [
+              { role: "system", content: SYSTEM_PROMPT },
+              { role: "user", content: description },
+            ],
+            response_format: {
+              type: "json_schema",
+              json_schema: { name: "title_response", strict: true, schema: TITLE_SCHEMA },
+            },
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`OpenAI API error: ${response.status}`);
+        }
+
+        const data = (await response.json()) as {
+          choices: Array<{ message: { content: string } }>;
+        };
+        const content = data.choices[0]?.message?.content;
+        if (content) {
+          const parsed = JSON.parse(content) as { title: string };
+          if (parsed.title) {
+            return parsed.title;
+          }
         }
       } catch {
         // Fall through to fallback
