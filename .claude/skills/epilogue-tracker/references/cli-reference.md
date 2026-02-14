@@ -1,4 +1,4 @@
-<!-- et v0.8.7 -->
+<!-- et v0.9.0 -->
 # CLI Reference
 
 Complete reference for all `et` commands, flags, and options.
@@ -14,13 +14,13 @@ Complete reference for all `et` commands, flags, and options.
 | `--help` | Show help message |
 | `--version` | Show version number |
 
-### Status Filtering (list commands)
+### State Filtering (list commands)
 
 | Flag | Behaviour |
 |------|-----------|
-| *(default)* | Show only open items |
-| `--closed` | Show only closed items |
-| `--all` | Show all items regardless of status |
+| *(default)* | Show active items (excludes `deleted` and `discarded`) |
+| `--state <state>` | Show only items in the specified state |
+| `--all` | Show all items regardless of state |
 
 ### Tag Filtering (list commands)
 
@@ -108,7 +108,7 @@ et create journey --id <id> --actor <actor_id> --goal <goal_id> --steps <step1,s
 ### Tree View (no type specified)
 
 ```bash
-et list [--json] [--closed] [--all] [--tag <tags>]
+et list [--json] [--state <state>] [--all] [--tag <tags>]
 ```
 
 Shows hierarchical view: Actors -> Goals -> Interactions. Orphan goals and standalone interactions appear in special groups.
@@ -116,10 +116,10 @@ Shows hierarchical view: Actors -> Goals -> Interactions. Orphan goals and stand
 ### List by Type
 
 ```bash
-et list actors [--format json] [--tag <tags>]
-et list goals [--format json] [--actor <id>] [--closed] [--all] [--tag <tags>]
-et list interactions [--format json] [--goal <id>] [--closed] [--all] [--tag <tags>]
-et list journeys [--format json] [--actor <id>] [--goal <id>] [--tag <tags>]
+et list actors [--format json] [--state <state>] [--all] [--tag <tags>]
+et list goals [--format json] [--actor <id>] [--state <state>] [--all] [--tag <tags>]
+et list interactions [--format json] [--goal <id>] [--state <state>] [--all] [--tag <tags>]
+et list journeys [--format json] [--actor <id>] [--goal <id>] [--state <state>] [--all] [--tag <tags>]
 ```
 
 ### JSON Output Structure (Tree View)
@@ -136,14 +136,14 @@ et list journeys [--format json] [--actor <id>] [--goal <id>] [--tag <tags>]
         "type": "goal",
         "id": "checkout",
         "description": "Complete purchase successfully",
-        "status": "open",
+        "state": "creating",
         "tags": ["verified"],
         "children": [
           {
             "type": "interaction",
             "id": "add_to_cart",
             "description": "Add products to cart",
-            "status": "open"
+            "state": "planning"
           }
         ]
       }
@@ -171,7 +171,7 @@ Returns full entity data including all fields, tags, metadata, and timestamps.
   "description": "Successfully purchase products",
   "actor": "customer",
   "success_criteria": "Order confirmed, payment processed",
-  "status": "open",
+  "state": "creating",
   "tags": ["verified"],
   "meta": {"source": "discovery"},
   "created_at": "2024-01-15T10:30:00.000Z",
@@ -180,6 +180,8 @@ Returns full entity data including all fields, tags, metadata, and timestamps.
 ```
 
 ## Update Commands
+
+**State behaviour:** Running `et update` on an entity in the `created` state automatically transitions it to `updating`. Updates are blocked on entities in `deleting`, `deleted`, or `discarded` states.
 
 ### Common Tag and Metadata Options (All Entity Types)
 
@@ -225,6 +227,11 @@ et remove interaction <id> [--force] --json
 et remove journey <id> [--force] --json
 ```
 
+Remove uses a **two-step** process:
+
+1. **First call** transitions the entity to `deleting` (intent to delete). This signals that the corresponding code should be removed.
+2. **Second call** transitions the entity to `deleted` (reality confirmed). Use this after the code has been cleaned up.
+
 ### Reference Checking
 
 Before removing, `et` checks if the entity is referenced by other entities:
@@ -250,18 +257,28 @@ If references exist and `--force` is not used, removal is blocked:
 
 **Warning:** Force removing leaves dangling references. Run `et validate` afterwards.
 
+## Approve and Discard Commands
+
+```bash
+et approve <type> <id> [--json]
+et discard <type> <id> [--json]
+```
+
+- `et approve` transitions an entity from `planning` to `creating`. This signals intent to build.
+- `et discard` transitions an entity from `planning` to `discarded`. Use this when a planned entity is no longer needed and no code was ever written.
+- Both commands work on all four entity types.
+
 ## Close and Reopen Commands
 
 ```bash
-et close goal <id> [--json]
-et close interaction <id> [--json]
-et reopen goal <id> [--json]
-et reopen interaction <id> [--json]
+et close <type> <id> [--json]
+et reopen <type> <id> [--json]
 ```
 
-- Only goals and interactions have status. Actors and journeys do not.
-- If already in target state, command succeeds without error.
-- Closed items are hidden from default list views. Use `--closed` or `--all` to see them.
+- `et close` works on **all four entity types**. It transitions `creating` to `created`, or `updating` to `created`.
+- `et reopen` works on **all four entity types**. It transitions `created` to `updating`.
+- If already in the target state, the command succeeds without error.
+- All entity types share the same seven-state model. See [Entity Model](entity-model.md) for the full state machine.
 
 ## Validate Command
 
@@ -348,7 +365,7 @@ et migrate --server <url> --token <token> [--dry-run] [--json]
 - Configuration read from `.et_env` (ET_API_HOST, ET_API_TOKEN)
 - `--server` and `--token` flags override `.et_env` values
 - Migration order: Actors -> Goals -> Interactions -> Journeys (respects dependencies)
-- Status preserved: closed goals/interactions are closed on the server after creation
+- State preserved: closed goals/interactions are closed on the server after creation
 - `--dry-run` previews without uploading
 
 ## Generate Documentation

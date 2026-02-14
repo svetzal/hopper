@@ -1,4 +1,4 @@
-<!-- et v0.8.7 -->
+<!-- et v0.9.0 -->
 ---
 name: epilogue-tracker
 description: Use Epilogue Tracker (et) for user-centric product planning with the Screenplay Pattern; for product planning, work breakdown, user goals, actors, interactions, journeys
@@ -71,12 +71,14 @@ et create actor --id "customer" --name "Customer" --description "An online shopp
 
 ## Entity Model
 
-| Type | Purpose | Has Status |
-|------|---------|------------|
-| **Actor** | A user role - the "who" | No |
-| **Goal** | What the user wants to achieve - the "why" | Yes (open/closed) |
-| **Interaction** | How your product helps them - the "how" | Yes (open/closed), has priority |
-| **Journey** | The complete path to satisfaction - the "script" | No |
+| Type | Purpose | Has State |
+|------|---------|-----------|
+| **Actor** | A user role - the "who" | Yes (seven-state lifecycle) |
+| **Goal** | What the user wants to achieve - the "why" | Yes (seven-state lifecycle) |
+| **Interaction** | How your product helps them - the "how" | Yes (seven-state lifecycle), has priority |
+| **Journey** | The complete path to satisfaction - the "script" | Yes (seven-state lifecycle) |
+
+All entity types share the same seven states: `planning` (default), `creating`, `created`, `updating`, `deleting`, `deleted`, `discarded`. See [references/entity-model.md](references/entity-model.md) for the full state machine.
 
 ### Relationships
 
@@ -124,9 +126,15 @@ Actor ──has──▶ Goals ◀──supports── Interactions
    et create interaction --id "express_payment" --description "One-click payment using saved details" --performed-by "customer" --goal "fast_checkout" --priority 1 --json
    ```
 
-5. **Do the work** - implement the feature, fix the bug, refactor the code.
+5. **Approve for implementation:**
+   ```bash
+   et approve interaction express_payment --json
+   et approve goal fast_checkout --json
+   ```
 
-6. **Close completed items:**
+6. **Do the work** - implement the feature, fix the bug, refactor the code.
+
+7. **Close completed items** (transitions to `created`):
    ```bash
    et close interaction express_payment --json
    et close goal fast_checkout --json
@@ -164,10 +172,10 @@ et list goals --format json --actor customer      # Goals for actor
 et list interactions --format json --goal checkout # Interactions for goal
 et list journeys --format json                    # All journeys
 
-# Status filtering
-et list goals --format json                       # Open only (default)
-et list goals --format json --closed              # Closed only
-et list goals --format json --all                 # All with status
+# State filtering
+et list goals --format json                       # Active only (excludes deleted/discarded)
+et list goals --format json --state creating      # Specific state only
+et list goals --format json --all                 # All with state
 
 # Tag filtering
 et list goals --format json --tag "verified"      # Single tag
@@ -198,12 +206,21 @@ et remove interaction old_step --json            # Warns if referenced
 et remove interaction old_step --force --json    # Force removal
 ```
 
+### Approve and Discard
+
+```bash
+et approve goal checkout --json                  # planning -> creating
+et approve interaction add_to_cart --json        # planning -> creating
+et discard goal unused --json                    # planning -> discarded
+```
+
 ### Close and Reopen
 
 ```bash
-et close goal checkout --json                    # Mark goal achieved
-et close interaction add_to_cart --json          # Mark interaction done
-et reopen goal checkout --json                   # Reopen if needed
+et close goal checkout --json                    # creating/updating -> created
+et close interaction add_to_cart --json          # creating/updating -> created
+et close actor customer --json                   # Works on all entity types
+et reopen goal checkout --json                   # created -> updating
 ```
 
 ### Validate

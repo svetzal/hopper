@@ -1,4 +1,4 @@
-<!-- et v0.8.7 -->
+<!-- et v0.9.0 -->
 # Entity Model
 
 The Screenplay Pattern models work through four entity types that answer fundamental questions about who your product serves and why.
@@ -20,10 +20,69 @@ The Screenplay Pattern models work through four entity types that answer fundame
                     └───────────────┘
 ```
 
-### Status Model
+### State Model (Intent/Reality)
 
-- **Goals** and **Interactions** have status: `open` (default) or `closed`
-- **Actors** and **Journeys** have no status
+All four entity types share the same seven-state model. States are divided into phases that track the gap between what you intend to build and what actually exists in the codebase.
+
+| State | Phase | Codebase signal |
+|-------|-------|-----------------|
+| `planning` | Pre-intent | No code exists |
+| `creating` | Intent | Code may be partially written |
+| `created` | Reality | Code exists and is current |
+| `updating` | Intent | Code exists but needs changes |
+| `deleting` | Intent | Code exists and needs removal |
+| `deleted` | Reality | Code was removed |
+| `discarded` | Terminal | No code was ever written |
+
+New entities start in `planning`. The default `et list` view excludes `deleted` and `discarded` items. Use `--all` to include them.
+
+### State Transitions
+
+```
+                  et approve             et close
+  planning ───────────────▶ creating ──────────▶ created
+     │                         │                    │
+     │ et discard              │ et remove          │ et update / et reopen
+     ▼                         ▼                    ▼
+  discarded               deleting              updating
+                              │                    │
+                              │ et remove          │ et close
+                              ▼                    │
+                           deleted ◀───────────────┘
+                                        et remove
+```
+
+**Key transitions:**
+
+| From | To | Trigger |
+|------|----|---------|
+| `planning` | `creating` | `et approve <type> <id>` |
+| `planning` | `discarded` | `et discard <type> <id>` |
+| `creating` | `created` | `et close <type> <id>` |
+| `creating` | `deleting` | `et remove <type> <id>` |
+| `created` | `updating` | `et update <type> <id> ...` (automatic) or `et reopen <type> <id>` |
+| `created` | `deleting` | `et remove <type> <id>` |
+| `updating` | `created` | `et close <type> <id>` |
+| `updating` | `deleting` | `et remove <type> <id>` |
+| `deleting` | `deleted` | `et remove <type> <id>` (second call) |
+
+**Terminal states:** `deleted` and `discarded` have no transitions out.
+
+**Blocked operations:** `et update` is blocked on entities in `deleting`, `deleted`, or `discarded` states.
+
+### Codebase Audit Guide
+
+Use entity states to audit alignment between the screenplay model and the codebase:
+
+| State | What to check |
+|-------|---------------|
+| `planning` | Nothing in the codebase yet. Review the entity description for clarity before approving. |
+| `creating` | Code should be in progress. Look for partial implementations, feature branches, or scaffolding. |
+| `created` | Code should exist and be current. Verify the implementation matches the entity description. |
+| `updating` | Code exists but needs changes. Look for the gap between current code and the updated entity description. |
+| `deleting` | Code exists and needs removal. Identify what to delete, clean up references, then confirm removal. |
+| `deleted` | Code was removed. Verify no dead code or dangling references remain. |
+| `discarded` | No code was ever written. Nothing to check. |
 
 ## Actor
 
@@ -39,6 +98,7 @@ An actor represents a user role in the system. Actors are the real people who us
 | `goals` | No | string[] | Goal IDs this actor wants to achieve |
 | `tags` | No | string[] | Labels for filtering and categorisation |
 | `meta` | No | object | Custom key-value metadata |
+| `state` | Auto | See [State Model](#state-model-intentreality) | Default: `planning` |
 | `created_at` | Auto | ISO date | Creation timestamp |
 | `updated_at` | Auto | ISO date | Last update timestamp |
 
@@ -76,7 +136,7 @@ A goal represents what a user wants to achieve. Goals are **always** user goals,
 | `description` | Yes | string | What the user wants to achieve |
 | `actor` | No* | string | Actor who has this goal |
 | `success_criteria` | No | string | How we know the goal is achieved |
-| `status` | Auto | `open` \| `closed` | Default: `open` |
+| `state` | Auto | See [State Model](#state-model-intentreality) | Default: `planning` |
 | `tags` | No | string[] | Labels for filtering |
 | `meta` | No | object | Custom key-value metadata |
 | `created_at` | Auto | ISO date | Creation timestamp |
@@ -129,7 +189,7 @@ An interaction represents a task or action that helps a user reach their goal. T
 | `goal` | No* | string | Single goal this interaction supports (backward compatible) |
 | `goals` | No* | string[] | Multiple goal IDs this interaction supports |
 | `priority` | No | integer | Priority level (0 = highest). Lower numbers = higher priority. Null means unprioritized |
-| `status` | Auto | `open` \| `closed` | Default: `open` |
+| `state` | Auto | See [State Model](#state-model-intentreality) | Default: `planning` |
 | `tags` | No | string[] | Labels for filtering |
 | `meta` | No | object | Custom key-value metadata |
 | `created_at` | Auto | ISO date | Creation timestamp |
@@ -178,6 +238,7 @@ A journey ties together an Actor, a Goal, and a sequence of Interactions into a 
 | `narrative` | No | string | Human-readable description of the flow |
 | `tags` | No | string[] | Labels for filtering |
 | `meta` | No | object | Custom key-value metadata |
+| `state` | Auto | See [State Model](#state-model-intentreality) | Default: `planning` |
 | `created_at` | Auto | ISO date | Creation timestamp |
 | `updated_at` | Auto | ISO date | Last update timestamp |
 

@@ -1,4 +1,4 @@
-<!-- et v0.8.7 -->
+<!-- et v0.9.0 -->
 # Getting Started with et
 
 Step-by-step guide for bootstrapping Epilogue Tracker in a new project. Assumes `et` is installed and `.et_env` is configured per the Setup section in SKILL.md.
@@ -145,11 +145,11 @@ Once bootstrapped, follow this cycle for all new work:
 ### Reviewing Progress
 
 ```bash
-# What's open?
+# What's active?
 et list --json
 
 # What's been completed?
-et list goals --format json --closed
+et list goals --format json --state created
 
 # Everything at a glance
 et list --all --json

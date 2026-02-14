@@ -1,4 +1,4 @@
-<!-- et v0.8.7 -->
+<!-- et v0.9.0 -->
 # Breaking Down Work
 
 How to decompose features, bugs, and technical debt into the Screenplay Pattern. Every piece of work must tie back to a user goal.
@@ -211,34 +211,49 @@ et create journey --id "full_checkout" \
   --narrative "New customer goes through complete checkout flow" --json
 ```
 
-## Closing and Reopening
+## Entity Lifecycle
 
 ### When Work Is Complete
 
 ```bash
-# Mark individual interaction as done
+# Mark any entity as done (creating/updating → created)
 et close interaction export_csv --json
-
-# When the goal is fully achieved
 et close goal extract_data --json
+et close actor customer --json
 ```
 
-### Reviewing Closed Work
+### Reviewing All Work
 
 ```bash
-# See what has been accomplished
-et list goals --format json --closed
+# See all active work (excludes deleted/discarded)
+et list goals --format json
 
-# See everything with status indicators
+# Filter to a specific state
+et list goals --format json --state created
+
+# See everything including terminal states
 et list --all --json
 ```
 
 ### Reopening
 
-If a closed goal needs revisiting (new requirements, regression):
+If a completed entity needs revisiting (new requirements, regression):
 
 ```bash
+# Transitions created → updating
 et reopen goal extract_data --json
+```
+
+### Removing Entities
+
+Removal is a two-step process to prevent accidental deletion:
+
+```bash
+# First call: transitions to deleting
+et remove interaction old_step --json
+
+# Second call: confirms deletion
+et remove interaction old_step --json
 ```
 
 ## Validation Checkpoint
