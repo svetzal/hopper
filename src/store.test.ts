@@ -2,7 +2,16 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import { loadItems, saveItems, addItem, setStoreDir, getStorePath } from "./store.ts";
+import {
+  loadItems,
+  saveItems,
+  addItem,
+  setStoreDir,
+  getStorePath,
+  claimNextItem,
+  completeItem,
+  requeueItem,
+} from "./store.ts";
 import type { Item } from "./store.ts";
 
 describe("store", () => {
@@ -22,6 +31,7 @@ describe("store", () => {
       id: crypto.randomUUID(),
       title: "Test item",
       description: "A test description",
+      status: "queued",
       createdAt: new Date().toISOString(),
       ...overrides,
     };
@@ -71,5 +81,139 @@ describe("store", () => {
 
   test("getStorePath returns path inside store dir", () => {
     expect(getStorePath()).toBe(join(tempDir, "items.json"));
+  });
+
+  // Migration tests
+  test("loadItems applies status queued to legacy items missing status", async () => {
+    const legacy = [
+      { id: "1", title: "Old", description: "desc", createdAt: "2025-01-01T00:00:00Z" },
+    ];
+    await Bun.write(getStorePath(), JSON.stringify(legacy));
+
+    const loaded = await loadItems();
+    expect(loaded[0]!.status).toBe("queued");
+  });
+
+  // claimNextItem tests
+  test("claimNextItem claims oldest queued item (FIFO)", async () => {
+    const older = makeItem({ title: "Older", createdAt: "2025-01-01T00:00:00Z" });
+    const newer = makeItem({ title: "Newer", createdAt: "2025-06-01T00:00:00Z" });
+    await saveItems([newer, older]);
+
+    const claimed = await claimNextItem("test-agent");
+    expect(claimed).not.toBeNull();
+    expect(claimed!.title).toBe("Older");
+    expect(claimed!.status).toBe("in_progress");
+    expect(claimed!.claimedBy).toBe("test-agent");
+    expect(claimed!.claimToken).toBeDefined();
+    expect(claimed!.claimedAt).toBeDefined();
+  });
+
+  test("claimNextItem returns null when queue is empty", async () => {
+    const result = await claimNextItem();
+    expect(result).toBeNull();
+  });
+
+  test("claimNextItem skips in_progress items", async () => {
+    const inProgress = makeItem({
+      title: "In Progress",
+      status: "in_progress",
+      createdAt: "2025-01-01T00:00:00Z",
+    });
+    const queued = makeItem({
+      title: "Queued",
+      status: "queued",
+      createdAt: "2025-06-01T00:00:00Z",
+    });
+    await saveItems([inProgress, queued]);
+
+    const claimed = await claimNextItem();
+    expect(claimed!.title).toBe("Queued");
+  });
+
+  test("claimNextItem populates all claim fields", async () => {
+    await saveItems([makeItem()]);
+
+    const claimed = await claimNextItem("my-agent");
+    expect(claimed!.status).toBe("in_progress");
+    expect(claimed!.claimedAt).toBeTruthy();
+    expect(claimed!.claimedBy).toBe("my-agent");
+    expect(claimed!.claimToken).toBeTruthy();
+  });
+
+  // completeItem tests
+  test("completeItem completes with valid token", async () => {
+    await saveItems([makeItem()]);
+    const claimed = await claimNextItem("agent");
+    const token = claimed!.claimToken!;
+
+    const completed = await completeItem(token, "agent");
+    expect(completed.status).toBe("completed");
+    expect(completed.completedAt).toBeDefined();
+    expect(completed.completedBy).toBe("agent");
+    expect(completed.claimToken).toBeUndefined();
+  });
+
+  test("completeItem throws on invalid token", async () => {
+    await saveItems([makeItem()]);
+    await claimNextItem();
+
+    await expect(completeItem("bad-token")).rejects.toThrow("No in-progress item found");
+  });
+
+  test("completeItem clears claim token after completion", async () => {
+    await saveItems([makeItem()]);
+    const claimed = await claimNextItem();
+    await completeItem(claimed!.claimToken!);
+
+    const items = await loadItems();
+    expect(items[0]!.claimToken).toBeUndefined();
+  });
+
+  test("completeItem sets timestamps", async () => {
+    await saveItems([makeItem()]);
+    const claimed = await claimNextItem();
+    const completed = await completeItem(claimed!.claimToken!);
+
+    expect(completed.completedAt).toBeTruthy();
+    expect(new Date(completed.completedAt!).getTime()).toBeGreaterThan(0);
+  });
+
+  // requeueItem tests
+  test("requeueItem resets to queued", async () => {
+    const item = makeItem();
+    await saveItems([item]);
+    const claimed = await claimNextItem();
+    const requeued = await requeueItem(claimed!.id, "needs more info");
+
+    expect(requeued.status).toBe("queued");
+    expect(requeued.requeueReason).toBe("needs more info");
+  });
+
+  test("requeueItem preserves createdAt", async () => {
+    const originalCreatedAt = "2025-01-01T00:00:00Z";
+    const item = makeItem({ createdAt: originalCreatedAt });
+    await saveItems([item]);
+    await claimNextItem();
+    const requeued = await requeueItem(item.id, "reason");
+
+    expect(requeued.createdAt).toBe(originalCreatedAt);
+  });
+
+  test("requeueItem clears claim fields", async () => {
+    await saveItems([makeItem()]);
+    const claimed = await claimNextItem("agent");
+    const requeued = await requeueItem(claimed!.id, "blocked");
+
+    expect(requeued.claimedAt).toBeUndefined();
+    expect(requeued.claimedBy).toBeUndefined();
+    expect(requeued.claimToken).toBeUndefined();
+  });
+
+  test("requeueItem rejects non-in_progress items", async () => {
+    const item = makeItem({ status: "queued" });
+    await saveItems([item]);
+
+    await expect(requeueItem(item.id, "reason")).rejects.toThrow("not in progress");
   });
 });

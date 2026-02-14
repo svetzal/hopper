@@ -22,6 +22,7 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
     id: crypto.randomUUID(),
     title,
     description,
+    status: "queued" as const,
     createdAt: new Date().toISOString(),
   };
 

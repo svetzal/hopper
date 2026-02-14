@@ -1,10 +1,13 @@
 #!/usr/bin/env bun
 
 import { addCommand } from "./commands/add.ts";
+import { claimCommand } from "./commands/claim.ts";
+import { completeCommand } from "./commands/complete.ts";
 import { listCommand } from "./commands/list.ts";
+import { requeueCommand } from "./commands/requeue.ts";
 import { createTitleGenerator } from "./titler.ts";
 
-const VERSION = "0.1.1";
+const VERSION = "0.2.0";
 
 export interface ParsedArgs {
   command: string;
@@ -42,11 +45,17 @@ function printHelp(): void {
   console.log(`hopper v${VERSION} — personal work queue
 
 Usage:
-  hopper add <description>      Add a work item (LLM generates title)
-  hopper list                   List queued items (newest first)
+  hopper add <description>           Add a work item (LLM generates title)
+  hopper list                        List queued + in-progress items
+  hopper list --all                  Include completed items
+  hopper list --completed            Show only completed items
+  hopper claim [--agent <name>]      Claim next queued item (FIFO)
+  hopper complete <token>            Complete a claimed item
+  hopper requeue <id> --reason "…"   Return an in-progress item to queue
 
 Options:
   --json      Output as JSON
+  --agent     Agent name for claim/complete
   --help      Show this help
   --version   Show version`);
 }
@@ -73,6 +82,15 @@ async function main(): Promise<void> {
     }
     case "list":
       await listCommand(parsed);
+      break;
+    case "claim":
+      await claimCommand(parsed);
+      break;
+    case "complete":
+      await completeCommand(parsed);
+      break;
+    case "requeue":
+      await requeueCommand(parsed);
       break;
     default:
       console.error(`Unknown command: ${parsed.command}`);
