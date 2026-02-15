@@ -51,7 +51,9 @@ Usage:
   hopper list --completed            Show only completed items
   hopper claim [--agent <name>]      Claim next queued item (FIFO)
   hopper complete <token>            Complete a claimed item
+  hopper complete <token> --result "…" Attach a result summary
   hopper requeue <id> --reason "…"   Return an in-progress item to queue
+  hopper init                        Install Claude Code skill files
 
 Options:
   --json      Output as JSON
@@ -92,6 +94,11 @@ async function main(): Promise<void> {
     case "requeue":
       await requeueCommand(parsed);
       break;
+    case "init": {
+      const { initCommand } = await import("./commands/init.ts");
+      await initCommand(parsed.flags.json === true);
+      break;
+    }
     default:
       console.error(`Unknown command: ${parsed.command}`);
       printHelp();

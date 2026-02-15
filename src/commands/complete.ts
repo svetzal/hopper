@@ -10,9 +10,10 @@ export async function completeCommand(parsed: ParsedArgs): Promise<void> {
   }
 
   const agent = typeof parsed.flags.agent === "string" ? parsed.flags.agent : undefined;
+  const result = typeof parsed.flags.result === "string" ? parsed.flags.result : undefined;
 
   try {
-    const item = await completeItem(token, agent);
+    const item = await completeItem(token, agent, result);
 
     if (parsed.flags.json === true) {
       console.log(JSON.stringify(item, null, 2));

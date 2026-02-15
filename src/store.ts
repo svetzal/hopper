@@ -15,6 +15,7 @@ export interface Item {
   claimToken?: string;
   completedAt?: string;
   completedBy?: string;
+  result?: string;
   requeueReason?: string;
   requeuedBy?: string;
 }
@@ -80,7 +81,7 @@ export async function claimNextItem(agent?: string): Promise<Item | null> {
   return next;
 }
 
-export async function completeItem(token: string, agent?: string): Promise<Item> {
+export async function completeItem(token: string, agent?: string, result?: string): Promise<Item> {
   const items = await loadItems();
   const item = items.find((i) => i.claimToken === token);
 
@@ -94,6 +95,7 @@ export async function completeItem(token: string, agent?: string): Promise<Item>
   item.status = "completed";
   item.completedAt = new Date().toISOString();
   item.completedBy = agent;
+  item.result = result;
   item.claimToken = undefined;
 
   await saveItems(items);

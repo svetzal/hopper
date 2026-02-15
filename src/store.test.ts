@@ -161,6 +161,25 @@ describe("store", () => {
     await expect(completeItem("bad-token")).rejects.toThrow("No in-progress item found");
   });
 
+  test("completeItem stores result when provided", async () => {
+    await saveItems([makeItem()]);
+    const claimed = await claimNextItem("agent");
+    const token = claimed!.claimToken!;
+
+    const completed = await completeItem(token, "agent", "Fixed the login bug");
+    expect(completed.result).toBe("Fixed the login bug");
+
+    const items = await loadItems();
+    expect(items[0]!.result).toBe("Fixed the login bug");
+  });
+
+  test("completeItem leaves result undefined when not provided", async () => {
+    await saveItems([makeItem()]);
+    const claimed = await claimNextItem("agent");
+    const completed = await completeItem(claimed!.claimToken!, "agent");
+    expect(completed.result).toBeUndefined();
+  });
+
   test("completeItem clears claim token after completion", async () => {
     await saveItems([makeItem()]);
     const claimed = await claimNextItem();

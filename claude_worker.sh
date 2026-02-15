@@ -62,7 +62,12 @@ echo "---------------------"
 if [[ $CLAUDE_EXIT -eq 0 ]]; then
   echo ""
   echo "Claude session completed. Marking work item as complete..."
-  "$HOPPER" complete "$TOKEN" --agent "$AGENT_NAME"
+  "$HOPPER" complete "$TOKEN" --agent "$AGENT_NAME" --result "$RESULT_TEXT"
+
+  # Notify via openclaw if available
+  if command -v openclaw &>/dev/null; then
+    openclaw gateway wake --text "Hopper item completed: ${TITLE}" --mode now
+  fi
 else
   echo ""
   echo "Claude session failed. Requeuing work item..."
