@@ -102,11 +102,16 @@ export async function completeItem(token: string, agent?: string): Promise<Item>
 
 export async function requeueItem(id: string, reason: string, agent?: string): Promise<Item> {
   const items = await loadItems();
-  const item = items.find((i) => i.id === id);
+  const matches = items.filter((i) => i.id === id || i.id.startsWith(id));
 
-  if (!item) {
+  if (matches.length === 0) {
     throw new Error(`No item found with id: ${id}`);
   }
+  if (matches.length > 1) {
+    throw new Error(`Ambiguous id prefix "${id}" matches ${matches.length} items. Use a longer prefix.`);
+  }
+
+  const item = matches[0];
   if (item.status !== "in_progress") {
     throw new Error(`Item is not in progress (status: ${item.status})`);
   }
