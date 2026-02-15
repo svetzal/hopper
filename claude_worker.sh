@@ -42,7 +42,7 @@ echo "Audit log:   $AUDIT_FILE"
 echo "Result file: $RESULT_FILE"
 
 # Capture JSON audit stream to file
-claude --print --verbose --output-format stream-json "$PROMPT" > "$AUDIT_FILE" 2>&1
+claude --print --verbose --dangerously-skip-permissions --output-format stream-json "$PROMPT" > "$AUDIT_FILE" 2>&1
 CLAUDE_EXIT=$?
 
 # Extract the final result text from the audit log
