@@ -19,9 +19,9 @@
     "prepare": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "^1.3.9"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^5.9.3"
   }
 }
