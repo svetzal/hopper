@@ -9,7 +9,7 @@ import { requeueCommand } from "./commands/requeue.ts";
 import { showCommand } from "./commands/show.ts";
 import { createTitleGenerator } from "./titler.ts";
 
-const VERSION = "0.3.0";
+const VERSION = "0.3.1";
 
 export interface ParsedArgs {
   command: string;
