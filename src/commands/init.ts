@@ -1,4 +1,4 @@
-import { mkdirSync, existsSync, readFileSync, writeFileSync } from "fs";
+import { mkdir } from "fs/promises";
 import { join } from "path";
 
 // Embed skill files at build time via Bun text imports
@@ -53,23 +53,24 @@ export async function initCommand(jsonOutput: boolean): Promise<void> {
     const stamped = VERSION_HEADER + file.content;
 
     let action: FileAction;
+    const fileRef = Bun.file(fullPath);
 
-    if (!existsSync(fullPath)) {
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(fullPath, stamped, "utf-8");
+    if (!(await fileRef.exists())) {
+      await mkdir(dir, { recursive: true });
+      await Bun.write(fullPath, stamped);
       action = "created";
     } else {
-      const existing = readFileSync(fullPath, "utf-8");
+      const existing = await fileRef.text();
       const existingBody = stripVersionHeader(existing);
       const newBody = file.content;
 
       if (existingBody === newBody) {
         if (existing !== stamped) {
-          writeFileSync(fullPath, stamped, "utf-8");
+          await Bun.write(fullPath, stamped);
         }
         action = "up-to-date";
       } else {
-        writeFileSync(fullPath, stamped, "utf-8");
+        await Bun.write(fullPath, stamped);
         action = "updated";
       }
     }

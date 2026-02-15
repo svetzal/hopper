@@ -1,3 +1,4 @@
+// mkdir is the one Node.js stdlib import — Bun.write() does not create parent directories
 import { mkdir } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
