@@ -1,0 +1,19 @@
+{
+  "gates": [
+    {
+      "name": "lint",
+      "command": "bun run lint",
+      "required": true
+    },
+    {
+      "name": "test",
+      "command": "bun test",
+      "required": true
+    },
+    {
+      "name": "build",
+      "command": "bun run build",
+      "required": true
+    }
+  ]
+}
