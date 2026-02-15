@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -e
+
+echo "Running pre-push checks..."
+
+echo "→ Type check"
+bun run lint
+
+echo "→ Tests"
+bun test
+
+echo "All checks passed."
