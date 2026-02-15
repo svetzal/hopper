@@ -15,6 +15,7 @@ TITLE=$(echo "$CLAIM_JSON" | jq -r '.title')
 DESCRIPTION=$(echo "$CLAIM_JSON" | jq -r '.description')
 TOKEN=$(echo "$CLAIM_JSON" | jq -r '.claimToken')
 ITEM_ID=$(echo "$CLAIM_JSON" | jq -r '.id')
+WORKING_DIR=$(echo "$CLAIM_JSON" | jq -r '.workingDir // empty')
 
 if [[ -z "$TOKEN" || "$TOKEN" == "null" ]]; then
   echo "Failed to parse claim token from hopper output."
@@ -24,6 +25,14 @@ fi
 echo "Claimed: $TITLE"
 echo "Token:   $TOKEN"
 echo "ID:      $ITEM_ID"
+if [[ -n "$WORKING_DIR" ]]; then
+  echo "Dir:     $WORKING_DIR"
+fi
+
+# Change to working directory if specified
+if [[ -n "$WORKING_DIR" ]]; then
+  cd "$WORKING_DIR"
+fi
 
 # Run a Claude session to perform the work
 PROMPT="You have been assigned the following task:

@@ -18,12 +18,15 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
 
   const title = await titler.generateTitle(description);
 
+  const dir = typeof parsed.flags.dir === "string" ? parsed.flags.dir : undefined;
+
   const item = {
     id: crypto.randomUUID(),
     title,
     description,
     status: "queued" as const,
     createdAt: new Date().toISOString(),
+    ...(dir ? { workingDir: dir } : {}),
   };
 
   await addItem(item);

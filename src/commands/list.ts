@@ -12,7 +12,7 @@ export async function listCommand(parsed: ParsedArgs): Promise<void> {
   } else if (parsed.flags.all === true) {
     items = allItems;
   } else {
-    items = allItems.filter((i) => i.status !== "completed");
+    items = allItems.filter((i) => i.status === "queued" || i.status === "in_progress");
   }
 
   if (items.length === 0) {
@@ -33,9 +33,12 @@ export async function listCommand(parsed: ParsedArgs): Promise<void> {
 
     const id = shortId(item.id);
     const timing = itemTiming(item);
-    const badge = item.status === "in_progress" ? " [in progress]" : "";
+    const dirBadge = item.workingDir ? ` [dir]` : "";
+    const badge =
+      item.status === "in_progress" ? " [in progress]" :
+      item.status === "cancelled" ? " [cancelled]" : "";
 
-    console.log(`  ${id}${badge}  ${item.title}${timing}`);
+    console.log(`  ${id}${badge}${dirBadge}  ${item.title}${timing}`);
     console.log(`    ${snippet}`);
     console.log();
   }

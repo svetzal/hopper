@@ -27,17 +27,30 @@ As coordinator, you:
 
 ```bash
 hopper add "<description>"
+hopper add "<description>" --dir <path>
 ```
 
 - The description should be a clear, self-contained task that an agent can complete without further context
 - Hopper auto-generates a short title from the description using an LLM (falls back to truncation if unavailable)
 - Each item gets a unique ID
+- Use `--dir` to specify a working directory for the task — the worker will `cd` there before running Claude, picking up project-specific `.claude/` directives
 
 **Tips for good descriptions:**
 - Include enough context that a worker agent can act on it independently
 - Be specific about what "done" looks like
 - Reference file paths, function names, or other concrete details when relevant
 - One task per item — avoid compound tasks ("do X and Y")
+
+### Viewing Item Details
+
+```bash
+hopper show <id>             # Full details of a single item
+hopper show <id> --json      # Machine-readable output
+```
+
+- Use the item `id` (or a unique prefix of it)
+- Displays all fields: title, description, status, timestamps, agent info, result, and requeue reason
+- Useful for reviewing completed work results or understanding why an item was requeued
 
 ### Listing Items
 
@@ -57,7 +70,7 @@ All commands support `--json` for structured output. Use this when you need to p
 1. **Analyze the work** — Understand what needs to be done and break it into independent tasks
 2. **Add items** — Queue each task with a clear description
 3. **Monitor** — Check `hopper list` to see what's been claimed and what's still queued
-4. **Review** — Check completed items to verify work was done correctly
+4. **Review** — Check completed items with `hopper show <id>` to see full results
 
 ## Example
 
@@ -72,4 +85,7 @@ hopper list
 
 # See what's been done
 hopper list --completed
+
+# Review a specific completed item's result
+hopper show <id>
 ```

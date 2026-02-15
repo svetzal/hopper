@@ -2,7 +2,7 @@ import { mkdir } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
 
-export type ItemStatus = "queued" | "in_progress" | "completed";
+export type ItemStatus = "queued" | "in_progress" | "completed" | "cancelled";
 
 export interface Item {
   id: string;
@@ -18,6 +18,8 @@ export interface Item {
   result?: string;
   requeueReason?: string;
   requeuedBy?: string;
+  cancelledAt?: string;
+  workingDir?: string;
 }
 
 const DEFAULT_STORE_DIR = join(homedir(), ".hopper");
@@ -102,6 +104,20 @@ export async function completeItem(token: string, agent?: string, result?: strin
   return item;
 }
 
+export async function findItem(id: string): Promise<Item> {
+  const items = await loadItems();
+  const matches = items.filter((i) => i.id === id || i.id.startsWith(id));
+
+  if (matches.length === 0) {
+    throw new Error(`No item found with id: ${id}`);
+  }
+  if (matches.length > 1) {
+    throw new Error(`Ambiguous id prefix "${id}" matches ${matches.length} items. Use a longer prefix.`);
+  }
+
+  return matches[0]!;
+}
+
 export async function requeueItem(id: string, reason: string, agent?: string): Promise<Item> {
   const items = await loadItems();
   const matches = items.filter((i) => i.id === id || i.id.startsWith(id));
@@ -124,6 +140,29 @@ export async function requeueItem(id: string, reason: string, agent?: string): P
   item.claimToken = undefined;
   item.requeueReason = reason;
   item.requeuedBy = agent;
+
+  await saveItems(items);
+  return item;
+}
+
+export async function cancelItem(id: string): Promise<Item> {
+  const items = await loadItems();
+  const matches = items.filter((i) => i.id === id || i.id.startsWith(id));
+
+  if (matches.length === 0) {
+    throw new Error(`No item found with id: ${id}`);
+  }
+  if (matches.length > 1) {
+    throw new Error(`Ambiguous id prefix "${id}" matches ${matches.length} items. Use a longer prefix.`);
+  }
+
+  const item = matches[0]!;
+  if (item.status !== "queued") {
+    throw new Error(`Cannot cancel item — status is "${item.status}". Only queued items can be cancelled.`);
+  }
+
+  item.status = "cancelled";
+  item.cancelledAt = new Date().toISOString();
 
   await saveItems(items);
   return item;

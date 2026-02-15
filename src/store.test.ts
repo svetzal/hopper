@@ -11,6 +11,8 @@ import {
   claimNextItem,
   completeItem,
   requeueItem,
+  cancelItem,
+  findItem,
 } from "./store.ts";
 import type { Item } from "./store.ts";
 
@@ -234,5 +236,107 @@ describe("store", () => {
     await saveItems([item]);
 
     await expect(requeueItem(item.id, "reason")).rejects.toThrow("not in progress");
+  });
+
+  // cancelItem tests
+  test("cancelItem cancels a queued item", async () => {
+    const item = makeItem({ title: "To cancel" });
+    await saveItems([item]);
+
+    const cancelled = await cancelItem(item.id);
+    expect(cancelled.status).toBe("cancelled");
+    expect(cancelled.cancelledAt).toBeDefined();
+    expect(cancelled.title).toBe("To cancel");
+  });
+
+  test("cancelItem rejects in_progress items", async () => {
+    const item = makeItem({ status: "in_progress", claimedAt: new Date().toISOString() });
+    await saveItems([item]);
+
+    await expect(cancelItem(item.id)).rejects.toThrow('Cannot cancel item — status is "in_progress"');
+  });
+
+  test("cancelItem rejects completed items", async () => {
+    const item = makeItem({ status: "completed", completedAt: new Date().toISOString() });
+    await saveItems([item]);
+
+    await expect(cancelItem(item.id)).rejects.toThrow('Cannot cancel item — status is "completed"');
+  });
+
+  test("cancelItem supports prefix matching", async () => {
+    const item = makeItem({ id: "abcd1234-0000-0000-0000-000000000000", title: "Cancel me" });
+    await saveItems([item]);
+
+    const cancelled = await cancelItem("abcd1234");
+    expect(cancelled.title).toBe("Cancel me");
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  test("cancelItem persists changes", async () => {
+    const item = makeItem();
+    await saveItems([item]);
+    await cancelItem(item.id);
+
+    const items = await loadItems();
+    expect(items[0]!.status).toBe("cancelled");
+    expect(items[0]!.cancelledAt).toBeDefined();
+  });
+
+  // findItem tests
+  test("findItem returns item by exact id", async () => {
+    const item = makeItem({ title: "Target" });
+    await saveItems([makeItem({ title: "Other" }), item]);
+
+    const found = await findItem(item.id);
+    expect(found.title).toBe("Target");
+  });
+
+  test("findItem returns item by prefix", async () => {
+    const item = makeItem({ id: "abcd1234-0000-0000-0000-000000000000", title: "Target" });
+    await saveItems([item]);
+
+    const found = await findItem("abcd1234");
+    expect(found.title).toBe("Target");
+  });
+
+  test("findItem throws on no match", async () => {
+    await saveItems([makeItem()]);
+
+    await expect(findItem("nonexistent")).rejects.toThrow("No item found");
+  });
+
+  test("findItem throws on ambiguous prefix", async () => {
+    const a = makeItem({ id: "abcd0000-0000-0000-0000-000000000000" });
+    const b = makeItem({ id: "abcd1111-0000-0000-0000-000000000000" });
+    await saveItems([a, b]);
+
+    await expect(findItem("abcd")).rejects.toThrow("Ambiguous id prefix");
+  });
+
+  // workingDir tests
+  test("workingDir is preserved through add/claim/complete cycle", async () => {
+    const item = makeItem({ workingDir: "/tmp/my-project" });
+    await addItem(item);
+
+    const claimed = await claimNextItem("agent");
+    expect(claimed!.workingDir).toBe("/tmp/my-project");
+
+    const completed = await completeItem(claimed!.claimToken!, "agent", "done");
+    expect(completed.workingDir).toBe("/tmp/my-project");
+
+    const items = await loadItems();
+    expect(items[0]!.workingDir).toBe("/tmp/my-project");
+  });
+
+  test("items without workingDir still work (backward compat)", async () => {
+    const item = makeItem();
+    expect(item.workingDir).toBeUndefined();
+
+    await addItem(item);
+    const claimed = await claimNextItem("agent");
+    expect(claimed!.workingDir).toBeUndefined();
+
+    const completed = await completeItem(claimed!.claimToken!, "agent");
+    expect(completed.workingDir).toBeUndefined();
   });
 });

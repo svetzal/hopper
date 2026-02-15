@@ -29,8 +29,9 @@ hopper claim --agent "<your-name>" --json
 ```
 
 - Claims the oldest queued item (FIFO order)
-- Returns the item with `id`, `title`, `description`, and `claimToken`
+- Returns the item with `id`, `title`, `description`, `claimToken`, and optionally `workingDir`
 - The `claimToken` is required to complete the item — save it
+- If `workingDir` is set, switch to that directory before doing work so you pick up project-specific `.claude/` directives
 - If no items are available, the command exits with status 1
 
 ### Completing Work
@@ -51,6 +52,16 @@ hopper requeue "<id>" --reason "<why>" --agent "<your-name>"
 - Returns the item to the queue if you cannot complete it
 - You must provide a reason explaining why the item is being requeued
 - Use the item `id` (or a unique prefix of it), not the claim token
+
+### Viewing Item Details
+
+```bash
+hopper show "<id>" --json       # Full details of a single item
+```
+
+- Use the item `id` (or a unique prefix of it)
+- Shows all fields: title, full description, status, timestamps, agent info, result, and requeue reason
+- Useful for understanding requeued items or reviewing prior work
 
 ### Checking the Queue
 

@@ -1,13 +1,15 @@
 #!/usr/bin/env bun
 
 import { addCommand } from "./commands/add.ts";
+import { cancelCommand } from "./commands/cancel.ts";
 import { claimCommand } from "./commands/claim.ts";
 import { completeCommand } from "./commands/complete.ts";
 import { listCommand } from "./commands/list.ts";
 import { requeueCommand } from "./commands/requeue.ts";
+import { showCommand } from "./commands/show.ts";
 import { createTitleGenerator } from "./titler.ts";
 
-const VERSION = "0.2.1";
+const VERSION = "0.3.0";
 
 export interface ParsedArgs {
   command: string;
@@ -45,17 +47,20 @@ function printHelp(): void {
   console.log(`hopper v${VERSION} — personal work queue
 
 Usage:
-  hopper add <description>           Add a work item (LLM generates title)
+  hopper add <description> [--dir <path>]  Add a work item (LLM generates title)
+  hopper show <id>                   Show full details of an item
   hopper list                        List queued + in-progress items
   hopper list --all                  Include completed items
   hopper list --completed            Show only completed items
   hopper claim [--agent <name>]      Claim next queued item (FIFO)
   hopper complete <token>            Complete a claimed item
   hopper complete <token> --result "…" Attach a result summary
+  hopper cancel <id>                 Cancel a queued item
   hopper requeue <id> --reason "…"   Return an in-progress item to queue
   hopper init                        Install Claude Code skill files
 
 Options:
+  --dir       Working directory for the task (add command)
   --json      Output as JSON
   --agent     Agent name for claim/complete
   --help      Show this help
@@ -88,11 +93,17 @@ async function main(): Promise<void> {
     case "claim":
       await claimCommand(parsed);
       break;
+    case "cancel":
+      await cancelCommand(parsed);
+      break;
     case "complete":
       await completeCommand(parsed);
       break;
     case "requeue":
       await requeueCommand(parsed);
+      break;
+    case "show":
+      await showCommand(parsed);
       break;
     case "init": {
       const { initCommand } = await import("./commands/init.ts");
