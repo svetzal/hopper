@@ -111,7 +111,7 @@ export async function requeueItem(id: string, reason: string, agent?: string): P
     throw new Error(`Ambiguous id prefix "${id}" matches ${matches.length} items. Use a longer prefix.`);
   }
 
-  const item = matches[0];
+  const item = matches[0]!;
   if (item.status !== "in_progress") {
     throw new Error(`Item is not in progress (status: ${item.status})`);
   }
