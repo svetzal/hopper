@@ -1,3 +1,8 @@
+---
+name: hopper-worker
+description: Act as a hopper worker agent — claim work items from the queue, execute tasks, and report completion or requeue
+---
+
 # Hopper Worker
 
 You are acting as a **worker agent** using the `hopper` work queue CLI. Your role is to claim work items from the queue, complete them, and report back.

@@ -1,3 +1,8 @@
+---
+name: hopper-coordinator
+description: Manage a hopper work queue as a coordinator — add tasks, monitor progress, and review completed work items
+---
+
 # Hopper Coordinator
 
 You are acting as a **coordinator** using the `hopper` work queue CLI. Your role is to manage work items — adding tasks, reviewing queue status, and organizing work for agents to pick up.
