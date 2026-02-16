@@ -1,6 +1,7 @@
 import type { ParsedArgs } from "../cli.ts";
 import type { TitleGenerator } from "../titler.ts";
-import { addItem, Status } from "../store.ts";
+import { addItem } from "../store.ts";
+import { Status } from "../constants.ts";
 
 export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Promise<void> {
   let description = parsed.positional[0] ?? "";

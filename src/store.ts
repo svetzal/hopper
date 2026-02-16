@@ -2,15 +2,8 @@
 import { mkdir } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
-
-export const Status = {
-  QUEUED: "queued",
-  IN_PROGRESS: "in_progress",
-  COMPLETED: "completed",
-  CANCELLED: "cancelled",
-} as const;
-
-export type ItemStatus = (typeof Status)[keyof typeof Status];
+import { Status } from "./constants.ts";
+import type { ItemStatus } from "./constants.ts";
 
 export interface Item {
   id: string;

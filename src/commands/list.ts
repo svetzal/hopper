@@ -1,5 +1,6 @@
 import type { ParsedArgs } from "../cli.ts";
-import { loadItems, Status } from "../store.ts";
+import { loadItems } from "../store.ts";
+import { Status } from "../constants.ts";
 import type { Item } from "../store.ts";
 import { relativeTime, formatDuration, shortId } from "../format.ts";
 

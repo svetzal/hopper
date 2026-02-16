@@ -1,6 +1,6 @@
 import { mkdir } from "fs/promises";
 import { join } from "path";
-import { VERSION } from "../cli.ts";
+import { VERSION } from "../constants.ts";
 
 // Embed skill files at build time via Bun text imports
 // Source of truth lives in skills/ — .claude/skills/ is the installed copy
