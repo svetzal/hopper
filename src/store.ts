@@ -3,7 +3,14 @@ import { mkdir } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
 
-export type ItemStatus = "queued" | "in_progress" | "completed" | "cancelled";
+export const Status = {
+  QUEUED: "queued",
+  IN_PROGRESS: "in_progress",
+  COMPLETED: "completed",
+  CANCELLED: "cancelled",
+} as const;
+
+export type ItemStatus = (typeof Status)[keyof typeof Status];
 
 export interface Item {
   id: string;
@@ -44,7 +51,7 @@ export async function loadItems(): Promise<Item[]> {
       return raw.map((entry) => {
         const item = entry as Record<string, unknown>;
         if (!item.status) {
-          item.status = "queued";
+          item.status = Status.QUEUED;
         }
         return item as unknown as Item;
       });
@@ -69,13 +76,13 @@ export async function addItem(item: Item): Promise<void> {
 export async function claimNextItem(agent?: string): Promise<Item | null> {
   const items = await loadItems();
   const queued = items
-    .filter((i) => i.status === "queued")
+    .filter((i) => i.status === Status.QUEUED)
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
   const next = queued[0];
   if (!next) return null;
 
-  next.status = "in_progress";
+  next.status = Status.IN_PROGRESS;
   next.claimedAt = new Date().toISOString();
   next.claimedBy = agent;
   next.claimToken = crypto.randomUUID();
@@ -91,11 +98,11 @@ export async function completeItem(token: string, agent?: string, result?: strin
   if (!item) {
     throw new Error(`No in-progress item found with token: ${token}`);
   }
-  if (item.status !== "in_progress") {
+  if (item.status !== Status.IN_PROGRESS) {
     throw new Error(`Item is not in progress (status: ${item.status})`);
   }
 
-  item.status = "completed";
+  item.status = Status.COMPLETED;
   item.completedAt = new Date().toISOString();
   item.completedBy = agent;
   item.result = result;
@@ -131,11 +138,11 @@ export async function requeueItem(id: string, reason: string, agent?: string): P
   }
 
   const item = matches[0]!;
-  if (item.status !== "in_progress") {
+  if (item.status !== Status.IN_PROGRESS) {
     throw new Error(`Item is not in progress (status: ${item.status})`);
   }
 
-  item.status = "queued";
+  item.status = Status.QUEUED;
   item.claimedAt = undefined;
   item.claimedBy = undefined;
   item.claimToken = undefined;
@@ -158,11 +165,11 @@ export async function cancelItem(id: string): Promise<Item> {
   }
 
   const item = matches[0]!;
-  if (item.status !== "queued") {
+  if (item.status !== Status.QUEUED) {
     throw new Error(`Cannot cancel item — status is "${item.status}". Only queued items can be cancelled.`);
   }
 
-  item.status = "cancelled";
+  item.status = Status.CANCELLED;
   item.cancelledAt = new Date().toISOString();
 
   await saveItems(items);

@@ -1,5 +1,5 @@
 import type { ParsedArgs } from "../cli.ts";
-import { loadItems } from "../store.ts";
+import { loadItems, Status } from "../store.ts";
 import type { Item } from "../store.ts";
 import { relativeTime, formatDuration, shortId } from "../format.ts";
 
@@ -8,11 +8,11 @@ export async function listCommand(parsed: ParsedArgs): Promise<void> {
 
   let items: Item[];
   if (parsed.flags.completed === true) {
-    items = allItems.filter((i) => i.status === "completed");
+    items = allItems.filter((i) => i.status === Status.COMPLETED);
   } else if (parsed.flags.all === true) {
     items = allItems;
   } else {
-    items = allItems.filter((i) => i.status === "queued" || i.status === "in_progress");
+    items = allItems.filter((i) => i.status === Status.QUEUED || i.status === Status.IN_PROGRESS);
   }
 
   if (items.length === 0) {
@@ -35,8 +35,8 @@ export async function listCommand(parsed: ParsedArgs): Promise<void> {
     const timing = itemTiming(item);
     const dirBadge = item.workingDir ? ` [dir]` : "";
     const badge =
-      item.status === "in_progress" ? " [in progress]" :
-      item.status === "cancelled" ? " [cancelled]" : "";
+      item.status === Status.IN_PROGRESS ? " [in progress]" :
+      item.status === Status.CANCELLED ? " [cancelled]" : "";
 
     console.log(`  ${id}${badge}${dirBadge}  ${item.title}${timing}`);
     console.log(`    ${snippet}`);
@@ -45,10 +45,10 @@ export async function listCommand(parsed: ParsedArgs): Promise<void> {
 }
 
 function itemTiming(item: Item): string {
-  if (item.status === "completed" && item.claimedAt && item.completedAt) {
+  if (item.status === Status.COMPLETED && item.claimedAt && item.completedAt) {
     return `  (completed in ${formatDuration(item.claimedAt, item.completedAt)})`;
   }
-  if (item.status === "in_progress" && item.claimedAt) {
+  if (item.status === Status.IN_PROGRESS && item.claimedAt) {
     const by = item.claimedBy ? ` by ${item.claimedBy}` : "";
     return `  (claimed${by} ${relativeTime(item.claimedAt)})`;
   }

@@ -1,13 +1,11 @@
 import { mkdir } from "fs/promises";
 import { join } from "path";
+import { VERSION } from "../cli.ts";
 
 // Embed skill files at build time via Bun text imports
 // Source of truth lives in skills/ — .claude/skills/ is the installed copy
 import COORDINATOR_SKILL_MD from "../../skills/hopper-coordinator/SKILL.md" with { type: "text" };
 import WORKER_SKILL_MD from "../../skills/hopper-worker/SKILL.md" with { type: "text" };
-
-const VERSION = "0.2.1";
-const VERSION_HEADER = `<!-- hopper v${VERSION} -->\n`;
 
 interface SkillFile {
   relativePath: string;
@@ -33,14 +31,22 @@ interface InitResult {
   files: FileResult[];
 }
 
-function stripVersionHeader(content: string): string {
+function stampVersion(content: string): string {
+  const closingIndex = content.indexOf("\n---", 1);
+  if (closingIndex === -1) return content;
+  return content.slice(0, closingIndex) + `\nhopper-version: ${VERSION}` + content.slice(closingIndex);
+}
+
+function stripVersionInfo(content: string): string {
+  // Old format: HTML comment on first line
   if (content.startsWith("<!-- hopper v")) {
     const newlineIndex = content.indexOf("\n");
     if (newlineIndex !== -1) {
-      return content.slice(newlineIndex + 1);
+      content = content.slice(newlineIndex + 1);
     }
   }
-  return content;
+  // New format: hopper-version field in front-matter
+  return content.replace(/\nhopper-version: .+/g, "");
 }
 
 export async function initCommand(jsonOutput: boolean): Promise<void> {
@@ -50,7 +56,7 @@ export async function initCommand(jsonOutput: boolean): Promise<void> {
   for (const file of SKILL_FILES) {
     const fullPath = join(cwd, file.relativePath);
     const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
-    const stamped = VERSION_HEADER + file.content;
+    const stamped = stampVersion(file.content);
 
     let action: FileAction;
     const fileRef = Bun.file(fullPath);
@@ -61,7 +67,7 @@ export async function initCommand(jsonOutput: boolean): Promise<void> {
       action = "created";
     } else {
       const existing = await fileRef.text();
-      const existingBody = stripVersionHeader(existing);
+      const existingBody = stripVersionInfo(existing);
       const newBody = file.content;
 
       if (existingBody === newBody) {

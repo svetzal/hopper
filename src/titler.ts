@@ -14,13 +14,15 @@ export interface TitleGenerator {
   generateTitle(description: string): Promise<string>;
 }
 
+const FALLBACK_TITLE_LENGTH = 60;
+
 export function createTitleGenerator(): TitleGenerator {
   const apiKey = process.env.OPENAI_API_KEY ?? "";
 
   return {
     async generateTitle(description: string): Promise<string> {
       if (!apiKey) {
-        return description.slice(0, 60).trim();
+        return description.slice(0, FALLBACK_TITLE_LENGTH).trim();
       }
 
       try {
@@ -61,7 +63,7 @@ export function createTitleGenerator(): TitleGenerator {
         // Fall through to fallback
       }
 
-      return description.slice(0, 60).trim();
+      return description.slice(0, FALLBACK_TITLE_LENGTH).trim();
     },
   };
 }

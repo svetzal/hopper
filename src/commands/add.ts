@@ -1,6 +1,6 @@
 import type { ParsedArgs } from "../cli.ts";
 import type { TitleGenerator } from "../titler.ts";
-import { addItem } from "../store.ts";
+import { addItem, Status } from "../store.ts";
 
 export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Promise<void> {
   let description = parsed.positional[0] ?? "";
@@ -24,7 +24,7 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
     id: crypto.randomUUID(),
     title,
     description,
-    status: "queued" as const,
+    status: Status.QUEUED,
     createdAt: new Date().toISOString(),
     ...(dir ? { workingDir: dir } : {}),
   };
