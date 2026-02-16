@@ -48,6 +48,6 @@ A pre-push hook runs `bun run lint` and `bun test` automatically.
 
 `claude_worker.sh` is a shell script that orchestrates the claim-work-complete cycle: claims an item via `hopper claim --json`, runs a `claude --print` session with the task description, then calls `hopper complete` or `hopper requeue` based on exit status.
 
-## MojilityNG context
+## Mojility context
 
-This is an internal project within MojilityNG. Client code for issue tracking is `mojility`.
+This is a Mojility internal project at `~/Work/Projects/Mojility/hopper/`. Client code for issue tracking is `mojility`.
