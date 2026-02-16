@@ -1,4 +1,3 @@
-<!-- et v0.9.0 -->
 ---
 name: epilogue-tracker
 description: Use Epilogue Tracker (et) for user-centric product planning with the Screenplay Pattern; for product planning, work breakdown, user goals, actors, interactions, journeys
