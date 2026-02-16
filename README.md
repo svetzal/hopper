@@ -152,4 +152,4 @@ Zero runtime dependencies. Built entirely on Bun APIs.
 
 ## License
 
-Internal project — Mojility Inc.
+MIT — see [LICENSE.md](LICENSE.md) for details.
