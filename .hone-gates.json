@@ -2,17 +2,17 @@
   "gates": [
     {
       "name": "lint",
-      "command": "bun run lint",
+      "command": "$HOME/.bun/bin/bunx tsc --noEmit",
       "required": true
     },
     {
       "name": "test",
-      "command": "bun test",
+      "command": "$HOME/.bun/bin/bun test",
       "required": true
     },
     {
       "name": "build",
-      "command": "bun run build",
+      "command": "$HOME/.bun/bin/bun build src/cli.ts --compile --outfile=build/hopper",
       "required": true
     }
   ]
