@@ -105,8 +105,7 @@ export async function completeItem(token: string, agent?: string, result?: strin
   return item;
 }
 
-export async function findItem(id: string): Promise<Item> {
-  const items = await loadItems();
+function resolveItem(items: Item[], id: string): Item {
   const matches = items.filter((i) => i.id === id || i.id.startsWith(id));
 
   if (matches.length === 0) {
@@ -119,18 +118,14 @@ export async function findItem(id: string): Promise<Item> {
   return matches[0]!;
 }
 
+export async function findItem(id: string): Promise<Item> {
+  const items = await loadItems();
+  return resolveItem(items, id);
+}
+
 export async function requeueItem(id: string, reason: string, agent?: string): Promise<Item> {
   const items = await loadItems();
-  const matches = items.filter((i) => i.id === id || i.id.startsWith(id));
-
-  if (matches.length === 0) {
-    throw new Error(`No item found with id: ${id}`);
-  }
-  if (matches.length > 1) {
-    throw new Error(`Ambiguous id prefix "${id}" matches ${matches.length} items. Use a longer prefix.`);
-  }
-
-  const item = matches[0]!;
+  const item = resolveItem(items, id);
   if (item.status !== Status.IN_PROGRESS) {
     throw new Error(`Item is not in progress (status: ${item.status})`);
   }
@@ -148,16 +143,7 @@ export async function requeueItem(id: string, reason: string, agent?: string): P
 
 export async function cancelItem(id: string): Promise<Item> {
   const items = await loadItems();
-  const matches = items.filter((i) => i.id === id || i.id.startsWith(id));
-
-  if (matches.length === 0) {
-    throw new Error(`No item found with id: ${id}`);
-  }
-  if (matches.length > 1) {
-    throw new Error(`Ambiguous id prefix "${id}" matches ${matches.length} items. Use a longer prefix.`);
-  }
-
-  const item = matches[0]!;
+  const item = resolveItem(items, id);
   if (item.status !== Status.QUEUED) {
     throw new Error(`Cannot cancel item — status is "${item.status}". Only queued items can be cancelled.`);
   }

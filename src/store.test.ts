@@ -238,6 +238,18 @@ describe("store", () => {
     await expect(requeueItem(item.id, "reason")).rejects.toThrow("not in progress");
   });
 
+  test("requeueItem throws on no match", async () => {
+    await saveItems([makeItem()]);
+    await expect(requeueItem("nonexistent", "reason")).rejects.toThrow("No item found");
+  });
+
+  test("requeueItem throws on ambiguous prefix", async () => {
+    const a = makeItem({ id: "abcd0000-0000-0000-0000-000000000000", status: "in_progress", claimedAt: new Date().toISOString() });
+    const b = makeItem({ id: "abcd1111-0000-0000-0000-000000000000", status: "in_progress", claimedAt: new Date().toISOString() });
+    await saveItems([a, b]);
+    await expect(requeueItem("abcd", "reason")).rejects.toThrow("Ambiguous id prefix");
+  });
+
   // cancelItem tests
   test("cancelItem cancels a queued item", async () => {
     const item = makeItem({ title: "To cancel" });
@@ -270,6 +282,18 @@ describe("store", () => {
     const cancelled = await cancelItem("abcd1234");
     expect(cancelled.title).toBe("Cancel me");
     expect(cancelled.status).toBe("cancelled");
+  });
+
+  test("cancelItem throws on no match", async () => {
+    await saveItems([makeItem()]);
+    await expect(cancelItem("nonexistent")).rejects.toThrow("No item found");
+  });
+
+  test("cancelItem throws on ambiguous prefix", async () => {
+    const a = makeItem({ id: "abcd0000-0000-0000-0000-000000000000" });
+    const b = makeItem({ id: "abcd1111-0000-0000-0000-000000000000" });
+    await saveItems([a, b]);
+    await expect(cancelItem("abcd")).rejects.toThrow("Ambiguous id prefix");
   });
 
   test("cancelItem persists changes", async () => {
