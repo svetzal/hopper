@@ -20,6 +20,16 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
   const title = await titler.generateTitle(description);
 
   const dir = typeof parsed.flags.dir === "string" ? parsed.flags.dir : undefined;
+  const branch = typeof parsed.flags.branch === "string" ? parsed.flags.branch : undefined;
+
+  if (dir && !branch) {
+    console.error("Error: --branch is required when --dir is set");
+    process.exit(1);
+  }
+  if (branch && !dir) {
+    console.error("Error: --branch requires --dir");
+    process.exit(1);
+  }
 
   const item = {
     id: crypto.randomUUID(),
@@ -28,6 +38,7 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
     status: Status.QUEUED,
     createdAt: new Date().toISOString(),
     ...(dir ? { workingDir: dir } : {}),
+    ...(branch ? { branch } : {}),
   };
 
   await addItem(item);

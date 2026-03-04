@@ -1,7 +1,6 @@
 ---
 name: hopper-worker
 description: Act as a hopper worker agent — claim work items from the queue, execute tasks, and report completion or requeue
-hopper-version: 0.2.1
 ---
 
 # Hopper Worker
@@ -26,7 +25,26 @@ As a worker, you:
 2. **Execute** the task described in the work item
 3. **Complete** the item when done, or **requeue** it if you cannot finish
 
-## CLI Reference
+## Running as an Automated Worker
+
+The preferred way to run the worker loop is via the `hopper worker` command:
+
+```bash
+hopper worker                          # Run continuously, polling every 60s
+hopper worker --once                   # Process one item then exit
+hopper worker --agent <name>           # Set agent name (default: claude-worker)
+hopper worker --interval <seconds>     # Set poll interval (default: 60)
+```
+
+`hopper worker` handles the full claim/run/complete cycle automatically:
+- Claims the next queued item
+- If the item has both `workingDir` and `branch`, creates an isolated git worktree at `~/.hopper/worktrees/<id>/` on that branch, runs Claude there, then removes the worktree after completion (the branch is preserved)
+- If the item has only `workingDir` (legacy), runs Claude directly in that directory
+- Saves an audit log to `~/.hopper/audit/<id>-audit.jsonl` and result to `~/.hopper/audit/<id>-result.md`
+
+## CLI Reference (Manual Mode)
+
+Use these commands when acting as a worker agent manually (e.g. in an interactive Claude session):
 
 ### Claiming Work
 
@@ -35,9 +53,10 @@ hopper claim --agent "<your-name>" --json
 ```
 
 - Claims the oldest queued item (FIFO order)
-- Returns the item with `id`, `title`, `description`, `claimToken`, and optionally `workingDir`
+- Returns the item with `id`, `title`, `description`, `claimToken`, and optionally `workingDir` and `branch`
 - The `claimToken` is required to complete the item — save it
-- If `workingDir` is set, switch to that directory before doing work so you pick up project-specific `.claude/` directives
+- If `workingDir` is set and `branch` is also set, create an isolated git worktree on that branch before doing work
+- If `workingDir` is set without `branch`, switch to that directory before doing work so you pick up project-specific `.claude/` directives
 - If no items are available, the command exits with status 1
 
 ### Completing Work
@@ -106,3 +125,4 @@ hopper complete "<claimToken>" --agent "worker-1"
 - Save the `id` as well — you need it if you have to requeue
 - One item at a time — finish or requeue before claiming another
 - Be specific in requeue reasons — vague reasons like "couldn't do it" are unhelpful
+- When a claimed item has both `workingDir` and `branch`, the automated worker creates an isolated git worktree; manual workers should do the same to avoid interfering with active work in the main repo

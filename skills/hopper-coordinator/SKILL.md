@@ -32,13 +32,14 @@ As coordinator, you:
 
 ```bash
 hopper add "<description>"
-hopper add "<description>" --dir <path>
+hopper add "<description>" --dir <path> --branch <branch>
 ```
 
 - The description should be a clear, self-contained task that an agent can complete without further context
 - Hopper auto-generates a short title from the description using an LLM (falls back to truncation if unavailable)
 - Each item gets a unique ID
-- Use `--dir` to specify a working directory for the task — the worker will `cd` there before running Claude, picking up project-specific `.claude/` directives
+- Use `--dir` to specify a working directory for the task and `--branch` to specify the git branch — `--branch` is required when `--dir` is set
+- Workers will create an isolated git worktree on that branch rather than operating in the main repo directory, preventing interference with active in-progress work
 
 **Tips for good descriptions:**
 - Include enough context that a worker agent can act on it independently

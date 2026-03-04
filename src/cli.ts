@@ -7,6 +7,7 @@ import { completeCommand } from "./commands/complete.ts";
 import { listCommand } from "./commands/list.ts";
 import { requeueCommand } from "./commands/requeue.ts";
 import { showCommand } from "./commands/show.ts";
+import { workerCommand } from "./commands/worker.ts";
 import { createTitleGenerator } from "./titler.ts";
 import { VERSION } from "./constants.ts";
 
@@ -46,7 +47,7 @@ function printHelp(): void {
   console.log(`hopper v${VERSION} — personal work queue
 
 Usage:
-  hopper add <description> [--dir <path>]  Add a work item (LLM generates title)
+  hopper add <description> [--dir <path> --branch <branch>]  Add a work item (LLM generates title)
   hopper show <id>                   Show full details of an item
   hopper list                        List queued + in-progress items
   hopper list --all                  Include completed items
@@ -57,11 +58,16 @@ Usage:
   hopper cancel <id>                 Cancel a queued item
   hopper requeue <id> --reason "…"   Return an in-progress item to queue
   hopper init                        Install Claude Code skill files
+  hopper worker                      Run the Claude worker loop
+  hopper worker --once               Process one item then exit
+  hopper worker --agent <name>       Set agent name (default: claude-worker)
+  hopper worker --interval <sec>     Poll interval in seconds (default: 60)
 
 Options:
   --dir       Working directory for the task (add command)
+  --branch    Git branch for the task (add command, required with --dir)
   --json      Output as JSON
-  --agent     Agent name for claim/complete
+  --agent     Agent name for claim/complete/worker
   --help      Show this help
   --version   Show version`);
 }
@@ -109,6 +115,9 @@ async function main(): Promise<void> {
       await initCommand(parsed.flags.json === true);
       break;
     }
+    case "worker":
+      await workerCommand(parsed);
+      break;
     default:
       console.error(`Unknown command: ${parsed.command}`);
       printHelp();

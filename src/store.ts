@@ -21,6 +21,7 @@ export interface Item {
   requeuedBy?: string;
   cancelledAt?: string;
   workingDir?: string;
+  branch?: string;
 }
 
 const DEFAULT_STORE_DIR = join(homedir(), ".hopper");
