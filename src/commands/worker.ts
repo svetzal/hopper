@@ -4,21 +4,42 @@ import { join } from "path";
 import type { ParsedArgs } from "../cli.ts";
 import { claimNextItem, completeItem } from "../store.ts";
 
-async function gitWorktreeAdd(repoDir: string, worktreePath: string, branch: string): Promise<void> {
+async function isBranchCheckedOut(repoDir: string, branch: string): Promise<boolean> {
+  const proc = Bun.spawn(
+    ["git", "worktree", "list", "--porcelain"],
+    { cwd: repoDir, stdout: "pipe", stderr: "pipe" }
+  );
+  const output = await new Response(proc.stdout).text();
+  await proc.exited;
+  return output.includes(`branch refs/heads/${branch}`);
+}
+
+async function gitWorktreeAdd(repoDir: string, worktreePath: string, branch: string, itemId: string): Promise<string> {
   const check = Bun.spawn(
     ["git", "show-ref", "--verify", "--quiet", `refs/heads/${branch}`],
     { cwd: repoDir, stdout: "pipe", stderr: "pipe" }
   );
   const exists = (await check.exited) === 0;
 
-  const args = exists
-    ? ["worktree", "add", worktreePath, branch]
-    : ["worktree", "add", "-b", branch, worktreePath];
+  let actualBranch = branch;
+  let args: string[];
+
+  if (exists && await isBranchCheckedOut(repoDir, branch)) {
+    // Branch is checked out in main worktree — create a new branch from it
+    actualBranch = `hopper/${itemId.slice(0, 8)}`;
+    console.log(`Branch "${branch}" is already checked out; creating "${actualBranch}" from it...`);
+    args = ["worktree", "add", "-b", actualBranch, worktreePath, branch];
+  } else if (exists) {
+    args = ["worktree", "add", worktreePath, branch];
+  } else {
+    args = ["worktree", "add", "-b", branch, worktreePath];
+  }
 
   const proc = Bun.spawn(["git", ...args], { cwd: repoDir, stdout: "pipe", stderr: "pipe" });
   if ((await proc.exited) !== 0) {
     throw new Error(`git worktree add failed for branch "${branch}"`);
   }
+  return actualBranch;
 }
 
 async function gitWorktreeRemove(repoDir: string, worktreePath: string): Promise<void> {
@@ -82,7 +103,8 @@ export async function workerCommand(parsed: ParsedArgs): Promise<void> {
         worktreePath = join(homedir(), ".hopper", "worktrees", item.id);
         await mkdir(join(homedir(), ".hopper", "worktrees"), { recursive: true });
         console.log(`Setting up worktree at ${worktreePath}...`);
-        await gitWorktreeAdd(item.workingDir, worktreePath, item.branch);
+        const actualBranch = await gitWorktreeAdd(item.workingDir, worktreePath, item.branch, item.id);
+        if (actualBranch !== item.branch) console.log(`Working on branch: ${actualBranch}`);
         workDir = worktreePath;
       } else if (item.workingDir) {
         workDir = item.workingDir;
