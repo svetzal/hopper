@@ -6,6 +6,43 @@ import { claimNextItem, completeItem } from "../store.ts";
 
 async function gitWorktreeAdd(repoDir: string, worktreePath: string, targetBranch: string, itemId: string): Promise<string> {
   const workBranch = `hopper/${itemId.slice(0, 8)}`;
+
+  // Ensure targetBranch exists locally before creating the worktree
+  const checkProc = Bun.spawn(
+    ["git", "rev-parse", "--verify", targetBranch],
+    { cwd: repoDir, stdout: "ignore", stderr: "ignore" }
+  );
+  if ((await checkProc.exited) !== 0) {
+    // Try to create a tracking branch from origin
+    const remoteRef = `origin/${targetBranch}`;
+    const remoteCheck = Bun.spawn(
+      ["git", "rev-parse", "--verify", remoteRef],
+      { cwd: repoDir, stdout: "ignore", stderr: "ignore" }
+    );
+    if ((await remoteCheck.exited) === 0) {
+      const createProc = Bun.spawn(
+        ["git", "branch", "--track", targetBranch, remoteRef],
+        { cwd: repoDir, stdout: "ignore", stderr: "pipe" }
+      );
+      const createStderr = await new Response(createProc.stderr).text();
+      if ((await createProc.exited) !== 0) {
+        throw new Error(`Failed to create tracking branch "${targetBranch}" from ${remoteRef}: ${createStderr.trim()}`);
+      }
+      console.log(`Created tracking branch "${targetBranch}" from ${remoteRef}.`);
+    } else {
+      // Branch doesn't exist locally or remotely — create from HEAD
+      const createProc = Bun.spawn(
+        ["git", "branch", targetBranch],
+        { cwd: repoDir, stdout: "ignore", stderr: "pipe" }
+      );
+      const createStderr = await new Response(createProc.stderr).text();
+      if ((await createProc.exited) !== 0) {
+        throw new Error(`Failed to create branch "${targetBranch}" from HEAD: ${createStderr.trim()}`);
+      }
+      console.log(`Branch "${targetBranch}" not found locally or remotely; created from HEAD.`);
+    }
+  }
+
   const proc = Bun.spawn(
     ["git", "worktree", "add", "-b", workBranch, worktreePath, targetBranch],
     { cwd: repoDir, stdout: "ignore", stderr: "pipe" }
