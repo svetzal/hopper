@@ -1,4 +1,6 @@
-<!-- et v0.9.0 -->
+---
+et_version: 1.0.0
+---
 # Entity Model
 
 The Screenplay Pattern models work through four entity types that answer fundamental questions about who your product serves and why.
@@ -26,49 +28,53 @@ All four entity types share the same seven-state model. States are divided into 
 
 | State | Phase | Codebase signal |
 |-------|-------|-----------------|
-| `planning` | Pre-intent | No code exists |
-| `creating` | Intent | Code may be partially written |
+| `plan` | Pre-intent | No code exists |
+| `create` | Intent | Code may be partially written |
 | `created` | Reality | Code exists and is current |
-| `updating` | Intent | Code exists but needs changes |
-| `deleting` | Intent | Code exists and needs removal |
+| `update` | Intent | Code exists but needs changes |
+| `delete` | Intent | Code exists and needs removal |
 | `deleted` | Reality | Code was removed |
 | `discarded` | Terminal | No code was ever written |
 
-New entities start in `planning`. The default `et list` view excludes `deleted` and `discarded` items. Use `--all` to include them.
+New entities start in `plan`. The default `et list` view excludes `deleted` and `discarded` items. Use `--all` to include them.
 
 ### State Transitions
 
 ```
                   et approve             et close
-  planning ───────────────▶ creating ──────────▶ created
-     │                         │                    │
-     │ et discard              │ et remove          │ et update / et reopen
-     ▼                         ▼                    ▼
-  discarded               deleting              updating
-                              │                    │
-                              │ et remove          │ et close
-                              ▼                    │
-                           deleted ◀───────────────┘
-                                        et remove
+  plan ─────────────────────▶ create ──────────▶ created
+     │                           │                  │
+     ├─ et discard ─▶ discarded  │                  ├─ et update / et reopen ─▶ update
+     │                           │                  │                             │
+     └─ et remove ─▶ deleted     └─ et remove ──┐   └─ et remove ─▶ delete       │
+                                                │                      │         │
+                                                │        et close ─────┘         │
+                                                │                    ◀───────────┘
+                                                │        et remove
+                                                └──────▶ deleted
 ```
 
 **Key transitions:**
 
 | From | To | Trigger |
 |------|----|---------|
-| `planning` | `creating` | `et approve <type> <id>` |
-| `planning` | `discarded` | `et discard <type> <id>` |
-| `creating` | `created` | `et close <type> <id>` |
-| `creating` | `deleting` | `et remove <type> <id>` |
-| `created` | `updating` | `et update <type> <id> ...` (automatic) or `et reopen <type> <id>` |
-| `created` | `deleting` | `et remove <type> <id>` |
-| `updating` | `created` | `et close <type> <id>` |
-| `updating` | `deleting` | `et remove <type> <id>` |
-| `deleting` | `deleted` | `et remove <type> <id>` (second call) |
+| `plan` | `create` | `et approve <type> <id>` |
+| `plan` | `discarded` | `et discard <type> <id>` |
+| `plan` | `deleted` | `et remove <type> <id>` |
+| `create` | `created` | `et close <type> <id>` |
+| `create` | `delete` | `et remove <type> <id>` |
+| `create` | `deleted` | `et remove <type> <id>` |
+| `created` | `update` | `et update <type> <id> ...` (automatic) or `et reopen <type> <id>` |
+| `created` | `delete` | `et remove <type> <id>` |
+| `update` | `created` | `et close <type> <id>` |
+| `update` | `delete` | `et remove <type> <id>` |
+| `delete` | `deleted` | `et remove <type> <id>` (second call) |
 
 **Terminal states:** `deleted` and `discarded` have no transitions out.
 
-**Blocked operations:** `et update` is blocked on entities in `deleting`, `deleted`, or `discarded` states.
+**Pre-reality deletion:** Entities in `plan` or `create` states can transition directly to `deleted` without an intermediate `delete` step, since no code exists to clean up.
+
+**Blocked operations:** `et update` is blocked on entities in `delete`, `deleted`, or `discarded` states.
 
 ### Codebase Audit Guide
 
@@ -76,11 +82,11 @@ Use entity states to audit alignment between the screenplay model and the codeba
 
 | State | What to check |
 |-------|---------------|
-| `planning` | Nothing in the codebase yet. Review the entity description for clarity before approving. |
-| `creating` | Code should be in progress. Look for partial implementations, feature branches, or scaffolding. |
+| `plan` | Nothing in the codebase yet. Review the entity description for clarity before approving. |
+| `create` | Code should be in progress. Look for partial implementations, feature branches, or scaffolding. |
 | `created` | Code should exist and be current. Verify the implementation matches the entity description. |
-| `updating` | Code exists but needs changes. Look for the gap between current code and the updated entity description. |
-| `deleting` | Code exists and needs removal. Identify what to delete, clean up references, then confirm removal. |
+| `update` | Code exists but needs changes. Look for the gap between current code and the updated entity description. |
+| `delete` | Code exists and needs removal. Identify what to delete, clean up references, then confirm removal. |
 | `deleted` | Code was removed. Verify no dead code or dangling references remain. |
 | `discarded` | No code was ever written. Nothing to check. |
 
@@ -98,7 +104,7 @@ An actor represents a user role in the system. Actors are the real people who us
 | `goals` | No | string[] | Goal IDs this actor wants to achieve |
 | `tags` | No | string[] | Labels for filtering and categorisation |
 | `meta` | No | object | Custom key-value metadata |
-| `state` | Auto | See [State Model](#state-model-intentreality) | Default: `planning` |
+| `state` | Auto | See [State Model](#state-model-intentreality) | Default: `plan` |
 | `created_at` | Auto | ISO date | Creation timestamp |
 | `updated_at` | Auto | ISO date | Last update timestamp |
 
@@ -125,7 +131,7 @@ An actor represents a user role in the system. Actors are the real people who us
 
 ## Goal
 
-A goal represents what a user wants to achieve. Goals are **always** user goals, never project goals, team objectives, or technical milestones.
+A goal represents what a user wants to achieve. Goals are **always** user goals, never product goals, team objectives, or technical milestones.
 
 ### Fields
 
@@ -136,7 +142,7 @@ A goal represents what a user wants to achieve. Goals are **always** user goals,
 | `description` | Yes | string | What the user wants to achieve |
 | `actor` | No* | string | Actor who has this goal |
 | `success_criteria` | No | string | How we know the goal is achieved |
-| `state` | Auto | See [State Model](#state-model-intentreality) | Default: `planning` |
+| `state` | Auto | See [State Model](#state-model-intentreality) | Default: `plan` |
 | `tags` | No | string[] | Labels for filtering |
 | `meta` | No | object | Custom key-value metadata |
 | `created_at` | Auto | ISO date | Creation timestamp |
@@ -160,7 +166,7 @@ A goal represents what a user wants to achieve. Goals are **always** user goals,
 
 ### Good vs Bad Goals
 
-| Bad (Project-Focused) | Good (User-Focused) |
+| Bad (Product-Focused) | Good (User-Focused) |
 |----------------------|---------------------|
 | "Implement OAuth" | "Log in securely without remembering passwords" |
 | "Add caching layer" | "Experience fast, responsive page loads" |
@@ -189,7 +195,7 @@ An interaction represents a task or action that helps a user reach their goal. T
 | `goal` | No* | string | Single goal this interaction supports (backward compatible) |
 | `goals` | No* | string[] | Multiple goal IDs this interaction supports |
 | `priority` | No | integer | Priority level (0 = highest). Lower numbers = higher priority. Null means unprioritized |
-| `state` | Auto | See [State Model](#state-model-intentreality) | Default: `planning` |
+| `state` | Auto | See [State Model](#state-model-intentreality) | Default: `plan` |
 | `tags` | No | string[] | Labels for filtering |
 | `meta` | No | object | Custom key-value metadata |
 | `created_at` | Auto | ISO date | Creation timestamp |
@@ -238,7 +244,7 @@ A journey ties together an Actor, a Goal, and a sequence of Interactions into a 
 | `narrative` | No | string | Human-readable description of the flow |
 | `tags` | No | string[] | Labels for filtering |
 | `meta` | No | object | Custom key-value metadata |
-| `state` | Auto | See [State Model](#state-model-intentreality) | Default: `planning` |
+| `state` | Auto | See [State Model](#state-model-intentreality) | Default: `plan` |
 | `created_at` | Auto | ISO date | Creation timestamp |
 | `updated_at` | Auto | ISO date | Last update timestamp |
 

@@ -1,4 +1,6 @@
-<!-- et v0.9.0 -->
+---
+et_version: 1.0.0
+---
 # CLI Reference
 
 Complete reference for all `et` commands, flags, and options.
@@ -89,12 +91,13 @@ et create interaction --id <id> --description "<description>" [options] --json
 ### Create Journey
 
 ```bash
-et create journey --id <id> --actor <actor_id> --goal <goal_id> --steps <step1,step2,...> [options] --json
+et create journey --id <id> --name "<name>" --actor <actor_id> --goal <goal_id> --steps <step1,step2,...> [options] --json
 ```
 
 | Option | Required | Description |
 |--------|----------|-------------|
 | `--id` | Yes | Unique identifier |
+| `--name` | No | Human-friendly display name (defaults to id) |
 | `--actor` | Yes | Protagonist (who benefits from completing this journey) |
 | `--goal` | Yes | Goal achieved at journey's end |
 | `--steps` | Yes | Comma-separated interaction IDs in order |
@@ -136,14 +139,14 @@ et list journeys [--format json] [--actor <id>] [--goal <id>] [--state <state>] 
         "type": "goal",
         "id": "checkout",
         "description": "Complete purchase successfully",
-        "state": "creating",
+        "state": "create",
         "tags": ["verified"],
         "children": [
           {
             "type": "interaction",
             "id": "add_to_cart",
             "description": "Add products to cart",
-            "state": "planning"
+            "state": "plan"
           }
         ]
       }
@@ -171,7 +174,7 @@ Returns full entity data including all fields, tags, metadata, and timestamps.
   "description": "Successfully purchase products",
   "actor": "customer",
   "success_criteria": "Order confirmed, payment processed",
-  "state": "creating",
+  "state": "create",
   "tags": ["verified"],
   "meta": {"source": "discovery"},
   "created_at": "2024-01-15T10:30:00.000Z",
@@ -181,7 +184,7 @@ Returns full entity data including all fields, tags, metadata, and timestamps.
 
 ## Update Commands
 
-**State behaviour:** Running `et update` on an entity in the `created` state automatically transitions it to `updating`. Updates are blocked on entities in `deleting`, `deleted`, or `discarded` states.
+**State behaviour:** Running `et update` on an entity in the `created` state automatically transitions it to `update`. Updates are blocked on entities in `delete`, `deleted`, or `discarded` states.
 
 ### Common Tag and Metadata Options (All Entity Types)
 
@@ -229,7 +232,7 @@ et remove journey <id> [--force] --json
 
 Remove uses a **two-step** process:
 
-1. **First call** transitions the entity to `deleting` (intent to delete). This signals that the corresponding code should be removed.
+1. **First call** transitions the entity to `delete` (intent to delete). This signals that the corresponding code should be removed.
 2. **Second call** transitions the entity to `deleted` (reality confirmed). Use this after the code has been cleaned up.
 
 ### Reference Checking
@@ -264,8 +267,8 @@ et approve <type> <id> [--json]
 et discard <type> <id> [--json]
 ```
 
-- `et approve` transitions an entity from `planning` to `creating`. This signals intent to build.
-- `et discard` transitions an entity from `planning` to `discarded`. Use this when a planned entity is no longer needed and no code was ever written.
+- `et approve` transitions an entity from `plan` to `create`. This signals intent to build.
+- `et discard` transitions an entity from `plan` to `discarded`. Use this when a planned entity is no longer needed and no code was ever written.
 - Both commands work on all four entity types.
 
 ## Close and Reopen Commands
@@ -275,8 +278,8 @@ et close <type> <id> [--json]
 et reopen <type> <id> [--json]
 ```
 
-- `et close` works on **all four entity types**. It transitions `creating` to `created`, or `updating` to `created`.
-- `et reopen` works on **all four entity types**. It transitions `created` to `updating`.
+- `et close` works on **all four entity types**. It transitions `create` to `created`, or `update` to `created`.
+- `et reopen` works on **all four entity types**. It transitions `created` to `update`.
 - If already in the target state, the command succeeds without error.
 - All entity types share the same seven-state model. See [Entity Model](entity-model.md) for the full state machine.
 
@@ -353,20 +356,48 @@ Each file is stamped with the `et` version. Running `init` again after upgrading
 
 File actions: `created` (new), `updated` (content changed), `up-to-date` (no changes needed).
 
-## Migrate Command
+## Charter Command
 
-Upload local `.et/` data to a remote server. Used for one-time migration of legacy local data.
+View or update the product charter. The charter defines mission, audience, problem space, differentiators, and scope boundaries.
+
+### Show Charter
 
 ```bash
-et migrate [--dry-run] [--json]
-et migrate --server <url> --token <token> [--dry-run] [--json]
+et charter [--json]
 ```
 
-- Configuration read from `.et_env` (ET_API_HOST, ET_API_TOKEN)
-- `--server` and `--token` flags override `.et_env` values
-- Migration order: Actors -> Goals -> Interactions -> Journeys (respects dependencies)
-- State preserved: closed goals/interactions are closed on the server after creation
-- `--dry-run` previews without uploading
+Returns all charter fields. Empty fields are omitted.
+
+### Set Charter Fields
+
+```bash
+et charter set [--mission "<text>"] [--target-audience "<text>"] [--problem-space "<text>"] [--differentiators "<text>"] [--out-of-scope "<text>"] [--json]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--mission` | Core purpose of the product |
+| `--target-audience` | Who the product serves |
+| `--problem-space` | The problem being solved |
+| `--differentiators` | What makes this product unique |
+| `--out-of-scope` | What the product deliberately does not do |
+
+Multiple fields can be set in a single command. Fields are merged with existing values. Unspecified fields are preserved.
+
+### JSON Output
+
+```json
+{
+  "success": true,
+  "data": {
+    "mission": "Help teams ship better software",
+    "target_audience": "Product managers and technical cofounders",
+    "problem_space": "Gap between knowing what to build and having it built",
+    "differentiators": "Agent-consumable specification of product intent",
+    "out_of_scope": "Not a task tracker, Kanban board, or ticketing system"
+  }
+}
+```
 
 ## Generate Documentation
 

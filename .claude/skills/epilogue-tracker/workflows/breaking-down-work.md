@@ -1,4 +1,6 @@
-<!-- et v0.9.0 -->
+---
+et_version: 1.0.0
+---
 # Breaking Down Work
 
 How to decompose features, bugs, and technical debt into the Screenplay Pattern. Every piece of work must tie back to a user goal.
@@ -36,13 +38,13 @@ Who wants this? Users who work in low-light environments.
 et list goals --actor end_user --format json
 
 # Create or find the goal
-et create goal --id "comfortable_viewing" \
+et create goal --id "comfortable_viewing" --name "Comfortable Viewing" \
   --description "Use the app comfortably in any lighting condition" \
   --actor "end_user" \
   --success-criteria "Theme adapts to environment; no eye strain in dark settings" --json
 
 # Create the interaction
-et create interaction --id "toggle_theme" \
+et create interaction --id "toggle_theme" --name "Toggle Theme" \
   --description "Switch between light and dark themes based on preference" \
   --performed-by "end_user" \
   --goal "comfortable_viewing" --json
@@ -54,12 +56,12 @@ Now implement dark mode knowing exactly who it serves and what success looks lik
 
 ```bash
 # Who exports? Admins generating reports.
-et create goal --id "extract_data" \
+et create goal --id "extract_data" --name "Extract Data" \
   --description "Extract data from the system for external analysis" \
   --actor "admin" \
   --success-criteria "Data downloaded in usable format within seconds" --json
 
-et create interaction --id "export_csv" \
+et create interaction --id "export_csv" --name "Export CSV" \
   --description "Export filtered data as CSV for spreadsheet analysis" \
   --performed-by "admin" \
   --goal "extract_data" --json
@@ -78,13 +80,13 @@ et create interaction --id "export_csv" \
 et list goals --format json --actor customer
 
 # Create or find the goal
-et create goal --id "reliable_access" \
+et create goal --id "reliable_access" --name "Reliable Access" \
   --description "Access my account reliably every time I log in" \
   --actor "customer" \
   --success-criteria "Login succeeds consistently; no intermittent failures" --json
 
 # Document the fix as an interaction
-et create interaction --id "reliable_login" \
+et create interaction --id "reliable_login" --name "Reliable Login" \
   --description "Consistent login without intermittent failures" \
   --performed-by "customer" \
   --goal "reliable_access" --json
@@ -97,7 +99,7 @@ et create interaction --id "reliable_login" \
 et show goal find_products --json
 
 # Create the interaction for the fix
-et create interaction --id "accurate_search" \
+et create interaction --id "accurate_search" --name "Accurate Search" \
   --description "Search returns relevant results matching the query" \
   --performed-by "shopper" \
   --goal "find_products" --json
@@ -119,23 +121,23 @@ Multiple user goals may emerge from one refactoring task:
 
 ```bash
 # Goal 1: Payment flexibility
-et create goal --id "flexible_payment" \
+et create goal --id "flexible_payment" --name "Flexible Payment" \
   --description "Pay using my preferred payment method" \
   --actor "customer" \
   --success-criteria "Multiple payment options available at checkout" --json
 
-et create interaction --id "payment_method_support" \
+et create interaction --id "payment_method_support" --name "Payment Method Support" \
   --description "Support additional payment methods through modular processing" \
   --performed-by "customer" \
   --goals "flexible_payment" --json
 
 # Goal 2: Order reliability
-et create goal --id "reliable_ordering" \
+et create goal --id "reliable_ordering" --name "Reliable Ordering" \
   --description "Complete orders without errors or failures" \
   --actor "customer" \
   --success-criteria "Orders process correctly every time" --json
 
-et create interaction --id "order_processing_reliability" \
+et create interaction --id "order_processing_reliability" --name "Order Processing Reliability" \
   --description "Reliable order processing with consistent results" \
   --performed-by "customer" \
   --goal "reliable_ordering" --json
@@ -145,7 +147,7 @@ et create interaction --id "order_processing_reliability" \
 
 ```bash
 # Why? Pages load slowly. Who cares? Customers browsing products.
-et create interaction --id "fast_product_pages" \
+et create interaction --id "fast_product_pages" --name "Fast Product Pages" \
   --description "Product pages load quickly with optimised data retrieval" \
   --performed-by "customer" \
   --goal "find_products" --json
@@ -153,14 +155,14 @@ et create interaction --id "fast_product_pages" \
 
 ## When Work Is Not Justified
 
-Sometimes the Three Questions reveal that work lacks a clear user need.
+Sometimes the Three Questions reveal that work lacks a clear user need. Check the product charter (`et charter --json`) to confirm whether the work falls within the product's scope and serves its target audience.
 
 **Internal tooling?** Your users might be developers or ops teams. They are valid actors:
 
 ```bash
 et create actor --id "developer" --name "Developer" \
   --description "Engineer building and maintaining the system" --json
-et create goal --id "efficient_development" \
+et create goal --id "efficient_development" --name "Efficient Development" \
   --description "Build and deploy features without friction" \
   --actor "developer" --json
 ```
@@ -168,6 +170,8 @@ et create goal --id "efficient_development" \
 **Pure tech debt with no user impact?** Consider waiting until it blocks user value. Not all cleanup is urgent.
 
 **"Nice to have" with no user?** If no real person needs the outcome, strongly consider skipping it. The backlog is not a wish list.
+
+**Outside the charter's scope?** If the charter's out-of-scope field explicitly excludes this kind of work, flag it to the user rather than creating entities for it.
 
 ## Building Journeys
 
@@ -186,7 +190,7 @@ The journey's `actor` is the protagonist (who benefits). Individual steps can be
 #
 # Protagonist: customer (they benefit from the outcome)
 
-et create journey --id "support_resolution" \
+et create journey --id "support_resolution" --name "Support Resolution" \
   --actor "customer" \
   --goal "get_issue_resolved" \
   --steps "submit_ticket,agent_investigates,provide_solution,confirm_resolution" \
@@ -199,13 +203,13 @@ Different users may take different paths to the same goal:
 
 ```bash
 # Returning customer: quick checkout
-et create journey --id "quick_checkout" \
+et create journey --id "quick_checkout" --name "Quick Checkout" \
   --actor "customer" --goal "complete_purchase" \
   --steps "quick_buy,express_pay,receive_confirmation" \
   --narrative "Returning customer uses saved details for fast purchase" --json
 
 # New customer: full checkout
-et create journey --id "full_checkout" \
+et create journey --id "full_checkout" --name "Full Checkout" \
   --actor "customer" --goal "complete_purchase" \
   --steps "browse,add_to_cart,enter_details,pay,receive_confirmation" \
   --narrative "New customer goes through complete checkout flow" --json
@@ -216,7 +220,7 @@ et create journey --id "full_checkout" \
 ### When Work Is Complete
 
 ```bash
-# Mark any entity as done (creating/updating → created)
+# Mark any entity as done (create/update → created)
 et close interaction export_csv --json
 et close goal extract_data --json
 et close actor customer --json
@@ -240,7 +244,7 @@ et list --all --json
 If a completed entity needs revisiting (new requirements, regression):
 
 ```bash
-# Transitions created → updating
+# Transitions created → update
 et reopen goal extract_data --json
 ```
 
@@ -249,7 +253,7 @@ et reopen goal extract_data --json
 Removal is a two-step process to prevent accidental deletion:
 
 ```bash
-# First call: transitions to deleting
+# First call: transitions to delete
 et remove interaction old_step --json
 
 # Second call: confirms deletion

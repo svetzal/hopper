@@ -1,4 +1,6 @@
-<!-- et v0.9.0 -->
+---
+et_version: 1.0.0
+---
 # Getting Started with et
 
 Step-by-step guide for bootstrapping Epilogue Tracker in a new project. Assumes `et` is installed and `.et_env` is configured per the Setup section in SKILL.md.
@@ -7,8 +9,8 @@ If there is no `.et_env` file in the project root, direct the user to:
 
 1. **Go to** https://app.epiloguetracker.ca
 2. **Log in** or **create an account** if they do not have one yet
-3. **Find or create a project** in the web console that corresponds to this codebase
-4. **Download the `.et_env` file** from the project settings page
+3. **Find or create a product** in the web console that corresponds to this codebase
+4. **Download the `.et_env` file** from the product settings page
 5. **Place it in the project root directory** (the same directory where `et` commands will be run)
 
 If skill files are not present in `.claude/skills/epilogue-tracker/`, run:
@@ -19,19 +21,35 @@ et init
 
 This installs the skill files that teach AI coding assistants how to use the Screenplay Pattern and the `et` CLI. Run `et init` again after upgrading `et` to keep them current.
 
-## Step 1: Verify Connection
+## Step 1: Verify Connection and Read the Charter
 
 ```bash
 et list --json
 ```
 
-- **Empty array `[]`:** Good. Fresh project with no entities yet.
-- **Array with data:** Project already has entities. Review them before adding more.
+- **Empty array `[]`:** Good. Fresh product with no entities yet.
+- **Array with data:** Product already has entities. Review them before adding more.
 - **Error:** Check `.et_env` exists and you are running from the project root. See Setup in SKILL.md.
+
+Then read the product charter to understand the product's purpose and boundaries:
+
+```bash
+et charter --json
+```
+
+The charter tells you who the product serves (target audience), what problem it solves, and what is explicitly out of scope. If the charter is empty, work with the user to define it before creating entities. The charter's target audience directly shapes which actors you create.
+
+```bash
+# Example: setting the charter for an e-commerce platform
+et charter set --mission "Connect shoppers with sellers for seamless online commerce" \
+  --target-audience "Online shoppers, merchants, and support staff" \
+  --problem-space "Friction in online buying and selling" \
+  --out-of-scope "Physical retail, wholesale, B2B procurement" --json
+```
 
 ## Step 2: Identify Your Actors
 
-Ask: **Who are the real people using this product?**
+Ask: **Who are the real people using this product?** Look at the charter's target audience for guidance.
 
 Create 2-4 distinct user roles. Focus on roles with genuinely different needs.
 
@@ -59,24 +77,24 @@ Write from the user's perspective. Include success criteria when possible.
 
 ```bash
 # Shopper goals
-et create goal --id "find_products" \
+et create goal --id "find_products" --name "Find Products" \
   --description "Find products that match my needs quickly" \
   --actor "shopper" \
   --success-criteria "Relevant products found within seconds" --json
 
-et create goal --id "complete_purchase" \
+et create goal --id "complete_purchase" --name "Complete Purchase" \
   --description "Purchase products and receive confirmation" \
   --actor "shopper" \
   --success-criteria "Order placed, payment processed, confirmation received" --json
 
 # Seller goals
-et create goal --id "manage_inventory" \
+et create goal --id "manage_inventory" --name "Manage Inventory" \
   --description "Keep product listings accurate and up to date" \
   --actor "seller" \
   --success-criteria "All listings reflect current stock and pricing" --json
 ```
 
-**Test your goals:** Can you complete the sentence "The user wants to..."? If not, it is probably a project goal, not a user goal.
+**Test your goals:** Can you complete the sentence "The user wants to..."? If not, it is probably a product goal, not a user goal.
 
 ## Step 4: Map Existing Work to Interactions
 
@@ -88,19 +106,19 @@ Review your current backlog or task list. For each item, apply the Three Questio
 
 ```bash
 # Task: "Add search filters" -> supports shopper finding products
-et create interaction --id "filter_search_results" \
+et create interaction --id "filter_search_results" --name "Filter Search Results" \
   --description "Filter search results by category, price, and rating" \
   --performed-by "shopper" \
   --goal "find_products" --json
 
 # Task: "Implement checkout flow" -> supports shopper completing purchase
-et create interaction --id "checkout_flow" \
+et create interaction --id "checkout_flow" --name "Checkout Flow" \
   --description "Complete purchase with payment and shipping details" \
   --performed-by "shopper" \
   --goal "complete_purchase" --json
 
 # Task: "Add inventory dashboard" -> supports seller managing inventory
-et create interaction --id "inventory_dashboard" \
+et create interaction --id "inventory_dashboard" --name "Inventory Dashboard" \
   --description "View and update product stock levels from a central dashboard" \
   --performed-by "seller" \
   --goal "manage_inventory" --json
@@ -160,7 +178,7 @@ et list --all --json
 When you have a complete user flow, document it as a journey:
 
 ```bash
-et create journey --id "shopping_flow" \
+et create journey --id "shopping_flow" --name "Shopping Flow" \
   --actor "shopper" \
   --goal "complete_purchase" \
   --steps "filter_search_results,checkout_flow" \
