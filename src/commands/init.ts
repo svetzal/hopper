@@ -1,11 +1,10 @@
-import { mkdir } from "fs/promises";
+import { mkdir, rm } from "fs/promises";
 import { join } from "path";
 import { VERSION } from "../constants.ts";
 
 // Embed skill files at build time via Bun text imports
 // Source of truth lives in skills/ — .claude/skills/ is the installed copy
 import COORDINATOR_SKILL_MD from "../../skills/hopper-coordinator/SKILL.md" with { type: "text" };
-import WORKER_SKILL_MD from "../../skills/hopper-worker/SKILL.md" with { type: "text" };
 
 interface SkillFile {
   relativePath: string;
@@ -14,10 +13,14 @@ interface SkillFile {
 
 const SKILL_FILES: SkillFile[] = [
   { relativePath: ".claude/skills/hopper-coordinator/SKILL.md", content: COORDINATOR_SKILL_MD },
-  { relativePath: ".claude/skills/hopper-worker/SKILL.md", content: WORKER_SKILL_MD },
 ];
 
-type FileAction = "created" | "updated" | "up-to-date";
+// Skills removed in previous versions — clean up if present
+const DEPRECATED_SKILL_DIRS: string[] = [
+  ".claude/skills/hopper-worker",
+];
+
+type FileAction = "created" | "updated" | "up-to-date" | "removed";
 
 interface FileResult {
   path: string;
@@ -84,14 +87,26 @@ export async function initCommand(jsonOutput: boolean): Promise<void> {
     results.push({ path: file.relativePath, action });
   }
 
+  // Remove deprecated skills
+  for (const relDir of DEPRECATED_SKILL_DIRS) {
+    const fullPath = join(cwd, relDir);
+    const marker = Bun.file(join(fullPath, "SKILL.md"));
+    if (await marker.exists()) {
+      await rm(fullPath, { recursive: true });
+      results.push({ path: relDir, action: "removed" });
+    }
+  }
+
   const created = results.filter(r => r.action === "created").length;
   const updated = results.filter(r => r.action === "updated").length;
   const upToDate = results.filter(r => r.action === "up-to-date").length;
+  const removed = results.filter(r => r.action === "removed").length;
 
   const parts: string[] = [];
   if (created > 0) parts.push(`${created} created`);
   if (updated > 0) parts.push(`${updated} updated`);
   if (upToDate > 0) parts.push(`${upToDate} up to date`);
+  if (removed > 0) parts.push(`${removed} removed`);
   const summary = parts.join(", ");
 
   if (jsonOutput) {
@@ -108,10 +123,12 @@ export async function initCommand(jsonOutput: boolean): Promise<void> {
       const icon =
         r.action === "created" ? "+" :
         r.action === "updated" ? "~" :
+        r.action === "removed" ? "-" :
         "=";
       const label =
         r.action === "created" ? "Created" :
         r.action === "updated" ? "Updated" :
+        r.action === "removed" ? "Removed" :
         "Up to date";
       console.log(`  ${icon} ${r.path} (${label})`);
     }
