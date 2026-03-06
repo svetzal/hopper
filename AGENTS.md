@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Hopper is a personal work queue CLI that distributes tasks to AI agents. Items flow through: `queued -> in_progress -> completed` (with requeue and cancel paths). It's a Bun/TypeScript CLI tool that compiles to standalone binaries.
 
+See the product @CHARTER.md for more details about the product and purpose.
+
 ## Commands
 
 ```bash
@@ -34,6 +36,11 @@ A pre-push hook runs `bun run lint` and `bun test` automatically.
 | `src/store.ts` | All data operations (load, save, claim, complete, requeue, cancel, find). Module-level `storeDir` set via `setStoreDir()` for testing |
 | `src/format.ts` | Display helpers (relative time, duration, short ID) |
 | `src/titler.ts` | LLM title generation via OpenAI API (gpt-4.1-nano). Falls back to truncation if no `OPENAI_API_KEY` |
+| `src/extract-result.ts` | Pure JSONL parser that extracts the final result string from a Claude `stream-json` session |
+| `src/worker-workflow.ts` | Pure decision functions for the worker: work setup, prompt building, auto-commit, merge, and completion decisions |
+| `src/gateways/git-gateway.ts` | `GitGateway` interface + real implementation (thin wrapper around `git` subprocesses via `Bun.spawn`) |
+| `src/gateways/claude-gateway.ts` | `ClaudeGateway` interface + real implementation (thin wrapper around the `claude` CLI process) |
+| `src/gateways/fs-gateway.ts` | `FsGateway` interface + real implementation (thin wrapper around `mkdir` and `Bun.write`) |
 | `src/commands/*.ts` | One file per CLI command, each exports a single async function |
 | `src/text-imports.d.ts` | Type declaration for Bun's `*.md` text imports |
 
@@ -43,6 +50,7 @@ A pre-push hook runs `bun run lint` and `bun test` automatically.
 - **ID prefix matching**: `findItem`, `requeueItem`, and `cancelItem` accept UUID prefixes (e.g. first 8 chars)
 - **`--json` flag**: All commands support `--json` for machine-readable output. Human-friendly output is the default
 - **Skill embedding**: `hopper init` installs `.claude/skills/` files into target repos. The SKILL.md content is embedded at build time via Bun text imports from `skills/`
+- **Gateway pattern**: The worker command's I/O operations (git subprocesses, Claude CLI, filesystem writes) are isolated behind `GitGateway`, `ClaudeGateway`, and `FsGateway` interfaces. The worker accepts these as optional deps for testing. Gateway implementations in `src/gateways/` are thin wrappers with no business logic. All workflow decisions live in the pure functions in `src/worker-workflow.ts`
 
 ### Worker integration
 
