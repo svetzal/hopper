@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-06
+
+### Changed
+
+- Rewrote hopper-coordinator skill to focus on dispatching concrete work to background agents, with guardrails against misuse as a to-do list
+- Made `--dir`/`--branch` the primary usage pattern in coordinator skill docs and examples
+
+### Removed
+
+- hopper-worker skill (superseded by `hopper worker` command)
+- `hopper init` now removes the deprecated worker skill from target projects
+
+## [0.4.3] - 2026-03-04
+
+### Fixed
+
+- Worktree setup when the target branch doesn't yet exist
+
+## [0.4.2] - 2026-03-03
+
+### Fixed
+
+- Robust worktree handling with auto-commit and merge-back in hopper worker
+- Worktree add when branch is already checked out elsewhere
+
+## [0.4.0] - 2026-03-03
+
+### Added
+
+- `hopper worker` command — runs the claim/work/complete cycle with isolated git worktrees, replacing `claude_worker.sh`
+- `--branch` flag on `add` command (required with `--dir`) for worktree-based isolation
+- Audit logging to `~/.hopper/audit/`
+
+### Removed
+
+- `claude_worker.sh` script (replaced by `hopper worker`)
+
+### Changed
+
+- Updated dependencies to latest versions
+
+## [0.3.3] - 2026-02-24
+
+### Changed
+
+- Extract `resolveItem` helper to eliminate duplicated ID resolution logic
+- Move audit logs to dedicated directory
+- Update workspace paths
+- Update transitive dependencies
+
 ## [0.3.2] - 2026-02-16
 
 ### Added
@@ -83,7 +133,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Release workflow: use macos-14 for x64 builds
 
-[Unreleased]: https://github.com/svetzal/hopper/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/svetzal/hopper/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/svetzal/hopper/compare/v0.4.3...v0.5.0
+[0.4.3]: https://github.com/svetzal/hopper/compare/v0.4.2...v0.4.3
+[0.4.2]: https://github.com/svetzal/hopper/compare/v0.4.0...v0.4.2
+[0.4.0]: https://github.com/svetzal/hopper/compare/v0.3.3...v0.4.0
+[0.3.3]: https://github.com/svetzal/hopper/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/svetzal/hopper/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/svetzal/hopper/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/svetzal/hopper/compare/v0.2.1...v0.3.0
