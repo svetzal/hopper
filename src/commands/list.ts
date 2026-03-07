@@ -3,6 +3,7 @@ import { loadItems } from "../store.ts";
 import { Status } from "../constants.ts";
 import type { Item } from "../store.ts";
 import { relativeTime, relativeTimeFuture, formatDuration, shortId } from "../format.ts";
+import { parsePriority, priorityBadge } from "../priority.ts";
 
 export async function listCommand(parsed: ParsedArgs): Promise<void> {
   const allItems = await loadItems();
@@ -17,6 +18,25 @@ export async function listCommand(parsed: ParsedArgs): Promise<void> {
   } else {
     items = allItems.filter((i) => i.status === Status.QUEUED || i.status === Status.IN_PROGRESS || i.status === Status.SCHEDULED);
   }
+
+  const priorityFilter = typeof parsed.flags.priority === "string" ? parsed.flags.priority : undefined;
+  if (priorityFilter) {
+    try {
+      const p = parsePriority(priorityFilter);
+      items = items.filter((i) => (i.priority ?? 'normal') === p);
+    } catch (e) {
+      console.error((e as Error).message);
+      process.exit(1);
+    }
+  }
+
+  const priorityOrder = { high: 0, normal: 1, low: 2 };
+  items.sort((a, b) => {
+    const pa = priorityOrder[a.priority ?? 'normal'];
+    const pb = priorityOrder[b.priority ?? 'normal'];
+    if (pa !== pb) return pa - pb;
+    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+  });
 
   if (items.length === 0) {
     console.log("Queue is empty.");
@@ -36,6 +56,7 @@ export async function listCommand(parsed: ParsedArgs): Promise<void> {
 
     const id = shortId(item.id);
     const timing = itemTiming(item);
+    const pBadge = priorityBadge(item.priority);
     const dirBadge = item.workingDir ? ` [dir]` : "";
     const recurrenceBadge = item.recurrence && item.scheduledAt
       ? ` [\u{1F504} every ${item.recurrence.interval}, next: ${relativeTimeFuture(item.scheduledAt)}]`
@@ -49,7 +70,7 @@ export async function listCommand(parsed: ParsedArgs): Promise<void> {
       item.recurrence ? recurrenceBadge :
       item.status === Status.SCHEDULED ? scheduledBadge : "";
 
-    console.log(`  ${id}${badge}${dirBadge}  ${item.title}${timing}`);
+    console.log(`  ${id}${badge}${pBadge}${dirBadge}  ${item.title}${timing}`);
     console.log(`    ${snippet}`);
     console.log();
   }

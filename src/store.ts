@@ -17,6 +17,7 @@ export interface Item {
   completedAt?: string;
   completedBy?: string;
   result?: string;
+  priority?: 'high' | 'normal' | 'low';
   requeueReason?: string;
   requeuedBy?: string;
   cancelledAt?: string;
@@ -82,7 +83,13 @@ export async function claimNextItem(agent?: string): Promise<Item | null> {
       if (i.status === Status.SCHEDULED && i.scheduledAt && new Date(i.scheduledAt) <= now) return true;
       return false;
     })
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    .sort((a, b) => {
+      const priorityOrder = { high: 0, normal: 1, low: 2 };
+      const pa = priorityOrder[a.priority ?? 'normal'];
+      const pb = priorityOrder[b.priority ?? 'normal'];
+      if (pa !== pb) return pa - pb;
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    });
 
   const next = queued[0];
   if (!next) return null;
@@ -131,6 +138,7 @@ export async function completeItem(token: string, agent?: string, result?: strin
         createdAt: new Date().toISOString(),
         scheduledAt: new Date(now + item.recurrence.intervalMs).toISOString(),
         recurrence: { ...item.recurrence },
+        ...(item.priority ? { priority: item.priority } : {}),
         ...(item.workingDir ? { workingDir: item.workingDir } : {}),
         ...(item.branch ? { branch: item.branch } : {}),
       };
@@ -190,4 +198,23 @@ export async function cancelItem(id: string): Promise<Item> {
 
   await saveItems(items);
   return item;
+}
+
+export interface ReprioritizeResult {
+  item: Item;
+  oldPriority: string;
+}
+
+export async function reprioritizeItem(id: string, priority: 'high' | 'normal' | 'low'): Promise<ReprioritizeResult> {
+  const items = await loadItems();
+  const item = resolveItem(items, id);
+  if (item.status !== Status.QUEUED && item.status !== Status.SCHEDULED) {
+    throw new Error(`Cannot reprioritize item — status is "${item.status}". Only queued or scheduled items can be reprioritized.`);
+  }
+
+  const oldPriority = item.priority ?? 'normal';
+  item.priority = priority;
+
+  await saveItems(items);
+  return { item, oldPriority };
 }

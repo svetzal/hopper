@@ -5,6 +5,8 @@ import { Status } from "../constants.ts";
 import type { ItemStatus } from "../constants.ts";
 import { parseTimeSpec, parseDuration } from "../parse-time.ts";
 import { findPreset } from "../presets.ts";
+import { parsePriority, priorityBadge } from "../priority.ts";
+import type { Priority } from "../priority.ts";
 
 export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Promise<void> {
   const presetName = typeof parsed.flags.preset === "string" ? parsed.flags.preset : undefined;
@@ -46,6 +48,17 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
   if (branch && !dir) {
     console.error("Error: --branch requires --dir");
     process.exit(1);
+  }
+
+  let priority: Priority | undefined;
+  const priorityFlag = typeof parsed.flags.priority === "string" ? parsed.flags.priority : undefined;
+  if (priorityFlag) {
+    try {
+      priority = parsePriority(priorityFlag);
+    } catch (e) {
+      console.error((e as Error).message);
+      process.exit(1);
+    }
   }
 
   const afterSpec = typeof parsed.flags.after === "string" ? parsed.flags.after : undefined;
@@ -104,6 +117,7 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
     description,
     status,
     createdAt: new Date().toISOString(),
+    ...(priority && priority !== 'normal' ? { priority } : {}),
     ...(scheduledAt ? { scheduledAt } : {}),
     ...(dir ? { workingDir: dir } : {}),
     ...(branch ? { branch } : {}),
@@ -116,12 +130,13 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
     console.log(JSON.stringify(item, null, 2));
   } else {
     const presetSuffix = preset ? ` (from preset: ${preset.name})` : "";
+    const pBadge = priorityBadge(priority);
     if (recurrence) {
-      console.log(`Added: ${title} (recurring every ${recurrence.interval}, next run: ${new Date(scheduledAt!).toLocaleString()})${presetSuffix}`);
+      console.log(`Added: ${title}${pBadge} (recurring every ${recurrence.interval}, next run: ${new Date(scheduledAt!).toLocaleString()})${presetSuffix}`);
     } else if (scheduledAt) {
-      console.log(`Added: ${title} (scheduled for ${new Date(scheduledAt).toLocaleString()})${presetSuffix}`);
+      console.log(`Added: ${title}${pBadge} (scheduled for ${new Date(scheduledAt).toLocaleString()})${presetSuffix}`);
     } else {
-      console.log(`Added: ${title}${presetSuffix}`);
+      console.log(`Added: ${title}${pBadge}${presetSuffix}`);
     }
   }
 }

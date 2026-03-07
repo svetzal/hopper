@@ -13,6 +13,7 @@ import {
   requeueItem,
   cancelItem,
   findItem,
+  reprioritizeItem,
 } from "./store.ts";
 import type { Item } from "./store.ts";
 
@@ -492,5 +493,94 @@ describe("store", () => {
 
     expect(recurred!.workingDir).toBe("/tmp/project");
     expect(recurred!.branch).toBe("main");
+  });
+
+  // priority tests
+  test("claimNextItem returns high-priority item before normal", async () => {
+    const normal = makeItem({ title: "Normal", createdAt: "2025-01-01T00:00:00Z" });
+    const high = makeItem({ title: "High", priority: "high", createdAt: "2025-06-01T00:00:00Z" });
+    await saveItems([normal, high]);
+
+    const claimed = await claimNextItem();
+    expect(claimed!.title).toBe("High");
+  });
+
+  test("claimNextItem returns normal-priority item before low", async () => {
+    const low = makeItem({ title: "Low", priority: "low", createdAt: "2025-01-01T00:00:00Z" });
+    const normal = makeItem({ title: "Normal", createdAt: "2025-06-01T00:00:00Z" });
+    await saveItems([low, normal]);
+
+    const claimed = await claimNextItem();
+    expect(claimed!.title).toBe("Normal");
+  });
+
+  test("claimNextItem returns older item first within same priority", async () => {
+    const older = makeItem({ title: "Older", priority: "high", createdAt: "2025-01-01T00:00:00Z" });
+    const newer = makeItem({ title: "Newer", priority: "high", createdAt: "2025-06-01T00:00:00Z" });
+    await saveItems([newer, older]);
+
+    const claimed = await claimNextItem();
+    expect(claimed!.title).toBe("Older");
+  });
+
+  test("items without priority field treated as normal", async () => {
+    const noPriority = makeItem({ title: "No priority", createdAt: "2025-01-01T00:00:00Z" });
+    const high = makeItem({ title: "High", priority: "high", createdAt: "2025-06-01T00:00:00Z" });
+    await saveItems([noPriority, high]);
+
+    const claimed = await claimNextItem();
+    expect(claimed!.title).toBe("High");
+  });
+
+  test("completeItem preserves priority on recurred item", async () => {
+    const item = makeItem({
+      title: "Priority recurring",
+      priority: "high",
+      recurrence: { interval: "1h", intervalMs: 3_600_000 },
+    });
+    await saveItems([item]);
+    const claimed = await claimNextItem("agent");
+    const { recurred } = await completeItem(claimed!.claimToken!, "agent");
+
+    expect(recurred!.priority).toBe("high");
+  });
+
+  // reprioritize tests
+  test("reprioritizeItem changes priority on queued item", async () => {
+    const item = makeItem({ title: "Repri" });
+    await saveItems([item]);
+
+    const { item: updated, oldPriority } = await reprioritizeItem(item.id, "high");
+    expect(updated.priority).toBe("high");
+    expect(oldPriority).toBe("normal");
+
+    const items = await loadItems();
+    expect(items[0]!.priority).toBe("high");
+  });
+
+  test("reprioritizeItem changes priority on scheduled item", async () => {
+    const item = makeItem({
+      title: "Scheduled repri",
+      status: "scheduled",
+      scheduledAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+    await saveItems([item]);
+
+    const { item: updated } = await reprioritizeItem(item.id, "low");
+    expect(updated.priority).toBe("low");
+  });
+
+  test("reprioritizeItem rejects in-progress items", async () => {
+    const item = makeItem({ status: "in_progress", claimedAt: new Date().toISOString() });
+    await saveItems([item]);
+
+    await expect(reprioritizeItem(item.id, "high")).rejects.toThrow("Cannot reprioritize item");
+  });
+
+  test("reprioritizeItem rejects completed items", async () => {
+    const item = makeItem({ status: "completed", completedAt: new Date().toISOString() });
+    await saveItems([item]);
+
+    await expect(reprioritizeItem(item.id, "high")).rejects.toThrow("Cannot reprioritize item");
   });
 });

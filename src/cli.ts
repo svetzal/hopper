@@ -6,6 +6,7 @@ import { claimCommand } from "./commands/claim.ts";
 import { completeCommand } from "./commands/complete.ts";
 import { listCommand } from "./commands/list.ts";
 import { presetCommand } from "./commands/preset.ts";
+import { reprioritizeCommand } from "./commands/reprioritize.ts";
 import { requeueCommand } from "./commands/requeue.ts";
 import { showCommand } from "./commands/show.ts";
 import { workerCommand } from "./commands/worker.ts";
@@ -18,6 +19,10 @@ export interface ParsedArgs {
   flags: Record<string, string | boolean>;
 }
 
+const SHORT_FLAG_ALIASES: Record<string, string> = {
+  p: "priority",
+};
+
 function parseArgs(args: string[]): ParsedArgs {
   const flags: Record<string, string | boolean> = {};
   const positional: string[] = [];
@@ -28,7 +33,18 @@ function parseArgs(args: string[]): ParsedArgs {
     if (arg.startsWith("--")) {
       const key = arg.slice(2);
       const nextArg = args[i + 1];
-      if (nextArg && !nextArg.startsWith("--")) {
+      if (nextArg && !nextArg.startsWith("-")) {
+        flags[key] = nextArg;
+        i += 2;
+      } else {
+        flags[key] = true;
+        i += 1;
+      }
+    } else if (arg.startsWith("-") && arg.length === 2) {
+      const short = arg.slice(1);
+      const key = SHORT_FLAG_ALIASES[short] ?? short;
+      const nextArg = args[i + 1];
+      if (nextArg && !nextArg.startsWith("-")) {
         flags[key] = nextArg;
         i += 2;
       } else {
@@ -49,6 +65,7 @@ function printHelp(): void {
 
 Usage:
   hopper add <description> [--after <timespec>]              Add a work item (optionally scheduled)
+  hopper add <description> [--priority high|normal|low]      Add with priority (-p alias)
   hopper add <description> [--dir <path> --branch <branch>]  Add with working directory
   hopper add --preset <name> [--after --every]               Create item from preset
   hopper show <id>                   Show full details of an item
@@ -56,11 +73,13 @@ Usage:
   hopper list --all                  Include completed items
   hopper list --completed            Show only completed items
   hopper list --scheduled            Show only scheduled items
-  hopper claim [--agent <name>]      Claim next queued item (FIFO)
+  hopper list --priority <level>     Filter by priority
+  hopper claim [--agent <name>]      Claim next queued item (priority, then FIFO)
   hopper complete <token>            Complete a claimed item
   hopper complete <token> --result "…" Attach a result summary
   hopper cancel <id>                 Cancel a queued item
   hopper requeue <id> --reason "…"   Return an in-progress item to queue
+  hopper reprioritize <id> <level>   Change priority of a queued/scheduled item
   hopper preset add <name> <desc> [--dir --branch]  Save a reusable template
   hopper preset list                                List saved presets
   hopper preset remove <name>                       Delete a preset
@@ -116,6 +135,9 @@ async function main(): Promise<void> {
       break;
     case "requeue":
       await requeueCommand(parsed);
+      break;
+    case "reprioritize":
+      await reprioritizeCommand(parsed);
       break;
     case "show":
       await showCommand(parsed);
