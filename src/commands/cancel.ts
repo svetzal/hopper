@@ -9,14 +9,19 @@ export async function cancelCommand(parsed: ParsedArgs): Promise<void> {
   }
 
   try {
-    const item = await cancelItem(id);
+    const { item, blockedDependentCount } = await cancelItem(id);
 
     if (parsed.flags.json === true) {
       console.log(JSON.stringify(item, null, 2));
-    } else if (item.recurrence) {
-      console.log(`Cancelled: ${item.title} (recurrence stopped)`);
     } else {
-      console.log(`Cancelled: ${item.title}`);
+      if (blockedDependentCount > 0) {
+        console.warn(`Warning: ${blockedDependentCount} item(s) depend on this item and will remain blocked.`);
+      }
+      if (item.recurrence) {
+        console.log(`Cancelled: ${item.title} (recurrence stopped)`);
+      } else {
+        console.log(`Cancelled: ${item.title}`);
+      }
     }
   } catch (err) {
     console.error((err as Error).message);

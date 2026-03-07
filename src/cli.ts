@@ -17,23 +17,35 @@ export interface ParsedArgs {
   command: string;
   positional: string[];
   flags: Record<string, string | boolean>;
+  arrayFlags: Record<string, string[]>;
 }
 
 const SHORT_FLAG_ALIASES: Record<string, string> = {
   p: "priority",
 };
 
+const FLAG_ALIASES: Record<string, string> = {
+  "depends-on": "after-item",
+};
+
+const REPEATABLE_FLAGS = new Set(["after-item"]);
+
 function parseArgs(args: string[]): ParsedArgs {
   const flags: Record<string, string | boolean> = {};
+  const arrayFlags: Record<string, string[]> = {};
   const positional: string[] = [];
 
   let i = 0;
   while (i < args.length) {
     const arg = args[i]!;
     if (arg.startsWith("--")) {
-      const key = arg.slice(2);
+      let key = arg.slice(2);
+      key = FLAG_ALIASES[key] ?? key;
       const nextArg = args[i + 1];
       if (nextArg && !nextArg.startsWith("-")) {
+        if (REPEATABLE_FLAGS.has(key)) {
+          (arrayFlags[key] ??= []).push(nextArg);
+        }
         flags[key] = nextArg;
         i += 2;
       } else {
@@ -57,7 +69,7 @@ function parseArgs(args: string[]): ParsedArgs {
     }
   }
 
-  return { command: positional[0] ?? "", positional: positional.slice(1), flags };
+  return { command: positional[0] ?? "", positional: positional.slice(1), flags, arrayFlags };
 }
 
 function printHelp(): void {
@@ -67,6 +79,7 @@ Usage:
   hopper add <description> [--after <timespec>]              Add a work item (optionally scheduled)
   hopper add <description> [--priority high|normal|low]      Add with priority (-p alias)
   hopper add <description> [--dir <path> --branch <branch>]  Add with working directory
+  hopper add <description> [--after-item <id>]               Add blocked on another item (repeatable)
   hopper add --preset <name> [--after --every]               Create item from preset
   hopper show <id>                   Show full details of an item
   hopper list                        List queued + in-progress + scheduled items

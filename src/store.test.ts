@@ -258,7 +258,7 @@ describe("store", () => {
     const item = makeItem({ title: "To cancel" });
     await saveItems([item]);
 
-    const cancelled = await cancelItem(item.id);
+    const { item: cancelled } = await cancelItem(item.id);
     expect(cancelled.status).toBe("cancelled");
     expect(cancelled.cancelledAt).toBeDefined();
     expect(cancelled.title).toBe("To cancel");
@@ -275,14 +275,14 @@ describe("store", () => {
     const item = makeItem({ status: "completed", completedAt: new Date().toISOString() });
     await saveItems([item]);
 
-    await expect(cancelItem(item.id)).rejects.toThrow("Only queued or scheduled items can be cancelled");
+    await expect(cancelItem(item.id)).rejects.toThrow("Only queued, scheduled, or blocked items can be cancelled");
   });
 
   test("cancelItem supports prefix matching", async () => {
     const item = makeItem({ id: "abcd1234-0000-0000-0000-000000000000", title: "Cancel me" });
     await saveItems([item]);
 
-    const cancelled = await cancelItem("abcd1234");
+    const { item: cancelled } = await cancelItem("abcd1234");
     expect(cancelled.title).toBe("Cancel me");
     expect(cancelled.status).toBe("cancelled");
   });
@@ -367,7 +367,7 @@ describe("store", () => {
     });
     await saveItems([item]);
 
-    const cancelled = await cancelItem(item.id);
+    const { item: cancelled } = await cancelItem(item.id);
     expect(cancelled.status).toBe("cancelled");
     expect(cancelled.cancelledAt).toBeDefined();
   });
@@ -582,5 +582,202 @@ describe("store", () => {
     await saveItems([item]);
 
     await expect(reprioritizeItem(item.id, "high")).rejects.toThrow("Cannot reprioritize item");
+  });
+
+  // dependency tests
+  test("blocked item is not returned by claimNextItem", async () => {
+    const dep = makeItem({ title: "Dep", createdAt: "2025-01-01T00:00:00Z" });
+    const blocked = makeItem({
+      title: "Blocked",
+      status: "blocked",
+      dependsOn: [dep.id],
+      createdAt: "2025-01-02T00:00:00Z",
+    });
+    await saveItems([dep, blocked]);
+
+    const claimed = await claimNextItem();
+    expect(claimed!.title).toBe("Dep");
+  });
+
+  test("completing dependency unblocks dependent item to queued", async () => {
+    const dep = makeItem({ title: "Dep" });
+    const blocked = makeItem({
+      title: "Blocked",
+      status: "blocked",
+      dependsOn: [dep.id],
+    });
+    await saveItems([dep, blocked]);
+
+    const claimed = await claimNextItem();
+    expect(claimed!.title).toBe("Dep");
+    await completeItem(claimed!.claimToken!, "agent");
+
+    const items = await loadItems();
+    const unblockedItem = items.find(i => i.title === "Blocked");
+    expect(unblockedItem!.status).toBe("queued");
+  });
+
+  test("completing dependency unblocks dependent with scheduledAt to scheduled", async () => {
+    const dep = makeItem({ title: "Dep" });
+    const blocked = makeItem({
+      title: "Blocked",
+      status: "blocked",
+      dependsOn: [dep.id],
+      scheduledAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+    await saveItems([dep, blocked]);
+
+    const claimed = await claimNextItem();
+    await completeItem(claimed!.claimToken!, "agent");
+
+    const items = await loadItems();
+    const unblockedItem = items.find(i => i.title === "Blocked");
+    expect(unblockedItem!.status).toBe("scheduled");
+  });
+
+  test("multiple dependencies: all must complete before unblock", async () => {
+    const dep1 = makeItem({ title: "Dep1" });
+    const dep2 = makeItem({ title: "Dep2" });
+    const blocked = makeItem({
+      title: "Blocked",
+      status: "blocked",
+      dependsOn: [dep1.id, dep2.id],
+    });
+    await saveItems([dep1, dep2, blocked]);
+
+    // Complete dep1
+    const claimed1 = await claimNextItem();
+    await completeItem(claimed1!.claimToken!, "agent");
+
+    let items = await loadItems();
+    let blockedItem = items.find(i => i.title === "Blocked");
+    expect(blockedItem!.status).toBe("blocked");
+
+    // Complete dep2
+    const claimed2 = await claimNextItem();
+    expect(claimed2!.title).toBe("Dep2");
+    await completeItem(claimed2!.claimToken!, "agent");
+
+    items = await loadItems();
+    blockedItem = items.find(i => i.title === "Blocked");
+    expect(blockedItem!.status).toBe("queued");
+  });
+
+  test("partial completion: item stays blocked", async () => {
+    const dep1 = makeItem({ title: "Dep1" });
+    const dep2 = makeItem({ title: "Dep2" });
+    const blocked = makeItem({
+      title: "Blocked",
+      status: "blocked",
+      dependsOn: [dep1.id, dep2.id],
+    });
+    await saveItems([dep1, dep2, blocked]);
+
+    const claimed = await claimNextItem();
+    await completeItem(claimed!.claimToken!, "agent");
+
+    const items = await loadItems();
+    const blockedItem = items.find(i => i.title === "Blocked");
+    expect(blockedItem!.status).toBe("blocked");
+  });
+
+  test("cancelled dependency: blocked item stays blocked", async () => {
+    const dep = makeItem({ title: "Dep" });
+    const blocked = makeItem({
+      title: "Blocked",
+      status: "blocked",
+      dependsOn: [dep.id],
+    });
+    await saveItems([dep, blocked]);
+
+    await cancelItem(dep.id);
+
+    const items = await loadItems();
+    const blockedItem = items.find(i => i.title === "Blocked");
+    expect(blockedItem!.status).toBe("blocked");
+  });
+
+  test("cancelItem returns blocked dependent count", async () => {
+    const dep = makeItem({ title: "Dep" });
+    const blocked1 = makeItem({
+      title: "Blocked1",
+      status: "blocked",
+      dependsOn: [dep.id],
+    });
+    const blocked2 = makeItem({
+      title: "Blocked2",
+      status: "blocked",
+      dependsOn: [dep.id],
+    });
+    await saveItems([dep, blocked1, blocked2]);
+
+    const { blockedDependentCount } = await cancelItem(dep.id);
+    expect(blockedDependentCount).toBe(2);
+  });
+
+  test("cancelItem allows cancelling blocked items", async () => {
+    const dep = makeItem({ title: "Dep" });
+    const blocked = makeItem({
+      title: "Blocked",
+      status: "blocked",
+      dependsOn: [dep.id],
+    });
+    await saveItems([dep, blocked]);
+
+    const { item: cancelled } = await cancelItem(blocked.id);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  test("blocked item with no remaining queued deps stays blocked when unrelated item completes", async () => {
+    const dep = makeItem({ title: "Dep" });
+    const unrelated = makeItem({ title: "Unrelated" });
+    const blocked = makeItem({
+      title: "Blocked",
+      status: "blocked",
+      dependsOn: [dep.id],
+    });
+    await saveItems([dep, unrelated, blocked]);
+
+    // Complete the unrelated item
+    const claimed = await claimNextItem();
+    // Could claim either dep or unrelated, let's be specific
+    if (claimed!.title === "Unrelated") {
+      await completeItem(claimed!.claimToken!, "agent");
+      const items = await loadItems();
+      const blockedItem = items.find(i => i.title === "Blocked");
+      expect(blockedItem!.status).toBe("blocked");
+    } else {
+      // If dep was claimed first, complete it and verify unblock
+      await completeItem(claimed!.claimToken!, "agent");
+      const items = await loadItems();
+      const blockedItem = items.find(i => i.title === "Blocked");
+      expect(blockedItem!.status).toBe("queued");
+    }
+  });
+
+  test("claimNextItem returns null when only blocked items exist", async () => {
+    const blocked = makeItem({
+      title: "Blocked",
+      status: "blocked",
+      dependsOn: ["some-nonexistent-id"],
+    });
+    await saveItems([blocked]);
+
+    const claimed = await claimNextItem();
+    expect(claimed).toBeNull();
+  });
+
+  test("dependsOn field is preserved through save/load", async () => {
+    const dep = makeItem({ title: "Dep" });
+    const blocked = makeItem({
+      title: "Blocked",
+      status: "blocked",
+      dependsOn: [dep.id],
+    });
+    await saveItems([dep, blocked]);
+
+    const items = await loadItems();
+    const blockedItem = items.find(i => i.title === "Blocked");
+    expect(blockedItem!.dependsOn).toEqual([dep.id]);
   });
 });

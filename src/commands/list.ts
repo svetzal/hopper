@@ -16,7 +16,7 @@ export async function listCommand(parsed: ParsedArgs): Promise<void> {
   } else if (parsed.flags.all === true) {
     items = allItems;
   } else {
-    items = allItems.filter((i) => i.status === Status.QUEUED || i.status === Status.IN_PROGRESS || i.status === Status.SCHEDULED);
+    items = allItems.filter((i) => i.status === Status.QUEUED || i.status === Status.IN_PROGRESS || i.status === Status.SCHEDULED || i.status === Status.BLOCKED);
   }
 
   const priorityFilter = typeof parsed.flags.priority === "string" ? parsed.flags.priority : undefined;
@@ -64,9 +64,13 @@ export async function listCommand(parsed: ParsedArgs): Promise<void> {
     const scheduledBadge = item.status === Status.SCHEDULED && item.scheduledAt && !item.recurrence
       ? ` [scheduled ${relativeTimeFuture(item.scheduledAt)}]`
       : "";
+    const blockedBadge = item.status === Status.BLOCKED && item.dependsOn
+      ? ` [blocked on ${item.dependsOn.map(id => shortId(id)).join(", ")}]`
+      : "";
     const badge =
       item.status === Status.IN_PROGRESS ? " [in progress]" :
       item.status === Status.CANCELLED ? " [cancelled]" :
+      item.status === Status.BLOCKED ? blockedBadge :
       item.recurrence ? recurrenceBadge :
       item.status === Status.SCHEDULED ? scheduledBadge : "";
 

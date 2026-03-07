@@ -24,6 +24,7 @@ export interface Item {
   scheduledAt?: string;
   workingDir?: string;
   branch?: string;
+  dependsOn?: string[];
   recurrence?: {
     interval: string;
     intervalMs: number;
@@ -125,6 +126,16 @@ export async function completeItem(token: string, agent?: string, result?: strin
   item.result = result;
   item.claimToken = undefined;
 
+  // Unblock items that depended on this completed item
+  for (const blocked of items.filter(i => i.status === Status.BLOCKED)) {
+    const allDepsComplete = (blocked.dependsOn ?? []).every(depId =>
+      items.find(i => i.id === depId)?.status === Status.COMPLETED
+    );
+    if (allDepsComplete) {
+      blocked.status = blocked.scheduledAt ? Status.SCHEDULED : Status.QUEUED;
+    }
+  }
+
   let recurredItem: Item | undefined;
   if (item.recurrence) {
     const now = Date.now();
@@ -186,18 +197,27 @@ export async function requeueItem(id: string, reason: string, agent?: string): P
   return item;
 }
 
-export async function cancelItem(id: string): Promise<Item> {
+export interface CancelResult {
+  item: Item;
+  blockedDependentCount: number;
+}
+
+export async function cancelItem(id: string): Promise<CancelResult> {
   const items = await loadItems();
   const item = resolveItem(items, id);
-  if (item.status !== Status.QUEUED && item.status !== Status.SCHEDULED) {
-    throw new Error(`Cannot cancel item — status is "${item.status}". Only queued or scheduled items can be cancelled.`);
+  if (item.status !== Status.QUEUED && item.status !== Status.SCHEDULED && item.status !== Status.BLOCKED) {
+    throw new Error(`Cannot cancel item — status is "${item.status}". Only queued, scheduled, or blocked items can be cancelled.`);
   }
 
   item.status = Status.CANCELLED;
   item.cancelledAt = new Date().toISOString();
 
+  const blockedDependentCount = items.filter(i =>
+    i.status === Status.BLOCKED && (i.dependsOn ?? []).includes(item.id)
+  ).length;
+
   await saveItems(items);
-  return item;
+  return { item, blockedDependentCount };
 }
 
 export interface ReprioritizeResult {

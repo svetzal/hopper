@@ -6,6 +6,7 @@ export const Status = {
   COMPLETED: "completed",
   CANCELLED: "cancelled",
   SCHEDULED: "scheduled",
+  BLOCKED: "blocked",
 } as const;
 
 export type ItemStatus = (typeof Status)[keyof typeof Status];
