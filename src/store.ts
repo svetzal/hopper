@@ -23,6 +23,11 @@ export interface Item {
   scheduledAt?: string;
   workingDir?: string;
   branch?: string;
+  recurrence?: {
+    interval: string;
+    intervalMs: number;
+    until?: string;
+  };
 }
 
 const DEFAULT_STORE_DIR = join(homedir(), ".hopper");
@@ -91,7 +96,12 @@ export async function claimNextItem(agent?: string): Promise<Item | null> {
   return next;
 }
 
-export async function completeItem(token: string, agent?: string, result?: string): Promise<Item> {
+export interface CompleteResult {
+  completed: Item;
+  recurred?: Item;
+}
+
+export async function completeItem(token: string, agent?: string, result?: string): Promise<CompleteResult> {
   const items = await loadItems();
   const item = items.find((i) => i.claimToken === token);
 
@@ -108,8 +118,28 @@ export async function completeItem(token: string, agent?: string, result?: strin
   item.result = result;
   item.claimToken = undefined;
 
+  let recurredItem: Item | undefined;
+  if (item.recurrence) {
+    const now = Date.now();
+    const untilExpired = item.recurrence.until && new Date(item.recurrence.until).getTime() <= now;
+    if (!untilExpired) {
+      recurredItem = {
+        id: crypto.randomUUID(),
+        title: item.title,
+        description: item.description,
+        status: Status.SCHEDULED,
+        createdAt: new Date().toISOString(),
+        scheduledAt: new Date(now + item.recurrence.intervalMs).toISOString(),
+        recurrence: { ...item.recurrence },
+        ...(item.workingDir ? { workingDir: item.workingDir } : {}),
+        ...(item.branch ? { branch: item.branch } : {}),
+      };
+      items.unshift(recurredItem);
+    }
+  }
+
   await saveItems(items);
-  return item;
+  return { completed: item, recurred: recurredItem };
 }
 
 function resolveItem(items: Item[], id: string): Item {

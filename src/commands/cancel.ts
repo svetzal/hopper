@@ -13,6 +13,8 @@ export async function cancelCommand(parsed: ParsedArgs): Promise<void> {
 
     if (parsed.flags.json === true) {
       console.log(JSON.stringify(item, null, 2));
+    } else if (item.recurrence) {
+      console.log(`Cancelled: ${item.title} (recurrence stopped)`);
     } else {
       console.log(`Cancelled: ${item.title}`);
     }

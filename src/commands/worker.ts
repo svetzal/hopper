@@ -168,8 +168,11 @@ export async function workerCommand(
 
       if (action === "complete") {
         console.log("\nMarking item complete...");
-        await completeItem(item.claimToken!, agentName, finalResult);
-        console.log(`Completed: ${item.title}`);
+        const { completed, recurred } = await completeItem(item.claimToken!, agentName, finalResult);
+        console.log(`Completed: ${completed.title}`);
+        if (recurred) {
+          console.log(`Re-queued: ${completed.title} (next run: ${new Date(recurred.scheduledAt!).toLocaleString()})`);
+        }
       } else {
         console.log(`\nClaude session failed for: ${item.title} (${item.id})`);
         if (workBranch) console.log(`Work branch ${workBranch} preserved for review.`);

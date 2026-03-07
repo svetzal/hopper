@@ -37,12 +37,16 @@ export async function listCommand(parsed: ParsedArgs): Promise<void> {
     const id = shortId(item.id);
     const timing = itemTiming(item);
     const dirBadge = item.workingDir ? ` [dir]` : "";
-    const scheduledBadge = item.status === Status.SCHEDULED && item.scheduledAt
+    const recurrenceBadge = item.recurrence && item.scheduledAt
+      ? ` [\u{1F504} every ${item.recurrence.interval}, next: ${relativeTimeFuture(item.scheduledAt)}]`
+      : "";
+    const scheduledBadge = item.status === Status.SCHEDULED && item.scheduledAt && !item.recurrence
       ? ` [scheduled ${relativeTimeFuture(item.scheduledAt)}]`
       : "";
     const badge =
       item.status === Status.IN_PROGRESS ? " [in progress]" :
       item.status === Status.CANCELLED ? " [cancelled]" :
+      item.recurrence ? recurrenceBadge :
       item.status === Status.SCHEDULED ? scheduledBadge : "";
 
     console.log(`  ${id}${badge}${dirBadge}  ${item.title}${timing}`);

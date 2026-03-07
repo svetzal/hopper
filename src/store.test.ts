@@ -149,7 +149,7 @@ describe("store", () => {
     const claimed = await claimNextItem("agent");
     const token = claimed!.claimToken!;
 
-    const completed = await completeItem(token, "agent");
+    const { completed } = await completeItem(token, "agent");
     expect(completed.status).toBe("completed");
     expect(completed.completedAt).toBeDefined();
     expect(completed.completedBy).toBe("agent");
@@ -168,7 +168,7 @@ describe("store", () => {
     const claimed = await claimNextItem("agent");
     const token = claimed!.claimToken!;
 
-    const completed = await completeItem(token, "agent", "Fixed the login bug");
+    const { completed } = await completeItem(token, "agent", "Fixed the login bug");
     expect(completed.result).toBe("Fixed the login bug");
 
     const items = await loadItems();
@@ -178,7 +178,7 @@ describe("store", () => {
   test("completeItem leaves result undefined when not provided", async () => {
     await saveItems([makeItem()]);
     const claimed = await claimNextItem("agent");
-    const completed = await completeItem(claimed!.claimToken!, "agent");
+    const { completed } = await completeItem(claimed!.claimToken!, "agent");
     expect(completed.result).toBeUndefined();
   });
 
@@ -188,13 +188,15 @@ describe("store", () => {
     await completeItem(claimed!.claimToken!);
 
     const items = await loadItems();
-    expect(items[0]!.claimToken).toBeUndefined();
+    // The first item might be a recurred item, find the completed one
+    const completedItem = items.find(i => i.status === "completed");
+    expect(completedItem!.claimToken).toBeUndefined();
   });
 
   test("completeItem sets timestamps", async () => {
     await saveItems([makeItem()]);
     const claimed = await claimNextItem();
-    const completed = await completeItem(claimed!.claimToken!);
+    const { completed } = await completeItem(claimed!.claimToken!);
 
     expect(completed.completedAt).toBeTruthy();
     expect(new Date(completed.completedAt!).getTime()).toBeGreaterThan(0);
@@ -408,11 +410,12 @@ describe("store", () => {
     const claimed = await claimNextItem("agent");
     expect(claimed!.workingDir).toBe("/tmp/my-project");
 
-    const completed = await completeItem(claimed!.claimToken!, "agent", "done");
+    const { completed } = await completeItem(claimed!.claimToken!, "agent", "done");
     expect(completed.workingDir).toBe("/tmp/my-project");
 
     const items = await loadItems();
-    expect(items[0]!.workingDir).toBe("/tmp/my-project");
+    const completedItem = items.find(i => i.status === "completed");
+    expect(completedItem!.workingDir).toBe("/tmp/my-project");
   });
 
   test("items without workingDir still work (backward compat)", async () => {
@@ -423,7 +426,71 @@ describe("store", () => {
     const claimed = await claimNextItem("agent");
     expect(claimed!.workingDir).toBeUndefined();
 
-    const completed = await completeItem(claimed!.claimToken!, "agent");
+    const { completed } = await completeItem(claimed!.claimToken!, "agent");
     expect(completed.workingDir).toBeUndefined();
+  });
+
+  // recurring item tests
+  test("completeItem creates new scheduled item for recurring items", async () => {
+    const item = makeItem({
+      title: "Recurring task",
+      recurrence: { interval: "4h", intervalMs: 4 * 3_600_000 },
+    });
+    await saveItems([item]);
+    const claimed = await claimNextItem("agent");
+    const { completed, recurred } = await completeItem(claimed!.claimToken!, "agent", "done");
+
+    expect(completed.status).toBe("completed");
+    expect(recurred).toBeDefined();
+    expect(recurred!.status).toBe("scheduled");
+    expect(recurred!.title).toBe("Recurring task");
+    expect(recurred!.recurrence).toEqual({ interval: "4h", intervalMs: 4 * 3_600_000 });
+    expect(recurred!.id).not.toBe(completed.id);
+
+    const scheduledTime = new Date(recurred!.scheduledAt!).getTime();
+    const expectedTime = Date.now() + 4 * 3_600_000;
+    expect(scheduledTime).toBeGreaterThanOrEqual(expectedTime - 200);
+    expect(scheduledTime).toBeLessThanOrEqual(expectedTime + 200);
+
+    const items = await loadItems();
+    expect(items).toHaveLength(2);
+    expect(items.filter(i => i.status === "scheduled")).toHaveLength(1);
+    expect(items.filter(i => i.status === "completed")).toHaveLength(1);
+  });
+
+  test("completeItem does not re-queue when recurrence.until has passed", async () => {
+    const item = makeItem({
+      title: "Expiring task",
+      recurrence: {
+        interval: "1h",
+        intervalMs: 3_600_000,
+        until: new Date(Date.now() - 1000).toISOString(), // already expired
+      },
+    });
+    await saveItems([item]);
+    const claimed = await claimNextItem("agent");
+    const { completed, recurred } = await completeItem(claimed!.claimToken!, "agent");
+
+    expect(completed.status).toBe("completed");
+    expect(recurred).toBeUndefined();
+
+    const items = await loadItems();
+    expect(items).toHaveLength(1);
+    expect(items[0]!.status).toBe("completed");
+  });
+
+  test("completeItem preserves workingDir and branch on recurred item", async () => {
+    const item = makeItem({
+      title: "Dir task",
+      workingDir: "/tmp/project",
+      branch: "main",
+      recurrence: { interval: "2h", intervalMs: 7_200_000 },
+    });
+    await saveItems([item]);
+    const claimed = await claimNextItem("agent");
+    const { recurred } = await completeItem(claimed!.claimToken!, "agent");
+
+    expect(recurred!.workingDir).toBe("/tmp/project");
+    expect(recurred!.branch).toBe("main");
   });
 });

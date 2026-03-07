@@ -6,9 +6,29 @@ const UNIT_MS: Record<string, number> = {
   w: 604_800_000,
 };
 
+export function parseDuration(input: string): number {
+  const lower = input.trim().toLowerCase();
+  const pattern = /^(\d+(?:\.\d+)?[smhdw])+$/;
+  if (!pattern.test(lower)) {
+    throw new Error(`Cannot parse duration: "${input}"`);
+  }
+
+  let totalMs = 0;
+  const parts = lower.matchAll(/(\d+(?:\.\d+)?)([smhdw])/g);
+  for (const match of parts) {
+    const value = parseFloat(match[1]!);
+    const unit = match[2]!;
+    totalMs += value * UNIT_MS[unit]!;
+  }
+
+  if (totalMs === 0) {
+    throw new Error(`Cannot parse duration: "${input}"`);
+  }
+  return totalMs;
+}
+
 function parseRelativeDuration(input: string): Date | null {
   const lower = input.toLowerCase();
-  // Match compound durations like "1h30m", "2d12h", or simple like "30s", "1.5h"
   const pattern = /^(\d+(?:\.\d+)?[smhdw])+$/;
   if (!pattern.test(lower)) return null;
 

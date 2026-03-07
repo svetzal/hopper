@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseTimeSpec } from "./parse-time.ts";
+import { parseTimeSpec, parseDuration } from "./parse-time.ts";
 
 describe("parseTimeSpec", () => {
   // Relative durations
@@ -140,5 +140,44 @@ describe("parseTimeSpec", () => {
     expect(result.getHours()).toBe(14);
     expect(result.getMinutes()).toBe(0);
     expect(result.getTime()).toBeGreaterThan(Date.now());
+  });
+});
+
+describe("parseDuration", () => {
+  test("parses seconds to milliseconds", () => {
+    expect(parseDuration("30s")).toBe(30_000);
+  });
+
+  test("parses minutes to milliseconds", () => {
+    expect(parseDuration("5m")).toBe(300_000);
+  });
+
+  test("parses hours to milliseconds", () => {
+    expect(parseDuration("2h")).toBe(7_200_000);
+  });
+
+  test("parses compound durations", () => {
+    expect(parseDuration("1h30m")).toBe(3_600_000 + 1_800_000);
+  });
+
+  test("parses decimal durations", () => {
+    expect(parseDuration("1.5h")).toBe(5_400_000);
+  });
+
+  test("parses days and weeks", () => {
+    expect(parseDuration("1d")).toBe(86_400_000);
+    expect(parseDuration("1w")).toBe(604_800_000);
+  });
+
+  test("throws on non-duration input", () => {
+    expect(() => parseDuration("tomorrow")).toThrow("Cannot parse duration");
+  });
+
+  test("throws on absolute time input", () => {
+    expect(() => parseDuration("2099-12-31")).toThrow("Cannot parse duration");
+  });
+
+  test("is case-insensitive", () => {
+    expect(parseDuration("2H")).toBe(7_200_000);
   });
 });
