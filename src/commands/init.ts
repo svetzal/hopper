@@ -1,4 +1,5 @@
 import { mkdir, rm } from "fs/promises";
+import { homedir } from "os";
 import { join } from "path";
 import { VERSION } from "../constants.ts";
 
@@ -52,12 +53,13 @@ function stripVersionInfo(content: string): string {
   return content.replace(/\nhopper-version: .+/g, "");
 }
 
-export async function initCommand(jsonOutput: boolean): Promise<void> {
-  const cwd = process.cwd();
+export async function initCommand(jsonOutput: boolean, global: boolean = false): Promise<void> {
+  const baseDir = global ? join(homedir(), ".claude") : process.cwd();
   const results: FileResult[] = [];
 
   for (const file of SKILL_FILES) {
-    const fullPath = join(cwd, file.relativePath);
+    const relPath = global ? file.relativePath.replace(/^\.claude\//, "") : file.relativePath;
+    const fullPath = join(baseDir, relPath);
     const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
     const stamped = stampVersion(file.content);
 
@@ -84,16 +86,17 @@ export async function initCommand(jsonOutput: boolean): Promise<void> {
       }
     }
 
-    results.push({ path: file.relativePath, action });
+    results.push({ path: relPath, action });
   }
 
   // Remove deprecated skills
   for (const relDir of DEPRECATED_SKILL_DIRS) {
-    const fullPath = join(cwd, relDir);
+    const relPath = global ? relDir.replace(/^\.claude\//, "") : relDir;
+    const fullPath = join(baseDir, relPath);
     const marker = Bun.file(join(fullPath, "SKILL.md"));
     if (await marker.exists()) {
       await rm(fullPath, { recursive: true });
-      results.push({ path: relDir, action: "removed" });
+      results.push({ path: relPath, action: "removed" });
     }
   }
 
@@ -118,7 +121,8 @@ export async function initCommand(jsonOutput: boolean): Promise<void> {
     };
     console.log(JSON.stringify(output));
   } else {
-    console.log(`\nHopper v${VERSION} — skill files\n`);
+    const scope = global ? "global (~/.claude)" : "local";
+    console.log(`\nHopper v${VERSION} — skill files (${scope})\n`);
     for (const r of results) {
       const icon =
         r.action === "created" ? "+" :

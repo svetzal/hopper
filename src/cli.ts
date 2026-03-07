@@ -102,7 +102,8 @@ Usage:
   hopper preset list                                List saved presets
   hopper preset remove <name>                       Delete a preset
   hopper preset show <name>                         Show preset details
-  hopper init                        Install Claude Code skill files
+  hopper init                        Install Claude Code skill files (local repo)
+  hopper init --global               Install skill files to ~/.claude/skills/
   hopper worker                      Run the Claude worker loop
   hopper worker --once               Process one item then exit
   hopper worker --agent <name>       Set agent name (default: claude-worker)
@@ -171,7 +172,7 @@ async function main(): Promise<void> {
       break;
     case "init": {
       const { initCommand } = await import("./commands/init.ts");
-      await initCommand(parsed.flags.json === true);
+      await initCommand(parsed.flags.json === true, parsed.flags.global === true);
       break;
     }
     case "worker":
