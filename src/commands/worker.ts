@@ -181,10 +181,12 @@ export async function workerCommand(
 
   let running = true;
   const activeTasks = new Map<string, Promise<void>>();
+  let cancelSleep: (() => void) | undefined;
 
   const shutdown = () => {
     if (!running) return;
     running = false;
+    cancelSleep?.();
     if (activeTasks.size > 0) {
       console.log(`\nShutting down. Waiting for ${activeTasks.size} active task(s) to finish...`);
     } else {
@@ -241,7 +243,11 @@ export async function workerCommand(
         return;
       }
       console.log(`No work available. Waiting ${pollInterval}s...`);
-      await new Promise((r) => setTimeout(r, pollInterval * 1000));
+      await new Promise<void>((r) => {
+        const timer = setTimeout(r, pollInterval * 1000);
+        cancelSleep = () => { clearTimeout(timer); r(); };
+      });
+      cancelSleep = undefined;
       continue;
     }
 
