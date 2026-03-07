@@ -56,6 +56,23 @@ A pre-push hook runs `bun run lint` and `bun test` automatically.
 
 `claude_worker.sh` is a shell script that orchestrates the claim-work-complete cycle: claims an item via `hopper claim --json`, runs a `claude --print` session with the task description, then calls `hopper complete` or `hopper requeue` based on exit status.
 
+## Release process
+
+The version number lives in two places that must stay in sync:
+
+- `package.json` — `"version"` field
+- `src/constants.ts` — `VERSION` constant (this is what `hopper --version` returns)
+
+To cut a release:
+
+1. Update `CHANGELOG.md` — add a new `## [x.y.z] - YYYY-MM-DD` section under `[Unreleased]`
+2. Update the version in both `package.json` and `src/constants.ts`
+3. Commit all changes with message: `Release vX.Y.Z`
+4. Tag the commit: `git tag vX.Y.Z`
+5. Push commit and tag: `git push && git push --tags`
+
+Use semver: patch for bug fixes, minor for new features, major for breaking changes.
+
 ## Mojility context
 
 This is a Mojility internal project at `~/Work/Projects/Mojility/hopper/`. Client code for issue tracking is `mojility`.
