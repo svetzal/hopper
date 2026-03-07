@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-03-07
+
+### Added
+
+- Recurring items with `--every` flag (e.g. `--every 2h`, `--every 1d`) — completed items automatically re-queue on schedule
+- Scheduling and duration parsing support for recurring intervals
+- Concurrent worker support with `--concurrency` flag to process multiple items in parallel
+- Preset/template commands (`preset add`, `preset list`, `preset use`) for reusable work items
+- Item priorities with `--priority` flag (`low`, `medium`, `high`, `critical`) and priority-based queue sorting
+- Item dependencies with `--after-item` flag — dependent items show `blocked` status until their prerequisite completes
+- Tagging system with `--tag` flag on `add` and `--tag` filter on `list`
+- `--global` flag on `init` to install skills to `~/.claude/skills/` for system-wide availability
+
+### Changed
+
+- Worker now commits on Claude's behalf using the item title and Claude's summary as the commit message, instead of running a separate auto-commit Claude session
+- Task prompt tells Claude not to commit — Hopper handles all git operations
+- Updated coordinator skill with comprehensive CLI coverage
+
 ## [0.5.0] - 2026-03-06
 
 ### Changed
@@ -133,7 +152,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Release workflow: use macos-14 for x64 builds
 
-[Unreleased]: https://github.com/svetzal/hopper/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/svetzal/hopper/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/svetzal/hopper/compare/v0.5.0...v1.0.0
 [0.5.0]: https://github.com/svetzal/hopper/compare/v0.4.3...v0.5.0
 [0.4.3]: https://github.com/svetzal/hopper/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/svetzal/hopper/compare/v0.4.0...v0.4.2
