@@ -196,14 +196,40 @@ Command-line flags and positional descriptions override preset values. Preset na
 
 All commands support `--json` for structured output. Use this when you need to parse results programmatically or chain commands together.
 
+## Conflict-Aware Sequencing
+
+Workers can process multiple queued items concurrently. Items targeting the same project and branch — or even different branches in the same repo — can cause git conflicts, merge failures, or lost work if they execute simultaneously. This is the most common source of hopper failures.
+
+**Before adding items to the queue, pause and ask yourself: "Could any of these items conflict if a worker picks them up at the same time?"**
+
+Two items conflict when any of these are true:
+- They target the **same project directory and branch** (virtually guaranteed to conflict)
+- They target the **same project directory on different branches** that touch overlapping files (worktree operations can still interfere)
+- They modify **shared configuration files** (package.json, tsconfig, CI configs) even from different feature areas
+
+When you identify items that could conflict, **chain them with `--after-item`** so they execute consecutively rather than concurrently. This isn't about logical dependency — item B doesn't need item A's output. It's about preventing simultaneous execution from causing merge conflicts or race conditions.
+
+This applies even when the items are conceptually independent. Two unrelated bug fixes on the same branch are logically independent but operationally conflicting — they must run one after another.
+
+### How to think about it
+
+When queuing a single item, no sequencing is needed. When queuing multiple items, sort them into groups by project directory:
+
+- **Different projects** — safe to run concurrently, no chaining needed
+- **Same project, different branches, non-overlapping work** — usually safe, but consider chaining if both touch shared files
+- **Same project and branch** — always chain with `--after-item`
+
+When chaining, add the first item normally, capture its ID from the output, then pass it as `--after-item <id>` on the next item. For a chain of 3+, each item depends on the previous one.
+
 ## Workflow
 
 1. **Validate** — Confirm the work is concrete, specific, and ready for autonomous execution
 2. **Organize** — Decide on priority, tags, scheduling, and dependencies
-3. **Add items** — Queue each piece of work with a clear description, project directory, and branch
-4. **Monitor** — Check `hopper list` to see what's been claimed, what's blocked, and what's still queued
-5. **Adjust** — Reprioritize, tag, cancel, or requeue items as the situation evolves
-6. **Review** — Check completed items with `hopper show <id>` to see the agent's results
+3. **Check for conflicts** — Before adding anything, review the full set of items you plan to queue. Group by project directory and branch. Identify which items need `--after-item` chaining to prevent concurrent execution conflicts
+4. **Add items** — Queue each piece of work with a clear description, project directory, and branch. Chain conflicting items with `--after-item`
+5. **Monitor** — Check `hopper list` to see what's been claimed, what's blocked, and what's still queued
+6. **Adjust** — Reprioritize, tag, cancel, or requeue items as the situation evolves
+7. **Review** — Check completed items with `hopper show <id>` to see the agent's results
 
 ## Examples
 
@@ -229,19 +255,40 @@ hopper add "Fix the race condition in the WebSocket reconnection logic..." \
   --tag backend --tag bugfix
 ```
 
-### Sequenced work with dependencies
+### Conflict-safe sequencing (same project/branch)
 
 ```bash
-# First: create the database migration
+# These two items target the same project and branch — they MUST be chained
+# even though they're conceptually independent work
+
+# First item queues normally
+hopper add "Add input validation to the signup form..." \
+  --dir ~/Work/Projects/webapp \
+  --branch feat/form-improvements
+# Output: Created item a1b2c3d4-...
+
+# Second item chains off the first to prevent concurrent execution
+hopper add "Add loading spinners to all form submit buttons..." \
+  --dir ~/Work/Projects/webapp \
+  --branch feat/form-improvements \
+  --after-item a1b2c3d4
+```
+
+### Logical dependency chain
+
+```bash
+# Here the sequencing is both conflict-prevention AND logical —
+# the API endpoint needs the migration to exist first
+
 hopper add "Add the orders table migration..." \
   --dir ~/Work/Projects/api \
   --branch feat/orders
+# Output: Created item e5f6g7h8-...
 
-# Then: build the API endpoint (blocked until migration completes)
 hopper add "Implement GET /api/orders endpoint..." \
   --dir ~/Work/Projects/api \
   --branch feat/orders \
-  --after-item <migration-item-id>
+  --after-item e5f6g7h8
 ```
 
 ### Scheduled and recurring work
