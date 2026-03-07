@@ -4,6 +4,7 @@ import { Status } from "../constants.ts";
 import type { Item } from "../store.ts";
 import { relativeTime, relativeTimeFuture, formatDuration, shortId } from "../format.ts";
 import { parsePriority, priorityBadge } from "../priority.ts";
+import { normalizeTag, matchesTags } from "../tags.ts";
 
 export async function listCommand(parsed: ParsedArgs): Promise<void> {
   const allItems = await loadItems();
@@ -24,6 +25,17 @@ export async function listCommand(parsed: ParsedArgs): Promise<void> {
     try {
       const p = parsePriority(priorityFilter);
       items = items.filter((i) => (i.priority ?? 'normal') === p);
+    } catch (e) {
+      console.error((e as Error).message);
+      process.exit(1);
+    }
+  }
+
+  const tagFilter = parsed.arrayFlags["tag"] ?? [];
+  if (tagFilter.length > 0) {
+    try {
+      const normalizedTags = tagFilter.map(normalizeTag);
+      items = items.filter((i) => matchesTags(i.tags, normalizedTags));
     } catch (e) {
       console.error((e as Error).message);
       process.exit(1);
@@ -57,6 +69,7 @@ export async function listCommand(parsed: ParsedArgs): Promise<void> {
     const id = shortId(item.id);
     const timing = itemTiming(item);
     const pBadge = priorityBadge(item.priority);
+    const tagBadge = item.tags?.length ? ` [${item.tags.join(", ")}]` : "";
     const dirBadge = item.workingDir ? ` [dir]` : "";
     const recurrenceBadge = item.recurrence && item.scheduledAt
       ? ` [\u{1F504} every ${item.recurrence.interval}, next: ${relativeTimeFuture(item.scheduledAt)}]`
@@ -74,7 +87,7 @@ export async function listCommand(parsed: ParsedArgs): Promise<void> {
       item.recurrence ? recurrenceBadge :
       item.status === Status.SCHEDULED ? scheduledBadge : "";
 
-    console.log(`  ${id}${badge}${pBadge}${dirBadge}  ${item.title}${timing}`);
+    console.log(`  ${id}${badge}${pBadge}${tagBadge}${dirBadge}  ${item.title}${timing}`);
     console.log(`    ${snippet}`);
     console.log();
   }

@@ -8,6 +8,7 @@ import { findPreset } from "../presets.ts";
 import { parsePriority, priorityBadge } from "../priority.ts";
 import type { Priority } from "../priority.ts";
 import { shortId } from "../format.ts";
+import { normalizeTag, mergeTags } from "../tags.ts";
 
 export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Promise<void> {
   const presetName = typeof parsed.flags.preset === "string" ? parsed.flags.preset : undefined;
@@ -112,6 +113,20 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
     process.exit(1);
   }
 
+  // Handle --tag (repeatable)
+  const rawTags = parsed.arrayFlags["tag"] ?? [];
+  let tags: string[] | undefined;
+  if (rawTags.length > 0 || preset?.tags?.length) {
+    try {
+      const normalizedFlags = rawTags.map(normalizeTag);
+      const presetTags = preset?.tags ?? [];
+      tags = mergeTags(presetTags, normalizedFlags);
+    } catch (e) {
+      console.error((e as Error).message);
+      process.exit(1);
+    }
+  }
+
   // Handle --after-item / --depends-on (repeatable)
   const afterItemIds = parsed.arrayFlags["after-item"] ?? [];
   let dependsOn: string[] | undefined;
@@ -156,6 +171,7 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
     ...(branch ? { branch } : {}),
     ...(recurrence ? { recurrence } : {}),
     ...(dependsOn ? { dependsOn } : {}),
+    ...(tags?.length ? { tags } : {}),
   };
 
   await addItem(item);
@@ -165,15 +181,16 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
   } else {
     const presetSuffix = preset ? ` (from preset: ${preset.name})` : "";
     const pBadge = priorityBadge(priority);
+    const tagBadge = tags?.length ? ` [${tags.join(", ")}]` : "";
     if (dependsOn) {
       const depBadge = dependsOn.map(id => shortId(id)).join(", ");
-      console.log(`Added: ${title}${pBadge} (blocked on: ${depBadge})${presetSuffix}`);
+      console.log(`Added: ${title}${pBadge}${tagBadge} (blocked on: ${depBadge})${presetSuffix}`);
     } else if (recurrence) {
-      console.log(`Added: ${title}${pBadge} (recurring every ${recurrence.interval}, next run: ${new Date(scheduledAt!).toLocaleString()})${presetSuffix}`);
+      console.log(`Added: ${title}${pBadge}${tagBadge} (recurring every ${recurrence.interval}, next run: ${new Date(scheduledAt!).toLocaleString()})${presetSuffix}`);
     } else if (scheduledAt) {
-      console.log(`Added: ${title}${pBadge} (scheduled for ${new Date(scheduledAt).toLocaleString()})${presetSuffix}`);
+      console.log(`Added: ${title}${pBadge}${tagBadge} (scheduled for ${new Date(scheduledAt).toLocaleString()})${presetSuffix}`);
     } else {
-      console.log(`Added: ${title}${pBadge}${presetSuffix}`);
+      console.log(`Added: ${title}${pBadge}${tagBadge}${presetSuffix}`);
     }
   }
 }

@@ -9,6 +9,7 @@ import { presetCommand } from "./commands/preset.ts";
 import { reprioritizeCommand } from "./commands/reprioritize.ts";
 import { requeueCommand } from "./commands/requeue.ts";
 import { showCommand } from "./commands/show.ts";
+import { tagCommand, untagCommand } from "./commands/tag.ts";
 import { workerCommand } from "./commands/worker.ts";
 import { createTitleGenerator } from "./titler.ts";
 import { VERSION } from "./constants.ts";
@@ -28,7 +29,7 @@ const FLAG_ALIASES: Record<string, string> = {
   "depends-on": "after-item",
 };
 
-const REPEATABLE_FLAGS = new Set(["after-item"]);
+const REPEATABLE_FLAGS = new Set(["after-item", "tag"]);
 
 function parseArgs(args: string[]): ParsedArgs {
   const flags: Record<string, string | boolean> = {};
@@ -79,6 +80,7 @@ Usage:
   hopper add <description> [--after <timespec>]              Add a work item (optionally scheduled)
   hopper add <description> [--priority high|normal|low]      Add with priority (-p alias)
   hopper add <description> [--dir <path> --branch <branch>]  Add with working directory
+  hopper add <description> [--tag <tag>]                      Add with tags (repeatable)
   hopper add <description> [--after-item <id>]               Add blocked on another item (repeatable)
   hopper add --preset <name> [--after --every]               Create item from preset
   hopper show <id>                   Show full details of an item
@@ -86,6 +88,7 @@ Usage:
   hopper list --all                  Include completed items
   hopper list --completed            Show only completed items
   hopper list --scheduled            Show only scheduled items
+  hopper list --tag <tag>             Filter by tag (repeatable, OR logic)
   hopper list --priority <level>     Filter by priority
   hopper claim [--agent <name>]      Claim next queued item (priority, then FIFO)
   hopper complete <token>            Complete a claimed item
@@ -93,6 +96,8 @@ Usage:
   hopper cancel <id>                 Cancel a queued item
   hopper requeue <id> --reason "…"   Return an in-progress item to queue
   hopper reprioritize <id> <level>   Change priority of a queued/scheduled item
+  hopper tag <id> <tag> [<tag>...]   Add tags to an existing item
+  hopper untag <id> <tag> [<tag>...] Remove tags from an existing item
   hopper preset add <name> <desc> [--dir --branch]  Save a reusable template
   hopper preset list                                List saved presets
   hopper preset remove <name>                       Delete a preset
@@ -154,6 +159,12 @@ async function main(): Promise<void> {
       break;
     case "show":
       await showCommand(parsed);
+      break;
+    case "tag":
+      await tagCommand(parsed);
+      break;
+    case "untag":
+      await untagCommand(parsed);
       break;
     case "preset":
       await presetCommand(parsed);

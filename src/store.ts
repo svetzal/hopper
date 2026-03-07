@@ -24,6 +24,7 @@ export interface Item {
   scheduledAt?: string;
   workingDir?: string;
   branch?: string;
+  tags?: string[];
   dependsOn?: string[];
   recurrence?: {
     interval: string;
@@ -152,6 +153,7 @@ export async function completeItem(token: string, agent?: string, result?: strin
         ...(item.priority ? { priority: item.priority } : {}),
         ...(item.workingDir ? { workingDir: item.workingDir } : {}),
         ...(item.branch ? { branch: item.branch } : {}),
+        ...(item.tags?.length ? { tags: [...item.tags] } : {}),
       };
       items.unshift(recurredItem);
     }
@@ -218,6 +220,25 @@ export async function cancelItem(id: string): Promise<CancelResult> {
 
   await saveItems(items);
   return { item, blockedDependentCount };
+}
+
+export async function updateItemTags(id: string, tags: string[]): Promise<Item> {
+  const items = await loadItems();
+  const item = resolveItem(items, id);
+  const merged = [...new Set([...(item.tags ?? []), ...tags])].sort();
+  item.tags = merged;
+  await saveItems(items);
+  return item;
+}
+
+export async function removeItemTags(id: string, tags: string[]): Promise<Item> {
+  const items = await loadItems();
+  const item = resolveItem(items, id);
+  const tagSet = new Set(tags);
+  item.tags = (item.tags ?? []).filter((t) => !tagSet.has(t));
+  if (item.tags.length === 0) item.tags = undefined;
+  await saveItems(items);
+  return item;
 }
 
 export interface ReprioritizeResult {
