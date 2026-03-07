@@ -4,13 +4,28 @@ import { addItem } from "../store.ts";
 import { Status } from "../constants.ts";
 import type { ItemStatus } from "../constants.ts";
 import { parseTimeSpec, parseDuration } from "../parse-time.ts";
+import { findPreset } from "../presets.ts";
 
 export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Promise<void> {
+  const presetName = typeof parsed.flags.preset === "string" ? parsed.flags.preset : undefined;
+  let preset;
+  if (presetName) {
+    preset = await findPreset(presetName);
+    if (!preset) {
+      console.error(`No preset found with name: ${presetName}`);
+      process.exit(1);
+    }
+  }
+
   let description = parsed.positional[0] ?? "";
 
   if (!description && !process.stdin.isTTY) {
     description = await new Response(Bun.stdin.stream()).text();
     description = description.trim();
+  }
+
+  if (!description && preset) {
+    description = preset.description;
   }
 
   if (!description) {
@@ -21,8 +36,8 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
 
   const title = await titler.generateTitle(description);
 
-  const dir = typeof parsed.flags.dir === "string" ? parsed.flags.dir : undefined;
-  const branch = typeof parsed.flags.branch === "string" ? parsed.flags.branch : undefined;
+  const dir = typeof parsed.flags.dir === "string" ? parsed.flags.dir : preset?.workingDir;
+  const branch = typeof parsed.flags.branch === "string" ? parsed.flags.branch : preset?.branch;
 
   if (dir && !branch) {
     console.error("Error: --branch is required when --dir is set");
@@ -99,11 +114,14 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
 
   if (parsed.flags.json === true) {
     console.log(JSON.stringify(item, null, 2));
-  } else if (recurrence) {
-    console.log(`Added: ${title} (recurring every ${recurrence.interval}, next run: ${new Date(scheduledAt!).toLocaleString()})`);
-  } else if (scheduledAt) {
-    console.log(`Added: ${title} (scheduled for ${new Date(scheduledAt).toLocaleString()})`);
   } else {
-    console.log(`Added: ${title}`);
+    const presetSuffix = preset ? ` (from preset: ${preset.name})` : "";
+    if (recurrence) {
+      console.log(`Added: ${title} (recurring every ${recurrence.interval}, next run: ${new Date(scheduledAt!).toLocaleString()})${presetSuffix}`);
+    } else if (scheduledAt) {
+      console.log(`Added: ${title} (scheduled for ${new Date(scheduledAt).toLocaleString()})${presetSuffix}`);
+    } else {
+      console.log(`Added: ${title}${presetSuffix}`);
+    }
   }
 }

@@ -5,6 +5,7 @@ import { cancelCommand } from "./commands/cancel.ts";
 import { claimCommand } from "./commands/claim.ts";
 import { completeCommand } from "./commands/complete.ts";
 import { listCommand } from "./commands/list.ts";
+import { presetCommand } from "./commands/preset.ts";
 import { requeueCommand } from "./commands/requeue.ts";
 import { showCommand } from "./commands/show.ts";
 import { workerCommand } from "./commands/worker.ts";
@@ -49,6 +50,7 @@ function printHelp(): void {
 Usage:
   hopper add <description> [--after <timespec>]              Add a work item (optionally scheduled)
   hopper add <description> [--dir <path> --branch <branch>]  Add with working directory
+  hopper add --preset <name> [--after --every]               Create item from preset
   hopper show <id>                   Show full details of an item
   hopper list                        List queued + in-progress + scheduled items
   hopper list --all                  Include completed items
@@ -59,6 +61,10 @@ Usage:
   hopper complete <token> --result "…" Attach a result summary
   hopper cancel <id>                 Cancel a queued item
   hopper requeue <id> --reason "…"   Return an in-progress item to queue
+  hopper preset add <name> <desc> [--dir --branch]  Save a reusable template
+  hopper preset list                                List saved presets
+  hopper preset remove <name>                       Delete a preset
+  hopper preset show <name>                         Show preset details
   hopper init                        Install Claude Code skill files
   hopper worker                      Run the Claude worker loop
   hopper worker --once               Process one item then exit
@@ -113,6 +119,9 @@ async function main(): Promise<void> {
       break;
     case "show":
       await showCommand(parsed);
+      break;
+    case "preset":
+      await presetCommand(parsed);
       break;
     case "init": {
       const { initCommand } = await import("./commands/init.ts");
