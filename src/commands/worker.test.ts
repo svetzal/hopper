@@ -117,7 +117,7 @@ describe("processItem", () => {
     expect(claude.runSession).toHaveBeenCalledTimes(1);
     // Hopper commits directly with item title + Claude summary
     expect(git.commitAll).toHaveBeenCalledTimes(1);
-    const commitMsg = (git.commitAll as ReturnType<typeof mock>).mock.calls[0][1];
+    const commitMsg = (git.commitAll as ReturnType<typeof mock>).mock.calls[0]![1];
     expect(commitMsg).toContain("Test task");
     expect(commitMsg).toContain("Fixed the bug.");
   });
