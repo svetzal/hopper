@@ -25,6 +25,7 @@ export async function showCommand(parsed: ParsedArgs): Promise<void> {
     if (item.claimedBy) console.log(`Claimed by:  ${item.claimedBy}`);
     if (item.completedAt) console.log(`Completed:   ${item.completedAt}`);
     if (item.completedBy) console.log(`Completed by: ${item.completedBy}`);
+    if (item.scheduledAt) console.log(`Scheduled:   ${item.scheduledAt}`);
     if (item.workingDir) console.log(`Directory:   ${item.workingDir}`);
     if (item.requeueReason) console.log(`Requeue reason: ${item.requeueReason}`);
     if (item.requeuedBy) console.log(`Requeued by: ${item.requeuedBy}`);

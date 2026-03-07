@@ -20,6 +20,7 @@ export interface Item {
   requeueReason?: string;
   requeuedBy?: string;
   cancelledAt?: string;
+  scheduledAt?: string;
   workingDir?: string;
   branch?: string;
 }
@@ -69,8 +70,13 @@ export async function addItem(item: Item): Promise<void> {
 
 export async function claimNextItem(agent?: string): Promise<Item | null> {
   const items = await loadItems();
+  const now = new Date();
   const queued = items
-    .filter((i) => i.status === Status.QUEUED)
+    .filter((i) => {
+      if (i.status === Status.QUEUED) return true;
+      if (i.status === Status.SCHEDULED && i.scheduledAt && new Date(i.scheduledAt) <= now) return true;
+      return false;
+    })
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
   const next = queued[0];
@@ -145,8 +151,8 @@ export async function requeueItem(id: string, reason: string, agent?: string): P
 export async function cancelItem(id: string): Promise<Item> {
   const items = await loadItems();
   const item = resolveItem(items, id);
-  if (item.status !== Status.QUEUED) {
-    throw new Error(`Cannot cancel item — status is "${item.status}". Only queued items can be cancelled.`);
+  if (item.status !== Status.QUEUED && item.status !== Status.SCHEDULED) {
+    throw new Error(`Cannot cancel item — status is "${item.status}". Only queued or scheduled items can be cancelled.`);
   }
 
   item.status = Status.CANCELLED;

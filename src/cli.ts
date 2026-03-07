@@ -47,11 +47,13 @@ function printHelp(): void {
   console.log(`hopper v${VERSION} — personal work queue
 
 Usage:
-  hopper add <description> [--dir <path> --branch <branch>]  Add a work item (LLM generates title)
+  hopper add <description> [--after <timespec>]              Add a work item (optionally scheduled)
+  hopper add <description> [--dir <path> --branch <branch>]  Add with working directory
   hopper show <id>                   Show full details of an item
-  hopper list                        List queued + in-progress items
+  hopper list                        List queued + in-progress + scheduled items
   hopper list --all                  Include completed items
   hopper list --completed            Show only completed items
+  hopper list --scheduled            Show only scheduled items
   hopper claim [--agent <name>]      Claim next queued item (FIFO)
   hopper complete <token>            Complete a claimed item
   hopper complete <token> --result "…" Attach a result summary
@@ -64,6 +66,7 @@ Usage:
   hopper worker --interval <sec>     Poll interval in seconds (default: 60)
 
 Options:
+  --after     Schedule item for later (e.g. 1h, 30m, tomorrow 9am)
   --dir       Working directory for the task (add command)
   --branch    Git branch for the task (add command, required with --dir)
   --json      Output as JSON

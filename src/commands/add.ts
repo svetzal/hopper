@@ -2,6 +2,8 @@ import type { ParsedArgs } from "../cli.ts";
 import type { TitleGenerator } from "../titler.ts";
 import { addItem } from "../store.ts";
 import { Status } from "../constants.ts";
+import type { ItemStatus } from "../constants.ts";
+import { parseTimeSpec } from "../parse-time.ts";
 
 export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Promise<void> {
   let description = parsed.positional[0] ?? "";
@@ -31,12 +33,23 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
     process.exit(1);
   }
 
+  const afterSpec = typeof parsed.flags.after === "string" ? parsed.flags.after : undefined;
+  let scheduledAt: string | undefined;
+  let status: ItemStatus = Status.QUEUED;
+
+  if (afterSpec) {
+    const scheduledDate = parseTimeSpec(afterSpec);
+    scheduledAt = scheduledDate.toISOString();
+    status = Status.SCHEDULED;
+  }
+
   const item = {
     id: crypto.randomUUID(),
     title,
     description,
-    status: Status.QUEUED,
+    status,
     createdAt: new Date().toISOString(),
+    ...(scheduledAt ? { scheduledAt } : {}),
     ...(dir ? { workingDir: dir } : {}),
     ...(branch ? { branch } : {}),
   };
@@ -45,6 +58,8 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
 
   if (parsed.flags.json === true) {
     console.log(JSON.stringify(item, null, 2));
+  } else if (scheduledAt) {
+    console.log(`Added: ${title} (scheduled for ${new Date(scheduledAt).toLocaleString()})`);
   } else {
     console.log(`Added: ${title}`);
   }

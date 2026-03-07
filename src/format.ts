@@ -13,6 +13,22 @@ export function relativeTime(iso: string): string {
   return `${diffDay}d ago`;
 }
 
+export function relativeTimeFuture(iso: string): string {
+  const now = Date.now();
+  const then = new Date(iso).getTime();
+  const diffMs = then - now;
+
+  if (diffMs <= 0) return "now";
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return `in ${diffSec}s`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `in ${diffMin}m`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `in ${diffHr}h`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `in ${diffDay}d`;
+}
+
 export function formatDuration(startIso: string, endIso: string): string {
   const startMs = new Date(startIso).getTime();
   const endMs = new Date(endIso).getTime();

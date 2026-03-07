@@ -272,7 +272,7 @@ describe("store", () => {
     const item = makeItem({ status: "completed", completedAt: new Date().toISOString() });
     await saveItems([item]);
 
-    await expect(cancelItem(item.id)).rejects.toThrow('Cannot cancel item — status is "completed"');
+    await expect(cancelItem(item.id)).rejects.toThrow("Only queued or scheduled items can be cancelled");
   });
 
   test("cancelItem supports prefix matching", async () => {
@@ -304,6 +304,69 @@ describe("store", () => {
     const items = await loadItems();
     expect(items[0]!.status).toBe("cancelled");
     expect(items[0]!.cancelledAt).toBeDefined();
+  });
+
+  // scheduled item tests
+  test("claimNextItem skips scheduled items that are not yet due", async () => {
+    const futureDate = new Date(Date.now() + 3_600_000).toISOString(); // 1 hour from now
+    const scheduled = makeItem({
+      title: "Scheduled future",
+      status: "scheduled",
+      scheduledAt: futureDate,
+      createdAt: "2025-01-01T00:00:00Z",
+    });
+    await saveItems([scheduled]);
+
+    const claimed = await claimNextItem();
+    expect(claimed).toBeNull();
+  });
+
+  test("claimNextItem claims scheduled items that are due", async () => {
+    const pastDate = new Date(Date.now() - 1000).toISOString(); // 1 second ago
+    const scheduled = makeItem({
+      title: "Scheduled past",
+      status: "scheduled",
+      scheduledAt: pastDate,
+      createdAt: "2025-01-01T00:00:00Z",
+    });
+    await saveItems([scheduled]);
+
+    const claimed = await claimNextItem();
+    expect(claimed).not.toBeNull();
+    expect(claimed!.title).toBe("Scheduled past");
+    expect(claimed!.status).toBe("in_progress");
+  });
+
+  test("claimNextItem prefers queued over not-yet-due scheduled", async () => {
+    const futureDate = new Date(Date.now() + 3_600_000).toISOString();
+    const scheduled = makeItem({
+      title: "Scheduled",
+      status: "scheduled",
+      scheduledAt: futureDate,
+      createdAt: "2025-01-01T00:00:00Z",
+    });
+    const queued = makeItem({
+      title: "Queued",
+      status: "queued",
+      createdAt: "2025-06-01T00:00:00Z",
+    });
+    await saveItems([scheduled, queued]);
+
+    const claimed = await claimNextItem();
+    expect(claimed!.title).toBe("Queued");
+  });
+
+  test("cancelItem cancels a scheduled item", async () => {
+    const item = makeItem({
+      title: "Scheduled cancel",
+      status: "scheduled",
+      scheduledAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+    await saveItems([item]);
+
+    const cancelled = await cancelItem(item.id);
+    expect(cancelled.status).toBe("cancelled");
+    expect(cancelled.cancelledAt).toBeDefined();
   });
 
   // findItem tests
