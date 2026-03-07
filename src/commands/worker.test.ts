@@ -36,6 +36,7 @@ function makeMockGit(): GitGateway {
     worktreeAdd: mock(async () => "hopper/aaaaaaaa"),
     worktreeRemove: mock(async () => {}),
     isWorktreeDirty: mock(async () => false),
+    commitAll: mock(async () => {}),
     mergeWorkBranch: mock(async () => ({
       type: "fast-forward" as const,
       success: true as const,
@@ -103,23 +104,22 @@ describe("processItem", () => {
     expect(git.mergeWorkBranch).toHaveBeenCalledTimes(1);
   });
 
-  test("runs auto-commit when worktree is dirty after Claude session", async () => {
+  test("commits directly when worktree is dirty after Claude session", async () => {
     const item = makeItem({ workingDir: "/repo", branch: "main" });
     const git = makeMockGit();
     (git.isWorktreeDirty as ReturnType<typeof mock>).mockImplementation(async () => true);
-    // After auto-commit, worktree is clean
-    let callCount = 0;
-    (git.isWorktreeDirty as ReturnType<typeof mock>).mockImplementation(async () => {
-      callCount++;
-      return callCount === 1; // dirty first time, clean second
-    });
-    const claude = makeMockClaude();
+    const claude = makeMockClaude(0, "Fixed the bug.");
     const fs = makeMockFs();
 
     await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs });
 
-    // Two Claude sessions: main task + auto-commit
-    expect(claude.runSession).toHaveBeenCalledTimes(2);
+    // Only one Claude session — no auto-commit session
+    expect(claude.runSession).toHaveBeenCalledTimes(1);
+    // Hopper commits directly with item title + Claude summary
+    expect(git.commitAll).toHaveBeenCalledTimes(1);
+    const commitMsg = (git.commitAll as ReturnType<typeof mock>).mock.calls[0][1];
+    expect(commitMsg).toContain("Test task");
+    expect(commitMsg).toContain("Fixed the bug.");
   });
 
   test("two concurrent processItem calls don't interfere", async () => {

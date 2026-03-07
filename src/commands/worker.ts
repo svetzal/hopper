@@ -11,7 +11,7 @@ import type { GitGateway } from "../gateways/git-gateway.ts";
 import { createGitGateway } from "../gateways/git-gateway.ts";
 import { shortId } from "../format.ts";
 import {
-  buildAutoCommitPrompt,
+  buildCommitMessage,
   buildTaskPrompt,
   resolveAuditPaths,
   resolveCompletionAction,
@@ -89,23 +89,15 @@ export async function processItem(
       auditFile,
     );
 
-    // Auto-commit any changes Claude left uncommitted in the worktree
+    // Commit any uncommitted changes Claude left in the worktree
     if (worktreePath) {
       const dirty = await git.isWorktreeDirty(worktreePath);
-      const { shouldAutoCommit } = resolvePostClaudeAction(true, dirty);
-      if (shouldAutoCommit) {
-        log("Uncommitted changes found. Running auto-commit session...");
-        await claude.runSession(
-          buildAutoCommitPrompt(item),
-          worktreePath,
-          auditFile,
-          { append: true },
-        );
-        if (await git.isWorktreeDirty(worktreePath)) {
-          log("Warning: changes still uncommitted after auto-commit attempt.");
-        } else {
-          log("Auto-commit successful.");
-        }
+      const { shouldCommit } = resolvePostClaudeAction(true, dirty);
+      if (shouldCommit) {
+        const commitMsg = buildCommitMessage(item, claudeResult);
+        log("Committing changes...");
+        await git.commitAll(worktreePath, commitMsg);
+        log("Committed.");
       }
     }
 

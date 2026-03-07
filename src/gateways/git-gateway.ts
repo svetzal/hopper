@@ -11,6 +11,7 @@ export interface GitGateway {
   ): Promise<string>;
   worktreeRemove(repoDir: string, worktreePath: string): Promise<void>;
   isWorktreeDirty(worktreePath: string): Promise<boolean>;
+  commitAll(worktreePath: string, message: string): Promise<void>;
   mergeWorkBranch(
     repoDir: string,
     targetBranch: string,
@@ -101,6 +102,31 @@ async function isWorktreeDirty(worktreePath: string): Promise<boolean> {
   return output.trim().length > 0;
 }
 
+async function commitAll(
+  worktreePath: string,
+  message: string,
+): Promise<void> {
+  const addProc = Bun.spawn(["git", "add", "-A"], {
+    cwd: worktreePath,
+    stdout: "ignore",
+    stderr: "pipe",
+  });
+  const addStderr = await new Response(addProc.stderr).text();
+  if ((await addProc.exited) !== 0) {
+    throw new Error(`git add -A failed: ${addStderr.trim()}`);
+  }
+
+  const commitProc = Bun.spawn(["git", "commit", "-m", message], {
+    cwd: worktreePath,
+    stdout: "ignore",
+    stderr: "pipe",
+  });
+  const commitStderr = await new Response(commitProc.stderr).text();
+  if ((await commitProc.exited) !== 0) {
+    throw new Error(`git commit failed: ${commitStderr.trim()}`);
+  }
+}
+
 async function mergeWorkBranch(
   repoDir: string,
   targetBranch: string,
@@ -169,5 +195,5 @@ async function mergeWorkBranch(
 }
 
 export function createGitGateway(): GitGateway {
-  return { worktreeAdd, worktreeRemove, isWorktreeDirty, mergeWorkBranch };
+  return { worktreeAdd, worktreeRemove, isWorktreeDirty, commitAll, mergeWorkBranch };
 }

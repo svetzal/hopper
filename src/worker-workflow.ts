@@ -45,25 +45,26 @@ export function buildTaskPrompt(item: Item): string {
     `You have been assigned the following task:\n\n` +
     `Title: ${item.title}\n` +
     `Description: ${item.description}\n\n` +
-    `Please complete this task. When you are finished, commit your changes ` +
-    `with a descriptive commit message and provide a summary of what you did.`
+    `Please complete this task. Do NOT commit your changes — the caller ` +
+    `will handle committing. When you are finished, provide a clear summary ` +
+    `of what you did.`
   );
 }
 
 /**
- * Build the prompt for a follow-up auto-commit session when Claude left
- * changes uncommitted.
+ * Build a conventional commit message from the item and Claude's summary.
+ *
+ * Format:
+ *   <title>
+ *
+ *   <summary>
  */
-export function buildAutoCommitPrompt(item: Item): string {
-  return (
-    `A work session just completed on the following task but left uncommitted changes:\n\n` +
-    `Title: ${item.title}\n\n` +
-    `Please:\n` +
-    `1. Review the outstanding changes with \`git diff\` and \`git status\`\n` +
-    `2. Stage all changes with \`git add -A\`\n` +
-    `3. Commit with a descriptive message summarising what was done\n\n` +
-    `Do not make any other changes — only commit what is already there.`
-  );
+export function buildCommitMessage(item: Item, claudeResult: string): string {
+  const body = claudeResult.trim();
+  if (body) {
+    return `${item.title}\n\n${body}`;
+  }
+  return item.title;
 }
 
 // ---------------------------------------------------------------------------
@@ -71,16 +72,16 @@ export function buildAutoCommitPrompt(item: Item): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Decide whether a follow-up auto-commit session is needed.
+ * Decide whether Hopper should commit changes on Claude's behalf.
  *
- * Auto-commit only makes sense when the work ran inside a worktree (so git
- * status is scoped to that branch) and Claude left changes uncommitted.
+ * Committing only makes sense when the work ran inside a worktree (so git
+ * status is scoped to that branch) and there are uncommitted changes.
  */
 export function resolvePostClaudeAction(
   hasWorktree: boolean,
   isWorktreeDirty: boolean,
-): { shouldAutoCommit: boolean } {
-  return { shouldAutoCommit: hasWorktree && isWorktreeDirty };
+): { shouldCommit: boolean } {
+  return { shouldCommit: hasWorktree && isWorktreeDirty };
 }
 
 /**

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   resolveWorkSetup,
   buildTaskPrompt,
-  buildAutoCommitPrompt,
+  buildCommitMessage,
   resolvePostClaudeAction,
   resolveMergeAction,
   resolveCompletionAction,
@@ -77,45 +77,48 @@ describe("worker-workflow", () => {
       expect(buildTaskPrompt(item)).toContain("Users cannot log in via OAuth");
     });
 
-    test("instructs Claude to commit and summarise", () => {
+    test("instructs Claude not to commit and to provide a summary", () => {
       const prompt = buildTaskPrompt(makeItem());
-      expect(prompt).toContain("commit");
+      expect(prompt).toContain("Do NOT commit");
       expect(prompt).toContain("summary");
     });
   });
 
-  describe("buildAutoCommitPrompt", () => {
-    test("contains item title", () => {
+  describe("buildCommitMessage", () => {
+    test("uses item title as first line", () => {
       const item = makeItem({ title: "Fix login bug" });
-      expect(buildAutoCommitPrompt(item)).toContain("Fix login bug");
+      const msg = buildCommitMessage(item, "Patched the OAuth flow.");
+      expect(msg.split("\n")[0]).toBe("Fix login bug");
     });
 
-    test("instructs to stage all changes", () => {
-      expect(buildAutoCommitPrompt(makeItem())).toContain("git add -A");
+    test("includes Claude summary as body after blank line", () => {
+      const item = makeItem({ title: "Fix login bug" });
+      const msg = buildCommitMessage(item, "Patched the OAuth flow.");
+      expect(msg).toBe("Fix login bug\n\nPatched the OAuth flow.");
     });
 
-    test("instructs not to make any other changes", () => {
-      expect(buildAutoCommitPrompt(makeItem())).toContain(
-        "Do not make any other changes",
-      );
+    test("returns only title when summary is empty", () => {
+      const item = makeItem({ title: "Fix login bug" });
+      expect(buildCommitMessage(item, "")).toBe("Fix login bug");
+      expect(buildCommitMessage(item, "  \n  ")).toBe("Fix login bug");
     });
   });
 
   describe("resolvePostClaudeAction", () => {
-    test("shouldAutoCommit is true when worktree exists and is dirty", () => {
-      expect(resolvePostClaudeAction(true, true)).toEqual({ shouldAutoCommit: true });
+    test("shouldCommit is true when worktree exists and is dirty", () => {
+      expect(resolvePostClaudeAction(true, true)).toEqual({ shouldCommit: true });
     });
 
-    test("shouldAutoCommit is false when worktree exists but is clean", () => {
-      expect(resolvePostClaudeAction(true, false)).toEqual({ shouldAutoCommit: false });
+    test("shouldCommit is false when worktree exists but is clean", () => {
+      expect(resolvePostClaudeAction(true, false)).toEqual({ shouldCommit: false });
     });
 
-    test("shouldAutoCommit is false when there is no worktree, even if dirty flag is true", () => {
-      expect(resolvePostClaudeAction(false, true)).toEqual({ shouldAutoCommit: false });
+    test("shouldCommit is false when there is no worktree, even if dirty flag is true", () => {
+      expect(resolvePostClaudeAction(false, true)).toEqual({ shouldCommit: false });
     });
 
-    test("shouldAutoCommit is false when no worktree and clean", () => {
-      expect(resolvePostClaudeAction(false, false)).toEqual({ shouldAutoCommit: false });
+    test("shouldCommit is false when no worktree and clean", () => {
+      expect(resolvePostClaudeAction(false, false)).toEqual({ shouldCommit: false });
     });
   });
 
