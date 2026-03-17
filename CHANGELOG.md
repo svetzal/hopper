@@ -7,9 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-03-17
+
 ### Added
 
 - `--times <n>` flag for `add` command to limit the number of recurrences when used with `--every`
+- Worker auto-pushes to origin after successful merge of work branch
 
 ## [1.1.0] - 2026-03-17
 
