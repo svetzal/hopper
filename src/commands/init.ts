@@ -21,11 +21,12 @@ const DEPRECATED_SKILL_DIRS: string[] = [
   ".claude/skills/hopper-worker",
 ];
 
-type FileAction = "created" | "updated" | "up-to-date" | "removed";
+type FileAction = "created" | "updated" | "up-to-date" | "removed" | "skipped";
 
 interface FileResult {
   path: string;
   action: FileAction;
+  warning?: string;
 }
 
 interface InitResult {
@@ -35,13 +36,13 @@ interface InitResult {
   files: FileResult[];
 }
 
-function stampVersion(content: string): string {
+export function stampVersion(content: string): string {
   const closingIndex = content.indexOf("\n---", 1);
   if (closingIndex === -1) return content;
   return content.slice(0, closingIndex) + `\nhopper-version: ${VERSION}` + content.slice(closingIndex);
 }
 
-function stripVersionInfo(content: string): string {
+export function stripVersionInfo(content: string): string {
   // Old format: HTML comment on first line
   if (content.startsWith("<!-- hopper v")) {
     const newlineIndex = content.indexOf("\n");
@@ -53,7 +54,25 @@ function stripVersionInfo(content: string): string {
   return content.replace(/\nhopper-version: .+/g, "");
 }
 
-export async function initCommand(jsonOutput: boolean, global: boolean = false): Promise<void> {
+export function parseInstalledVersion(content: string): string | null {
+  const match = content.match(/\nhopper-version:\s*(.+)/);
+  return match ? match[1]!.trim() : null;
+}
+
+/** Compare two semver strings. Returns -1, 0, or 1. */
+export function compareSemver(a: string, b: string): number {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    const va = pa[i] ?? 0;
+    const vb = pb[i] ?? 0;
+    if (va < vb) return -1;
+    if (va > vb) return 1;
+  }
+  return 0;
+}
+
+export async function initCommand(jsonOutput: boolean, global: boolean = false, force: boolean = false): Promise<void> {
   const baseDir = global ? join(homedir(), ".claude") : process.cwd();
   const results: FileResult[] = [];
 
@@ -64,6 +83,7 @@ export async function initCommand(jsonOutput: boolean, global: boolean = false):
     const stamped = stampVersion(file.content);
 
     let action: FileAction;
+    let warning: string | undefined;
     const fileRef = Bun.file(fullPath);
 
     if (!(await fileRef.exists())) {
@@ -72,6 +92,19 @@ export async function initCommand(jsonOutput: boolean, global: boolean = false):
       action = "created";
     } else {
       const existing = await fileRef.text();
+
+      // Version guard: refuse to overwrite a newer installed skill
+      const installedVersion = parseInstalledVersion(existing);
+      if (installedVersion && compareSemver(installedVersion, VERSION) > 0) {
+        if (!force) {
+          warning = `Installed skill is from hopper v${installedVersion} but this binary is v${VERSION}. Use --force to downgrade.`;
+          action = "skipped";
+          results.push({ path: relPath, action, warning });
+          continue;
+        }
+        warning = `Downgrading skill from v${installedVersion} to v${VERSION} (--force)`;
+      }
+
       const existingBody = stripVersionInfo(existing);
       const newBody = file.content;
 
@@ -86,7 +119,7 @@ export async function initCommand(jsonOutput: boolean, global: boolean = false):
       }
     }
 
-    results.push({ path: relPath, action });
+    results.push({ path: relPath, action, warning });
   }
 
   // Remove deprecated skills
@@ -104,18 +137,20 @@ export async function initCommand(jsonOutput: boolean, global: boolean = false):
   const updated = results.filter(r => r.action === "updated").length;
   const upToDate = results.filter(r => r.action === "up-to-date").length;
   const removed = results.filter(r => r.action === "removed").length;
+  const skipped = results.filter(r => r.action === "skipped").length;
 
   const parts: string[] = [];
   if (created > 0) parts.push(`${created} created`);
   if (updated > 0) parts.push(`${updated} updated`);
   if (upToDate > 0) parts.push(`${upToDate} up to date`);
   if (removed > 0) parts.push(`${removed} removed`);
+  if (skipped > 0) parts.push(`${skipped} skipped`);
   const summary = parts.join(", ");
 
   if (jsonOutput) {
     const output: InitResult = {
-      success: true,
-      message: `Skill files installed: ${summary}`,
+      success: skipped === 0,
+      message: skipped > 0 ? `Skill files skipped: ${summary}` : `Skill files installed: ${summary}`,
       version: VERSION,
       files: results,
     };
@@ -128,13 +163,18 @@ export async function initCommand(jsonOutput: boolean, global: boolean = false):
         r.action === "created" ? "+" :
         r.action === "updated" ? "~" :
         r.action === "removed" ? "-" :
+        r.action === "skipped" ? "!" :
         "=";
       const label =
         r.action === "created" ? "Created" :
         r.action === "updated" ? "Updated" :
         r.action === "removed" ? "Removed" :
+        r.action === "skipped" ? "Skipped" :
         "Up to date";
       console.log(`  ${icon} ${r.path} (${label})`);
+      if (r.warning) {
+        console.log(`    ${r.warning}`);
+      }
     }
     console.log(`\n${summary}`);
   }

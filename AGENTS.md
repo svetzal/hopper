@@ -52,6 +52,14 @@ A pre-push hook runs `bun run lint` and `bun test` automatically.
 - **Skill embedding**: `hopper init` installs `.claude/skills/` files into target repos. The SKILL.md content is embedded at build time via Bun text imports from `skills/`
 - **Gateway pattern**: The worker command's I/O operations (git subprocesses, Claude CLI, filesystem writes) are isolated behind `GitGateway`, `ClaudeGateway`, and `FsGateway` interfaces. The worker accepts these as optional deps for testing. Gateway implementations in `src/gateways/` are thin wrappers with no business logic. All workflow decisions live in the pure functions in `src/worker-workflow.ts`
 
+### Skill Distribution
+
+- **Source of truth**: `skills/` directory in the repo. Each skill has a `SKILL.md` that is embedded at build time via Bun text imports
+- **Install command**: `hopper init [--global] [--force]` copies skill files into `.claude/skills/` (local repo) or `~/.claude/skills/` (global)
+- **Version stamping**: The `VERSION` constant from `src/constants.ts` is written into SKILL.md frontmatter as `hopper-version` at install time
+- **Version guard**: `hopper init` refuses to overwrite an installed skill that has a newer `hopper-version` than the running binary. Use `--force` to downgrade
+- **Release note**: Skill content updates are automatically picked up via embedded imports — no manual version bump needed for skill-only changes
+
 ### Worker integration
 
 `claude_worker.sh` is a shell script that orchestrates the claim-work-complete cycle: claims an item via `hopper claim --json`, runs a `claude --print` session with the task description, then calls `hopper complete` or `hopper requeue` based on exit status.
