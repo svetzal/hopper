@@ -48,6 +48,7 @@ async function presetAddCommand(parsed: ParsedArgs): Promise<void> {
 
   const dir = typeof parsed.flags.dir === "string" ? parsed.flags.dir : undefined;
   const branch = typeof parsed.flags.branch === "string" ? parsed.flags.branch : undefined;
+  const command = typeof parsed.flags.command === "string" ? parsed.flags.command : undefined;
   const force = parsed.flags.force === true;
 
   try {
@@ -57,6 +58,7 @@ async function presetAddCommand(parsed: ParsedArgs): Promise<void> {
         description,
         ...(dir ? { workingDir: dir } : {}),
         ...(branch ? { branch } : {}),
+        ...(command ? { command } : {}),
         createdAt: new Date().toISOString(),
       },
       force
@@ -95,6 +97,7 @@ async function presetListCommand(parsed: ParsedArgs): Promise<void> {
     const extras: string[] = [];
     if (preset.workingDir) extras.push(`dir: ${preset.workingDir}`);
     if (preset.branch) extras.push(`branch: ${preset.branch}`);
+    if (preset.command) extras.push(`command: ${preset.command}`);
     const extraStr = extras.length > 0 ? `  (${extras.join(", ")})` : "";
     console.log(`  ${preset.name}${extraStr}`);
     console.log(`    ${snippet}`);
@@ -144,6 +147,7 @@ async function presetShowCommand(parsed: ParsedArgs): Promise<void> {
   console.log(`Name:        ${preset.name}`);
   if (preset.workingDir) console.log(`Directory:   ${preset.workingDir}`);
   if (preset.branch) console.log(`Branch:      ${preset.branch}`);
+  if (preset.command) console.log(`Command:     ${preset.command}`);
   console.log(`Created:     ${preset.createdAt}`);
   console.log();
   console.log(`Description:`);

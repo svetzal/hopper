@@ -9,7 +9,7 @@ You are acting as a **coordinator** using the `hopper` work queue CLI. Your role
 
 ## What is Hopper?
 
-Hopper is a personal work dispatch system. You queue up substantive coding work, and background Claude Code worker agents claim and execute it autonomously — no human in the loop during execution. Work items flow through:
+Hopper is a personal work dispatch system. You queue up substantive coding work (or arbitrary shell commands), and background worker agents claim and execute it autonomously — no human in the loop during execution. Work items flow through:
 
 ```
 queued -----> (claim) --> in_progress --> (complete) --> completed
@@ -23,7 +23,7 @@ cancelled (terminal)
 Recurring items: completed --> new scheduled copy created automatically
 ```
 
-Each item consumes a full Claude Code session, so items should represent meaningful, well-defined work — not quick fixes or vague ideas.
+Items without a `--command` flag consume a full Claude Code session, so those should represent meaningful, well-defined work — not quick fixes or vague ideas. Items with `--command` run a shell command instead and are useful for automated maintenance, builds, or any scriptable task.
 
 ### Item Statuses
 
@@ -83,8 +83,9 @@ hopper add "<description>" --dir <project-path> --branch <branch-name>
 
 | Flag | Description |
 |------|-------------|
-| `--dir <path>` | Working directory for the task (requires `--branch`) |
-| `--branch <name>` | Git branch for the work (required with `--dir`) |
+| `--dir <path>` | Working directory for the task (requires `--branch` unless `--command` is set) |
+| `--branch <name>` | Git branch for the work (required with `--dir` unless `--command` is set) |
+| `--command <cmd>` | Shell command to run instead of Claude. Worker runs this command directly via `sh -c` |
 | `--priority <level>` / `-p` | Set priority: `high`, `normal` (default), `low` |
 | `--tag <tag>` | Add a tag (repeatable: `--tag api --tag backend`) |
 | `--after <timespec>` | Schedule for later (e.g., `1h`, `30m`, `tomorrow 9am`) |
@@ -95,8 +96,9 @@ hopper add "<description>" --dir <project-path> --branch <branch-name>
 | `--json` | Machine-readable output |
 
 **Notes:**
-- `--dir` and `--branch` give workers the project context they need. Without them, workers won't know where to operate. Always specify these unless the item is for a project that doesn't use git
+- For Claude items, `--dir` and `--branch` give workers the project context they need. Without them, workers won't know where to operate. Always specify these unless the item is for a project that doesn't use git
 - Workers create an isolated git worktree on the specified branch, so work never interferes with whatever is checked out in the main repo
+- For `--command` items, `--dir` alone is sufficient (no `--branch` required) — the command runs in the specified directory. If both `--dir` and `--branch` are set, a worktree is created and the command runs inside it
 - Hopper auto-generates a short title from the description using an LLM
 - `--after-item` creates a BLOCKED item that automatically moves to QUEUED when all dependencies complete. Circular dependencies are detected and rejected
 - `--after` creates a SCHEDULED item. `--every` creates a recurring item that re-schedules itself after each completion
@@ -177,6 +179,7 @@ Presets save item templates for repetitive work patterns:
 
 ```bash
 hopper preset add <name> "<description>" --dir <path> --branch <branch>
+hopper preset add <name> "<description>" --command <cmd> --dir <path>
 hopper preset list
 hopper preset show <name>
 hopper preset remove <name>
@@ -290,6 +293,67 @@ hopper add "Implement GET /api/orders endpoint..." \
   --branch feat/orders \
   --after-item e5f6g7h8
 ```
+
+### Shell command items
+
+```bash
+# Run a build command in a specific directory
+hopper add "Run production build" \
+  --command "npm run build" \
+  --dir ~/Work/Projects/webapp
+
+# Shell command with worktree (runs command on a fresh branch)
+hopper add "Run linter and auto-fix" \
+  --command "npm run lint:fix" \
+  --dir ~/Work/Projects/webapp \
+  --branch chore/lint-fixes
+```
+
+### Hone maintenance and iteration via hopper
+
+`hone maintain` and `hone iterate` are ideal candidates for `--command` items — they're
+self-contained shell commands that update dependencies or improve code quality in a
+specific project. By routing them through hopper you get scheduling, recurrence,
+dependency chaining, and audit logging for free.
+
+```bash
+# One-off maintenance run
+hopper add "Maintain hopper — update deps and verify gates" \
+  --command "hone maintain typescript-bun-cli-craftsperson /Users/svetzal/Work/Projects/Mojility/hopper" \
+  --dir ~/Work/Projects/Mojility/hopper
+
+# One-off iterate (quality improvement cycle)
+hopper add "Iterate on mojentic-py — assess, plan, execute, verify" \
+  --command "hone iterate uv-python-craftsperson /Users/svetzal/Work/Projects/Mojility/mojentic" \
+  --dir ~/Work/Projects/Mojility/mojentic
+
+# Nightly recurring maintenance with a preset
+hopper preset add maintain-hopper "Nightly dependency maintenance for hopper" \
+  --command "hone maintain typescript-bun-cli-craftsperson /Users/svetzal/Work/Projects/Mojility/hopper" \
+  --dir ~/Work/Projects/Mojility/hopper
+hopper add --preset maintain-hopper --every 1d --tag maintenance
+
+# Chain multiple projects so they don't compete for resources
+hopper add "Maintain hone-cli" \
+  --command "hone maintain typescript-bun-cli-craftsperson /Users/svetzal/Work/Projects/Mojility/hone-cli" \
+  --dir ~/Work/Projects/Mojility/hone-cli \
+  --tag maintenance
+# Output: Created item a1b2c3d4-...
+
+hopper add "Maintain hopper" \
+  --command "hone maintain typescript-bun-cli-craftsperson /Users/svetzal/Work/Projects/Mojility/hopper" \
+  --dir ~/Work/Projects/Mojility/hopper \
+  --tag maintenance \
+  --after-item a1b2c3d4
+```
+
+**Tips for hone items:**
+- Use `--dir` so audit logs record which project the command targeted, but `--branch` is
+  usually unnecessary — hone manages its own git operations internally
+- Chain items targeting the same machine with `--after-item` when running under
+  `hopper worker --concurrency` to avoid resource contention
+- Tag maintenance items consistently (e.g. `--tag maintenance`) for easy filtering
+  with `hopper list --tag maintenance`
 
 ### Scheduled and recurring work
 

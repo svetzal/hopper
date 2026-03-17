@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-03-17
+
+### Added
+
+- Arbitrary shell command support via `--command` flag on `add` and `preset add` — worker runs the command via `sh -c` instead of spawning Claude
+- Shell gateway (`src/gateways/shell-gateway.ts`) for command execution with stdout/stderr capture and audit logging
+- `--dir` without `--branch` is now valid when `--command` is set (runs command in that directory without worktree)
+- `command` field displayed in `show`, `preset show`, and `preset list` output
+
 ## [1.0.2] - 2026-03-07
 
 ### Changed
@@ -164,7 +173,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Release workflow: use macos-14 for x64 builds
 
-[Unreleased]: https://github.com/svetzal/hopper/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/svetzal/hopper/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/svetzal/hopper/compare/v1.0.2...v1.1.0
 [1.0.0]: https://github.com/svetzal/hopper/compare/v0.5.0...v1.0.0
 [0.5.0]: https://github.com/svetzal/hopper/compare/v0.4.3...v0.5.0
 [0.4.3]: https://github.com/svetzal/hopper/compare/v0.4.2...v0.4.3

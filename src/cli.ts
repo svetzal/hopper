@@ -80,6 +80,7 @@ Usage:
   hopper add <description> [--after <timespec>]              Add a work item (optionally scheduled)
   hopper add <description> [--priority high|normal|low]      Add with priority (-p alias)
   hopper add <description> [--dir <path> --branch <branch>]  Add with working directory
+  hopper add <description> [--command <cmd>]                 Add a shell command item
   hopper add <description> [--tag <tag>]                      Add with tags (repeatable)
   hopper add <description> [--after-item <id>]               Add blocked on another item (repeatable)
   hopper add --preset <name> [--after --every]               Create item from preset
@@ -98,7 +99,7 @@ Usage:
   hopper reprioritize <id> <level>   Change priority of a queued/scheduled item
   hopper tag <id> <tag> [<tag>...]   Add tags to an existing item
   hopper untag <id> <tag> [<tag>...] Remove tags from an existing item
-  hopper preset add <name> <desc> [--dir --branch]  Save a reusable template
+  hopper preset add <name> <desc> [--dir --branch --command]  Save a reusable template
   hopper preset list                                List saved presets
   hopper preset remove <name>                       Delete a preset
   hopper preset show <name>                         Show preset details
@@ -112,8 +113,9 @@ Usage:
 
 Options:
   --after     Schedule item for later (e.g. 1h, 30m, tomorrow 9am)
+  --command   Shell command to run instead of Claude (add command)
   --dir       Working directory for the task (add command)
-  --branch    Git branch for the task (add command, required with --dir)
+  --branch    Git branch for the task (add command, required with --dir unless --command is set)
   --json      Output as JSON
   --agent     Agent name for claim/complete/worker
   --help      Show this help

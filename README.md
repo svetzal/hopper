@@ -1,6 +1,6 @@
 # Hopper
 
-A personal work queue CLI that distributes tasks to AI agents.
+A personal work queue CLI that distributes tasks to AI agents and shell commands.
 
 Work items flow through a simple lifecycle:
 
@@ -65,6 +65,7 @@ Binaries are standalone — no runtime needed on the target machine.
 
 - `--json` — Machine-readable JSON output (all commands)
 - `--dir <path>` — Working directory for the task (`add`)
+- `--command <cmd>` — Shell command to execute instead of Claude (`add`)
 - `--agent <name>` — Agent identity (`claim`, `complete`, `requeue`)
 - `--result "..."` — Attach a result summary (`complete`)
 - `--reason "..."` — Explain why an item is being requeued (`requeue`)
@@ -104,10 +105,10 @@ Breaks down work into discrete tasks and adds them to the queue. Run `hopper ini
 
 ### Worker
 
-Claims items, executes the described task, and reports back. The included `claude_worker.sh` script automates this loop:
+Claims items, executes the described task, and reports back. The `hopper worker` command automates this loop:
 
 1. Claims the next item via `hopper claim --json`
-2. Runs a `claude --print` session with the task description
+2. If the item has a `command` field, runs that shell command; otherwise runs a `claude --print` session with the task description
 3. Calls `hopper complete` on success or leaves the item for manual requeue on failure
 4. Polls for more work
 

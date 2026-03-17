@@ -4,6 +4,7 @@ import type { Item } from "../store.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
+import type { ShellGateway } from "../gateways/shell-gateway.ts";
 
 // Mock the store module so processItem doesn't touch the real items.json
 import * as store from "../store.ts";
@@ -51,6 +52,12 @@ function makeMockClaude(exitCode = 0, result = "Done."): ClaudeGateway {
   };
 }
 
+function makeMockShell(exitCode = 0, result = "Done."): ShellGateway {
+  return {
+    runCommand: mock(async () => ({ exitCode, result })),
+  };
+}
+
 function makeMockFs(): FsGateway {
   return {
     ensureDir: mock(async () => {}),
@@ -71,7 +78,7 @@ describe("processItem", () => {
     const claude = makeMockClaude(0, "All done.");
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
 
     expect(claude.runSession).toHaveBeenCalledTimes(1);
     expect(completeItemMock).toHaveBeenCalledWith("tok-1234", "test-agent", "All done.");
@@ -86,7 +93,7 @@ describe("processItem", () => {
     const fs = makeMockFs();
     const git = makeMockGit();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
 
     expect(completeItemMock).not.toHaveBeenCalled();
   });
@@ -97,7 +104,7 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
 
     expect(git.worktreeAdd).toHaveBeenCalledTimes(1);
     expect(git.worktreeRemove).toHaveBeenCalledTimes(1);
@@ -111,7 +118,7 @@ describe("processItem", () => {
     const claude = makeMockClaude(0, "Fixed the bug.");
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
 
     // Only one Claude session — no auto-commit session
     expect(claude.runSession).toHaveBeenCalledTimes(1);
@@ -156,8 +163,8 @@ describe("processItem", () => {
 
     // Run both concurrently
     await Promise.all([
-      processItem(item1, "agent", HOPPER_HOME, { git, claude, fs }, 2),
-      processItem(item2, "agent", HOPPER_HOME, { git, claude, fs }, 2),
+      processItem(item1, "agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() }, 2),
+      processItem(item2, "agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() }, 2),
     ]);
 
     // Both should have completed
@@ -177,7 +184,7 @@ describe("processItem", () => {
     console.log = (...args: unknown[]) => logs.push(args.join(" "));
 
     try {
-      await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs }, 2);
+      await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() }, 2);
     } finally {
       console.log = origLog;
     }
@@ -203,12 +210,72 @@ describe("processItem", () => {
     console.log = (...args: unknown[]) => logs.push(args.join(" "));
 
     try {
-      await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs }, 1);
+      await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() }, 1);
     } finally {
       console.log = origLog;
     }
 
     const prefixedLines = logs.filter((l) => l.startsWith("["));
     expect(prefixedLines).toHaveLength(0);
+  });
+
+  test("runs shell command instead of Claude when item has command field", async () => {
+    const item = makeItem({ command: "echo hello" });
+    const git = makeMockGit();
+    const claude = makeMockClaude();
+    const shell = makeMockShell(0, "hello");
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell });
+
+    expect(shell.runCommand).toHaveBeenCalledTimes(1);
+    expect(claude.runSession).not.toHaveBeenCalled();
+    expect(completeItemMock).toHaveBeenCalledWith("tok-1234", "test-agent", "hello");
+  });
+
+  test("does not complete when shell command exits non-zero", async () => {
+    const item = makeItem({ command: "exit 1" });
+    const git = makeMockGit();
+    const claude = makeMockClaude();
+    const shell = makeMockShell(1, "error output");
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell });
+
+    expect(shell.runCommand).toHaveBeenCalledTimes(1);
+    expect(claude.runSession).not.toHaveBeenCalled();
+    expect(completeItemMock).not.toHaveBeenCalled();
+  });
+
+  test("shell command with worktree sets up and tears down worktree", async () => {
+    const item = makeItem({ command: "make build", workingDir: "/repo", branch: "main" });
+    const git = makeMockGit();
+    const claude = makeMockClaude();
+    const shell = makeMockShell(0, "build complete");
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell });
+
+    expect(git.worktreeAdd).toHaveBeenCalledTimes(1);
+    expect(git.worktreeRemove).toHaveBeenCalledTimes(1);
+    expect(shell.runCommand).toHaveBeenCalledTimes(1);
+    expect(claude.runSession).not.toHaveBeenCalled();
+    expect(completeItemMock).toHaveBeenCalled();
+  });
+
+  test("shell command with only workingDir (no branch) runs in that directory", async () => {
+    const item = makeItem({ command: "ls", workingDir: "/some/dir" });
+    const git = makeMockGit();
+    const claude = makeMockClaude();
+    const shell = makeMockShell(0, "file1 file2");
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell });
+
+    expect(git.worktreeAdd).not.toHaveBeenCalled();
+    expect(shell.runCommand).toHaveBeenCalledTimes(1);
+    const callArgs = (shell.runCommand as ReturnType<typeof mock>).mock.calls[0]!;
+    expect(callArgs[0]).toBe("ls");
+    expect(callArgs[1]).toBe("/some/dir");
   });
 });

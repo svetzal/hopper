@@ -7,6 +7,7 @@ export interface Preset {
   description: string;
   workingDir?: string;
   branch?: string;
+  command?: string;
   tags?: string[];
   createdAt: string;
 }

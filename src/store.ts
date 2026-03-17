@@ -24,6 +24,7 @@ export interface Item {
   scheduledAt?: string;
   workingDir?: string;
   branch?: string;
+  command?: string;
   tags?: string[];
   dependsOn?: string[];
   recurrence?: {
@@ -153,6 +154,7 @@ export async function completeItem(token: string, agent?: string, result?: strin
         ...(item.priority ? { priority: item.priority } : {}),
         ...(item.workingDir ? { workingDir: item.workingDir } : {}),
         ...(item.branch ? { branch: item.branch } : {}),
+        ...(item.command ? { command: item.command } : {}),
         ...(item.tags?.length ? { tags: [...item.tags] } : {}),
       };
       items.unshift(recurredItem);

@@ -28,6 +28,7 @@ export async function showCommand(parsed: ParsedArgs): Promise<void> {
     if (item.tags?.length) console.log(`Tags:        ${item.tags.join(", ")}`);
     if (item.scheduledAt) console.log(`Scheduled:   ${item.scheduledAt}`);
     if (item.workingDir) console.log(`Directory:   ${item.workingDir}`);
+    if (item.command) console.log(`Command:     ${item.command}`);
     if (item.dependsOn?.length) console.log(`Depends on:  ${item.dependsOn.map(id => shortId(id)).join(", ")}`);
     if (item.requeueReason) console.log(`Requeue reason: ${item.requeueReason}`);
     if (item.requeuedBy) console.log(`Requeued by: ${item.requeuedBy}`);

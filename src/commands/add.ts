@@ -42,9 +42,10 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
 
   const dir = typeof parsed.flags.dir === "string" ? parsed.flags.dir : preset?.workingDir;
   const branch = typeof parsed.flags.branch === "string" ? parsed.flags.branch : preset?.branch;
+  const command = typeof parsed.flags.command === "string" ? parsed.flags.command : preset?.command;
 
-  if (dir && !branch) {
-    console.error("Error: --branch is required when --dir is set");
+  if (dir && !branch && !command) {
+    console.error("Error: --branch is required when --dir is set (unless --command is provided)");
     process.exit(1);
   }
   if (branch && !dir) {
@@ -169,6 +170,7 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
     ...(scheduledAt ? { scheduledAt } : {}),
     ...(dir ? { workingDir: dir } : {}),
     ...(branch ? { branch } : {}),
+    ...(command ? { command } : {}),
     ...(recurrence ? { recurrence } : {}),
     ...(dependsOn ? { dependsOn } : {}),
     ...(tags?.length ? { tags } : {}),

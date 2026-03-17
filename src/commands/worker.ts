@@ -9,6 +9,8 @@ import type { FsGateway } from "../gateways/fs-gateway.ts";
 import { createFsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import { createGitGateway } from "../gateways/git-gateway.ts";
+import type { ShellGateway } from "../gateways/shell-gateway.ts";
+import { createShellGateway } from "../gateways/shell-gateway.ts";
 import { shortId } from "../format.ts";
 import {
   buildCommitMessage,
@@ -24,6 +26,7 @@ export interface WorkerDeps {
   git?: GitGateway;
   claude?: ClaudeGateway;
   fs?: FsGateway;
+  shell?: ShellGateway;
 }
 
 type LogFn = (message: string) => void;
@@ -40,10 +43,10 @@ export async function processItem(
   item: Item,
   agentName: string,
   hopperHome: string,
-  deps: { git: GitGateway; claude: ClaudeGateway; fs: FsGateway },
+  deps: { git: GitGateway; claude: ClaudeGateway; fs: FsGateway; shell: ShellGateway },
   concurrency: number = 1,
 ): Promise<void> {
-  const { git, claude, fs } = deps;
+  const { git, claude, fs, shell } = deps;
   const log = createLogger(item.id, concurrency);
 
   log(`Claimed: ${item.title}`);
@@ -51,6 +54,7 @@ export async function processItem(
   log(`ID:      ${item.id}`);
   if (item.workingDir) log(`Dir:     ${item.workingDir}`);
   if (item.branch) log(`Branch:  ${item.branch}`);
+  if (item.command) log(`Command: ${item.command}`);
 
   const { auditDir, auditFile, resultFile } = resolveAuditPaths(
     item.id,
@@ -81,20 +85,32 @@ export async function processItem(
       workDir = workSetup.dir;
     }
 
-    const prompt = buildTaskPrompt(item);
-    log(`Starting Claude session...\nAudit log: ${auditFile}`);
-    const { exitCode: claudeExit, result: claudeResult } = await claude.runSession(
-      prompt,
-      workDir ?? process.cwd(),
-      auditFile,
-    );
+    let exitCode: number;
+    let result: string;
+
+    if (item.command) {
+      log(`Starting command...\nAudit log: ${auditFile}`);
+      ({ exitCode, result } = await shell.runCommand(
+        item.command,
+        workDir ?? process.cwd(),
+        auditFile,
+      ));
+    } else {
+      const prompt = buildTaskPrompt(item);
+      log(`Starting Claude session...\nAudit log: ${auditFile}`);
+      ({ exitCode, result } = await claude.runSession(
+        prompt,
+        workDir ?? process.cwd(),
+        auditFile,
+      ));
+    }
 
     // Commit any uncommitted changes Claude left in the worktree
     if (worktreePath) {
       const dirty = await git.isWorktreeDirty(worktreePath);
       const { shouldCommit } = resolvePostClaudeAction(true, dirty);
       if (shouldCommit) {
-        const commitMsg = buildCommitMessage(item, claudeResult);
+        const commitMsg = buildCommitMessage(item, result);
         log("Committing changes...");
         await git.commitAll(worktreePath, commitMsg);
         log("Committed.");
@@ -110,7 +126,7 @@ export async function processItem(
 
     // Merge work branch back to target (only on clean Claude exit)
     let mergeNote = "";
-    const { shouldMerge } = resolveMergeAction(claudeExit, workBranch, item);
+    const { shouldMerge } = resolveMergeAction(exitCode, workBranch, item);
     if (shouldMerge && workBranch && item.workingDir && item.branch) {
       log(`Merging ${workBranch} → ${item.branch}...`);
       const mergeResult = await git.mergeWorkBranch(
@@ -126,14 +142,15 @@ export async function processItem(
     }
 
     const { action, result: finalResult } = resolveCompletionAction(
-      claudeExit,
-      claudeResult,
+      exitCode,
+      result,
       mergeNote,
     );
     await fs.writeFile(resultFile, finalResult);
 
-    log("--- Claude Output ---");
-    log(claudeResult);
+    const outputLabel = item.command ? "Command" : "Claude";
+    log(`--- ${outputLabel} Output ---`);
+    log(result);
     if (mergeNote) log(mergeNote.trim());
     log("---------------------");
 
@@ -145,7 +162,8 @@ export async function processItem(
         log(`Re-queued: ${completed.title} (next run: ${new Date(recurred.scheduledAt!).toLocaleString()})`);
       }
     } else {
-      log(`Claude session failed for: ${item.title} (${item.id})`);
+      const sessionLabel = item.command ? "Command" : "Claude session";
+      log(`${sessionLabel} failed for: ${item.title} (${item.id})`);
       if (workBranch) log(`Work branch ${workBranch} preserved for review.`);
       log(`Use 'hopper requeue ${item.id} --reason "..."' to retry.`);
     }
@@ -164,6 +182,7 @@ export async function workerCommand(
   const git = deps?.git ?? createGitGateway();
   const claude = deps?.claude ?? createClaudeGateway();
   const fs = deps?.fs ?? createFsGateway();
+  const shell = deps?.shell ?? createShellGateway();
 
   const agentName =
     typeof parsed.flags.agent === "string" ? parsed.flags.agent : "claude-worker";
@@ -228,7 +247,7 @@ export async function workerCommand(
       if (!item) break;
 
       claimedAny = true;
-      const task = processItem(item, agentName, hopperHome, { git, claude, fs }, concurrency)
+      const task = processItem(item, agentName, hopperHome, { git, claude, fs, shell }, concurrency)
         .catch((err) => {
           console.error(`Error processing item ${shortId(item.id)}: ${err}`);
         })
