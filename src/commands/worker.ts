@@ -136,7 +136,13 @@ export async function processItem(
       );
       log(mergeResult.message);
       mergeNote = `\n\n---\nMerge: ${mergeResult.message}`;
-      if (!mergeResult.success) {
+      if (mergeResult.success) {
+        const pushResult = await git.push(item.workingDir, item.branch!);
+        log(pushResult.message);
+        if (!pushResult.success) {
+          mergeNote += `\nPush: ${pushResult.message}`;
+        }
+      } else {
         log(`Action required: manually merge branch ${workBranch}.`);
       }
     }

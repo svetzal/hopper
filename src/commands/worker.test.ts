@@ -43,6 +43,7 @@ function makeMockGit(): GitGateway {
       success: true as const,
       message: "Merged.",
     })),
+    push: mock(async () => ({ success: true, message: "Pushed main to origin." })),
   };
 }
 

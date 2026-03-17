@@ -17,6 +17,7 @@ export interface GitGateway {
     targetBranch: string,
     workBranch: string,
   ): Promise<MergeOutcome>;
+  push(repoDir: string, branch: string): Promise<{ success: boolean; message: string }>;
 }
 
 async function worktreeAdd(
@@ -194,6 +195,21 @@ async function mergeWorkBranch(
   };
 }
 
+async function push(
+  repoDir: string,
+  branch: string,
+): Promise<{ success: boolean; message: string }> {
+  const proc = Bun.spawn(
+    ["git", "push", "origin", branch],
+    { cwd: repoDir, stdout: "ignore", stderr: "pipe" },
+  );
+  const stderr = await new Response(proc.stderr).text();
+  if ((await proc.exited) !== 0) {
+    return { success: false, message: `Push failed: ${stderr.trim()}` };
+  }
+  return { success: true, message: `Pushed ${branch} to origin.` };
+}
+
 export function createGitGateway(): GitGateway {
-  return { worktreeAdd, worktreeRemove, isWorktreeDirty, commitAll, mergeWorkBranch };
+  return { worktreeAdd, worktreeRemove, isWorktreeDirty, commitAll, mergeWorkBranch, push };
 }
