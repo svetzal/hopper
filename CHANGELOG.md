@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-03-17
+
+### Added
+
+- Version guard on `hopper init` — refuses to overwrite a newer skill with an older binary unless `--force` is used
+- `--force` flag for `hopper init` to bypass version guard
+- Skill Distribution section in AGENTS.md documenting the init workflow
+
 ## [1.2.0] - 2026-03-17
 
 ### Added
