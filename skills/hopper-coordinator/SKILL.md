@@ -90,6 +90,7 @@ hopper add "<description>" --dir <project-path> --branch <branch-name>
 | `--tag <tag>` | Add a tag (repeatable: `--tag api --tag backend`) |
 | `--after <timespec>` | Schedule for later (e.g., `1h`, `30m`, `tomorrow 9am`) |
 | `--every <duration>` | Make recurring (e.g., `4h`, `1d`). Minimum 5 minutes |
+| `--times <n>` | Limit recurrences to n total runs (requires `--every`) |
 | `--until <timespec>` | End date for recurrence (requires `--every`) |
 | `--after-item <id>` | Block on another item (repeatable for multiple dependencies) |
 | `--preset <name>` | Create from a saved preset template |
@@ -101,7 +102,7 @@ hopper add "<description>" --dir <project-path> --branch <branch-name>
 - For `--command` items, `--dir` alone is sufficient (no `--branch` required) — the command runs in the specified directory. If both `--dir` and `--branch` are set, a worktree is created and the command runs inside it
 - Hopper auto-generates a short title from the description using an LLM
 - `--after-item` creates a BLOCKED item that automatically moves to QUEUED when all dependencies complete. Circular dependencies are detected and rejected
-- `--after` creates a SCHEDULED item. `--every` creates a recurring item that re-schedules itself after each completion
+- `--after` creates a SCHEDULED item. `--every` creates a recurring item that re-schedules itself after each completion. `--times` limits how many times it recurs
 - `--depends-on` is an alias for `--after-item`
 
 **Writing good descriptions:**
@@ -369,6 +370,9 @@ hopper add "Check for outdated dependencies and update patch versions..." \
   --dir ~/Work/Projects/app \
   --branch chore/dep-updates \
   --every 1d
+
+# Limited recurrence — run smoke tests 3 times, 10 minutes apart
+hopper add "Run smoke tests" --command "npm test" --every 10m --times 3
 ```
 
 ### Monitoring and managing the queue

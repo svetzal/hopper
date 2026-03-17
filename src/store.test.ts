@@ -532,6 +532,49 @@ describe("store", () => {
     expect(claimed!.title).toBe("High");
   });
 
+  test("completeItem decrements remainingRuns on recurred item", async () => {
+    const item = makeItem({
+      title: "Limited recurring",
+      recurrence: { interval: "1h", intervalMs: 3_600_000, remainingRuns: 2 },
+    });
+    await saveItems([item]);
+    const claimed = await claimNextItem("agent");
+    const { recurred } = await completeItem(claimed!.claimToken!, "agent");
+
+    expect(recurred).toBeDefined();
+    expect(recurred!.recurrence!.remainingRuns).toBe(1);
+  });
+
+  test("completeItem stops recurrence when remainingRuns reaches 0", async () => {
+    const item = makeItem({
+      title: "Last run",
+      recurrence: { interval: "1h", intervalMs: 3_600_000, remainingRuns: 0 },
+    });
+    await saveItems([item]);
+    const claimed = await claimNextItem("agent");
+    const { completed, recurred } = await completeItem(claimed!.claimToken!, "agent");
+
+    expect(completed.status).toBe("completed");
+    expect(recurred).toBeUndefined();
+
+    const items = await loadItems();
+    expect(items).toHaveLength(1);
+    expect(items[0]!.status).toBe("completed");
+  });
+
+  test("completeItem recurs normally when remainingRuns is not set", async () => {
+    const item = makeItem({
+      title: "Unlimited recurring",
+      recurrence: { interval: "1h", intervalMs: 3_600_000 },
+    });
+    await saveItems([item]);
+    const claimed = await claimNextItem("agent");
+    const { recurred } = await completeItem(claimed!.claimToken!, "agent");
+
+    expect(recurred).toBeDefined();
+    expect(recurred!.recurrence!.remainingRuns).toBeUndefined();
+  });
+
   test("completeItem preserves priority on recurred item", async () => {
     const item = makeItem({
       title: "Priority recurring",

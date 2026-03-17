@@ -69,6 +69,9 @@ Binaries are standalone — no runtime needed on the target machine.
 - `--agent <name>` — Agent identity (`claim`, `complete`, `requeue`)
 - `--result "..."` — Attach a result summary (`complete`)
 - `--reason "..."` — Explain why an item is being requeued (`requeue`)
+- `--every <duration>` — Make recurring (e.g. `4h`, `1d`). Minimum 5 minutes (`add`)
+- `--times <n>` — Limit recurrences to n total runs, requires `--every` (`add`)
+- `--until <timespec>` — End date for recurrence, requires `--every` (`add`)
 - `--all` — Include completed items (`list`)
 - `--completed` — Show only completed items (`list`)
 

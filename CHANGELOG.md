@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `--times <n>` flag for `add` command to limit the number of recurrences when used with `--every`
+
 ## [1.1.0] - 2026-03-17
 
 ### Added

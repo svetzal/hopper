@@ -29,6 +29,16 @@ export async function showCommand(parsed: ParsedArgs): Promise<void> {
     if (item.scheduledAt) console.log(`Scheduled:   ${item.scheduledAt}`);
     if (item.workingDir) console.log(`Directory:   ${item.workingDir}`);
     if (item.command) console.log(`Command:     ${item.command}`);
+    if (item.recurrence) {
+      let recurrenceStr = `every ${item.recurrence.interval}`;
+      if (item.recurrence.remainingRuns !== undefined) {
+        recurrenceStr += ` (${item.recurrence.remainingRuns} runs remaining)`;
+      }
+      if (item.recurrence.until) {
+        recurrenceStr += ` until ${item.recurrence.until}`;
+      }
+      console.log(`Recurrence:  ${recurrenceStr}`);
+    }
     if (item.dependsOn?.length) console.log(`Depends on:  ${item.dependsOn.map(id => shortId(id)).join(", ")}`);
     if (item.requeueReason) console.log(`Requeue reason: ${item.requeueReason}`);
     if (item.requeuedBy) console.log(`Requeued by: ${item.requeuedBy}`);

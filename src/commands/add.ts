@@ -67,10 +67,25 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
   const afterSpec = typeof parsed.flags.after === "string" ? parsed.flags.after : undefined;
   const everySpec = typeof parsed.flags.every === "string" ? parsed.flags.every : undefined;
   const untilSpec = typeof parsed.flags.until === "string" ? parsed.flags.until : undefined;
+  const timesSpec = typeof parsed.flags.times === "string" ? parsed.flags.times : undefined;
+
+  if (timesSpec && !everySpec) {
+    console.error("Error: --times requires --every");
+    process.exit(1);
+  }
+
+  let timesValue: number | undefined;
+  if (timesSpec) {
+    timesValue = parseInt(timesSpec, 10);
+    if (!Number.isInteger(timesValue) || timesValue < 1) {
+      console.error("Error: --times must be a positive integer");
+      process.exit(1);
+    }
+  }
 
   let scheduledAt: string | undefined;
   let status: ItemStatus = Status.QUEUED;
-  let recurrence: { interval: string; intervalMs: number; until?: string } | undefined;
+  let recurrence: { interval: string; intervalMs: number; until?: string; remainingRuns?: number } | undefined;
 
   if (everySpec) {
     let intervalMs: number;
@@ -95,6 +110,10 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
     status = Status.SCHEDULED;
 
     recurrence = { interval: everySpec, intervalMs };
+
+    if (timesValue !== undefined) {
+      recurrence.remainingRuns = timesValue - 1;
+    }
 
     if (untilSpec) {
       const untilDate = parseTimeSpec(untilSpec);

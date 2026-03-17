@@ -113,6 +113,9 @@ Usage:
 
 Options:
   --after     Schedule item for later (e.g. 1h, 30m, tomorrow 9am)
+  --every     Make recurring (e.g. 4h, 1d). Minimum 5 minutes
+  --times <n> Limit recurrences to n runs (requires --every)
+  --until     End date for recurrence (requires --every)
   --command   Shell command to run instead of Claude (add command)
   --dir       Working directory for the task (add command)
   --branch    Git branch for the task (add command, required with --dir unless --command is set)

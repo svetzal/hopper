@@ -31,6 +31,7 @@ export interface Item {
     interval: string;
     intervalMs: number;
     until?: string;
+    remainingRuns?: number;
   };
 }
 
@@ -142,7 +143,12 @@ export async function completeItem(token: string, agent?: string, result?: strin
   if (item.recurrence) {
     const now = Date.now();
     const untilExpired = item.recurrence.until && new Date(item.recurrence.until).getTime() <= now;
-    if (!untilExpired) {
+    const runsExhausted = item.recurrence.remainingRuns !== undefined && item.recurrence.remainingRuns <= 0;
+    if (!untilExpired && !runsExhausted) {
+      const nextRecurrence = { ...item.recurrence };
+      if (nextRecurrence.remainingRuns !== undefined) {
+        nextRecurrence.remainingRuns = nextRecurrence.remainingRuns - 1;
+      }
       recurredItem = {
         id: crypto.randomUUID(),
         title: item.title,
@@ -150,7 +156,7 @@ export async function completeItem(token: string, agent?: string, result?: strin
         status: Status.SCHEDULED,
         createdAt: new Date().toISOString(),
         scheduledAt: new Date(now + item.recurrence.intervalMs).toISOString(),
-        recurrence: { ...item.recurrence },
+        recurrence: nextRecurrence,
         ...(item.priority ? { priority: item.priority } : {}),
         ...(item.workingDir ? { workingDir: item.workingDir } : {}),
         ...(item.branch ? { branch: item.branch } : {}),

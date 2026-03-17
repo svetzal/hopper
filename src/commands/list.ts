@@ -72,7 +72,7 @@ export async function listCommand(parsed: ParsedArgs): Promise<void> {
     const tagBadge = item.tags?.length ? ` [${item.tags.join(", ")}]` : "";
     const dirBadge = item.workingDir ? ` [dir]` : "";
     const recurrenceBadge = item.recurrence && item.scheduledAt
-      ? ` [\u{1F504} every ${item.recurrence.interval}, next: ${relativeTimeFuture(item.scheduledAt)}]`
+      ? ` [\u{1F504} every ${item.recurrence.interval}${item.recurrence.remainingRuns !== undefined ? `, ${item.recurrence.remainingRuns} left` : ""}, next: ${relativeTimeFuture(item.scheduledAt)}]`
       : "";
     const scheduledBadge = item.status === Status.SCHEDULED && item.scheduledAt && !item.recurrence
       ? ` [scheduled ${relativeTimeFuture(item.scheduledAt)}]`
