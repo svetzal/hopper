@@ -64,6 +64,15 @@ A pre-push hook runs `bun run lint` and `bun test` automatically.
 
 `claude_worker.sh` is a shell script that orchestrates the claim-work-complete cycle: claims an item via `hopper claim --json`, runs a `claude --print` session with the task description, then calls `hopper complete` or `hopper requeue` based on exit status.
 
+## Local Installation
+
+```bash
+brew tap svetzal/tap
+brew install hopper
+```
+
+To upgrade: `brew upgrade hopper`
+
 ## Release process
 
 The version number lives in two places that must stay in sync:
