@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parsePriority, priorityBadge } from "./priority.ts";
+import { parsePriority, priorityBadge, comparePriority } from "./priority.ts";
 
 describe("parsePriority", () => {
   test("parses full names", () => {
@@ -44,5 +44,33 @@ describe("priorityBadge", () => {
 
   test("returns empty string for undefined", () => {
     expect(priorityBadge(undefined)).toBe("");
+  });
+});
+
+describe("comparePriority", () => {
+  test("high sorts before normal (returns negative)", () => {
+    expect(comparePriority("high", "normal")).toBeLessThan(0);
+  });
+
+  test("normal sorts before low (returns negative)", () => {
+    expect(comparePriority("normal", "low")).toBeLessThan(0);
+  });
+
+  test("high sorts before low (returns negative)", () => {
+    expect(comparePriority("high", "low")).toBeLessThan(0);
+  });
+
+  test("same priority returns 0", () => {
+    expect(comparePriority("high", "high")).toBe(0);
+    expect(comparePriority("normal", "normal")).toBe(0);
+    expect(comparePriority("low", "low")).toBe(0);
+  });
+
+  test("undefined is treated as normal", () => {
+    expect(comparePriority(undefined, "normal")).toBe(0);
+    expect(comparePriority("normal", undefined)).toBe(0);
+    expect(comparePriority(undefined, undefined)).toBe(0);
+    expect(comparePriority("high", undefined)).toBeLessThan(0);
+    expect(comparePriority(undefined, "low")).toBeLessThan(0);
   });
 });

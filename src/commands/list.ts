@@ -3,7 +3,7 @@ import { loadItems } from "../store.ts";
 import { Status } from "../constants.ts";
 import type { Item } from "../store.ts";
 import { relativeTime, relativeTimeFuture, formatDuration, shortId } from "../format.ts";
-import { parsePriority, priorityBadge } from "../priority.ts";
+import { parsePriority, priorityBadge, comparePriority } from "../priority.ts";
 import { normalizeTag, matchesTags } from "../tags.ts";
 
 export async function listCommand(parsed: ParsedArgs): Promise<void> {
@@ -42,11 +42,9 @@ export async function listCommand(parsed: ParsedArgs): Promise<void> {
     }
   }
 
-  const priorityOrder = { high: 0, normal: 1, low: 2 };
   items.sort((a, b) => {
-    const pa = priorityOrder[a.priority ?? 'normal'];
-    const pb = priorityOrder[b.priority ?? 'normal'];
-    if (pa !== pb) return pa - pb;
+    const pc = comparePriority(a.priority, b.priority);
+    if (pc !== 0) return pc;
     return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
   });
 

@@ -4,6 +4,7 @@ import { homedir } from "os";
 import { join } from "path";
 import { Status } from "./constants.ts";
 import type { ItemStatus } from "./constants.ts";
+import { comparePriority } from "./priority.ts";
 
 export interface Item {
   id: string;
@@ -88,10 +89,8 @@ export async function claimNextItem(agent?: string): Promise<Item | null> {
       return false;
     })
     .sort((a, b) => {
-      const priorityOrder = { high: 0, normal: 1, low: 2 };
-      const pa = priorityOrder[a.priority ?? 'normal'];
-      const pb = priorityOrder[b.priority ?? 'normal'];
-      if (pa !== pb) return pa - pb;
+      const pc = comparePriority(a.priority, b.priority);
+      if (pc !== 0) return pc;
       return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
     });
 

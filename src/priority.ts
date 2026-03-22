@@ -24,3 +24,14 @@ export function priorityBadge(priority: Priority | undefined): string {
   if (priority === 'low') return ' [\u{1F535} low]';
   return '';
 }
+
+const PRIORITY_ORDER: Record<Priority, number> = { high: 0, normal: 1, low: 2 };
+
+/**
+ * Compare two priorities for sorting. Returns negative if `a` sorts before `b`,
+ * positive if `a` sorts after `b`, zero if equal.
+ * Undefined priorities are treated as 'normal'.
+ */
+export function comparePriority(a: Priority | undefined, b: Priority | undefined): number {
+  return PRIORITY_ORDER[a ?? 'normal'] - PRIORITY_ORDER[b ?? 'normal'];
+}

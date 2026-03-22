@@ -1,16 +1,22 @@
 import type { ParsedArgs } from "../cli.ts";
 import type { TitleGenerator } from "../titler.ts";
 import { addItem, loadItems } from "../store.ts";
-import { Status } from "../constants.ts";
-import type { ItemStatus } from "../constants.ts";
-import { parseTimeSpec, parseDuration } from "../parse-time.ts";
 import { findPreset } from "../presets.ts";
 import { parsePriority, priorityBadge } from "../priority.ts";
-import type { Priority } from "../priority.ts";
 import { shortId } from "../format.ts";
 import { normalizeTag, mergeTags } from "../tags.ts";
+import { Status } from "../constants.ts";
+import {
+  validateDirBranch,
+  validateTimesSpec,
+  resolveScheduling,
+  resolveDependencies,
+  buildNewItem,
+  formatValidationError,
+} from "../add-workflow.ts";
 
 export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Promise<void> {
+  // 1. Resolve preset (I/O)
   const presetName = typeof parsed.flags.preset === "string" ? parsed.flags.preset : undefined;
   let preset;
   if (presetName) {
@@ -21,6 +27,7 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
     }
   }
 
+  // 2. Get description from args or stdin (I/O)
   let description = parsed.positional[0] ?? "";
 
   if (!description && !process.stdin.isTTY) {
@@ -32,28 +39,29 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
     description = preset.description;
   }
 
+  // 3. Validate description exists
   if (!description) {
-    console.error("Usage: hopper add <description>");
-    console.error('  or:  echo "description" | hopper add');
+    console.error(formatValidationError({ code: "MISSING_DESCRIPTION" }));
     process.exit(1);
   }
 
+  // 4. Generate title (I/O)
   const title = await titler.generateTitle(description);
 
+  // 5. Resolve dir/branch/command from args + preset
   const dir = typeof parsed.flags.dir === "string" ? parsed.flags.dir : preset?.workingDir;
   const branch = typeof parsed.flags.branch === "string" ? parsed.flags.branch : preset?.branch;
   const command = typeof parsed.flags.command === "string" ? parsed.flags.command : preset?.command;
 
-  if (dir && !branch && !command) {
-    console.error("Error: --branch is required when --dir is set (unless --command is provided)");
-    process.exit(1);
-  }
-  if (branch && !dir) {
-    console.error("Error: --branch requires --dir");
+  // 6. Validate dir/branch combination
+  const dirBranchError = validateDirBranch(dir, branch, command);
+  if (dirBranchError) {
+    console.error(formatValidationError(dirBranchError));
     process.exit(1);
   }
 
-  let priority: Priority | undefined;
+  // 7. Parse priority
+  let priority;
   const priorityFlag = typeof parsed.flags.priority === "string" ? parsed.flags.priority : undefined;
   if (priorityFlag) {
     try {
@@ -64,76 +72,25 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
     }
   }
 
-  const afterSpec = typeof parsed.flags.after === "string" ? parsed.flags.after : undefined;
+  // 8. Validate --times spec
   const everySpec = typeof parsed.flags.every === "string" ? parsed.flags.every : undefined;
-  const untilSpec = typeof parsed.flags.until === "string" ? parsed.flags.until : undefined;
   const timesSpec = typeof parsed.flags.times === "string" ? parsed.flags.times : undefined;
-
-  if (timesSpec && !everySpec) {
-    console.error("Error: --times requires --every");
+  const timesResult = validateTimesSpec(timesSpec, everySpec);
+  if ("error" in timesResult) {
+    console.error(formatValidationError(timesResult.error));
     process.exit(1);
   }
 
-  let timesValue: number | undefined;
-  if (timesSpec) {
-    timesValue = parseInt(timesSpec, 10);
-    if (!Number.isInteger(timesValue) || timesValue < 1) {
-      console.error("Error: --times must be a positive integer");
-      process.exit(1);
-    }
-  }
-
-  let scheduledAt: string | undefined;
-  let status: ItemStatus = Status.QUEUED;
-  let recurrence: { interval: string; intervalMs: number; until?: string; remainingRuns?: number } | undefined;
-
-  if (everySpec) {
-    let intervalMs: number;
-    try {
-      intervalMs = parseDuration(everySpec);
-    } catch {
-      console.error(`Error: --every requires a relative duration (e.g. 4h, 30m, 1d), got "${everySpec}"`);
-      process.exit(1);
-    }
-
-    const MIN_INTERVAL_MS = 5 * 60_000; // 5 minutes
-    if (intervalMs < MIN_INTERVAL_MS) {
-      console.error("Error: minimum recurrence interval is 5 minutes");
-      process.exit(1);
-    }
-
-    if (afterSpec) {
-      scheduledAt = parseTimeSpec(afterSpec).toISOString();
-    } else {
-      scheduledAt = new Date(Date.now() + intervalMs).toISOString();
-    }
-    status = Status.SCHEDULED;
-
-    recurrence = { interval: everySpec, intervalMs };
-
-    if (timesValue !== undefined) {
-      recurrence.remainingRuns = timesValue - 1;
-    }
-
-    if (untilSpec) {
-      const untilDate = parseTimeSpec(untilSpec);
-      if (untilDate.getTime() <= new Date(scheduledAt).getTime()) {
-        console.error("Error: --until must be after the scheduled start time");
-        process.exit(1);
-      }
-      recurrence.until = untilDate.toISOString();
-    }
-  } else if (afterSpec) {
-    scheduledAt = parseTimeSpec(afterSpec).toISOString();
-    status = Status.SCHEDULED;
-  }
-
-  if (untilSpec && !everySpec) {
-    console.error("Error: --until requires --every");
+  // 9. Resolve scheduling
+  const afterSpec = typeof parsed.flags.after === "string" ? parsed.flags.after : undefined;
+  const untilSpec = typeof parsed.flags.until === "string" ? parsed.flags.until : undefined;
+  const schedulingResult = resolveScheduling(everySpec, afterSpec, untilSpec, timesResult.value, new Date());
+  if ("error" in schedulingResult) {
+    console.error(formatValidationError(schedulingResult.error));
     process.exit(1);
   }
 
-  // Handle --tag (repeatable)
+  // 10. Normalize tags
   const rawTags = parsed.arrayFlags["tag"] ?? [];
   let tags: string[] | undefined;
   if (rawTags.length > 0 || preset?.tags?.length) {
@@ -147,56 +104,46 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
     }
   }
 
-  // Handle --after-item / --depends-on (repeatable)
+  // 11. Resolve dependencies (I/O)
   const afterItemIds = parsed.arrayFlags["after-item"] ?? [];
   let dependsOn: string[] | undefined;
+  let itemStatus = schedulingResult.status;
 
   if (afterItemIds.length > 0) {
     const allItems = await loadItems();
-    const resolvedIds: string[] = [];
-
-    for (const idPrefix of afterItemIds) {
-      const matches = allItems.filter((i) => i.id === idPrefix || i.id.startsWith(idPrefix));
-      if (matches.length === 0) {
-        console.error(`No item found with id: ${idPrefix}`);
-        process.exit(1);
-      }
-      if (matches.length > 1) {
-        console.error(`Ambiguous id prefix "${idPrefix}" matches ${matches.length} items. Use a longer prefix.`);
-        process.exit(1);
-      }
-      const dep = matches[0]!;
-      if (dep.status === Status.COMPLETED) {
-        console.warn(`Warning: dependency ${shortId(dep.id)} is already completed`);
-      }
-      resolvedIds.push(dep.id);
+    const depResult = resolveDependencies(afterItemIds, allItems);
+    if (!depResult.ok) {
+      console.error(formatValidationError(depResult.error));
+      process.exit(1);
     }
-
-    // Check for circular dependencies among the specified deps
-    detectCycle(resolvedIds, allItems);
-
-    dependsOn = resolvedIds;
-    status = Status.BLOCKED;
+    for (const warning of depResult.warnings) {
+      console.warn(warning);
+    }
+    dependsOn = depResult.resolvedIds;
+    itemStatus = Status.BLOCKED;
   }
 
-  const item = {
+  // 12. Build item
+  const item = buildNewItem({
     id: crypto.randomUUID(),
     title,
     description,
-    status,
+    status: itemStatus,
     createdAt: new Date().toISOString(),
-    ...(priority && priority !== 'normal' ? { priority } : {}),
-    ...(scheduledAt ? { scheduledAt } : {}),
-    ...(dir ? { workingDir: dir } : {}),
-    ...(branch ? { branch } : {}),
-    ...(command ? { command } : {}),
-    ...(recurrence ? { recurrence } : {}),
-    ...(dependsOn ? { dependsOn } : {}),
-    ...(tags?.length ? { tags } : {}),
-  };
+    priority,
+    scheduledAt: schedulingResult.scheduledAt,
+    dir,
+    branch,
+    command,
+    recurrence: schedulingResult.recurrence,
+    dependsOn,
+    tags,
+  });
 
+  // 13. Save item (I/O)
   await addItem(item);
 
+  // 14. Print output (I/O)
   if (parsed.flags.json === true) {
     console.log(JSON.stringify(item, null, 2));
   } else {
@@ -206,39 +153,12 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
     if (dependsOn) {
       const depBadge = dependsOn.map(id => shortId(id)).join(", ");
       console.log(`Added: ${title}${pBadge}${tagBadge} (blocked on: ${depBadge})${presetSuffix}`);
-    } else if (recurrence) {
-      console.log(`Added: ${title}${pBadge}${tagBadge} (recurring every ${recurrence.interval}, next run: ${new Date(scheduledAt!).toLocaleString()})${presetSuffix}`);
-    } else if (scheduledAt) {
-      console.log(`Added: ${title}${pBadge}${tagBadge} (scheduled for ${new Date(scheduledAt).toLocaleString()})${presetSuffix}`);
+    } else if (schedulingResult.recurrence) {
+      console.log(`Added: ${title}${pBadge}${tagBadge} (recurring every ${schedulingResult.recurrence.interval}, next run: ${new Date(schedulingResult.scheduledAt!).toLocaleString()})${presetSuffix}`);
+    } else if (schedulingResult.scheduledAt) {
+      console.log(`Added: ${title}${pBadge}${tagBadge} (scheduled for ${new Date(schedulingResult.scheduledAt).toLocaleString()})${presetSuffix}`);
     } else {
       console.log(`Added: ${title}${pBadge}${tagBadge}${presetSuffix}`);
-    }
-  }
-}
-
-function detectCycle(depIds: string[], allItems: import("../store.ts").Item[]): void {
-  const depSet = new Set(depIds);
-
-  for (const startId of depIds) {
-    const visited = new Set<string>();
-    const stack = [startId];
-
-    while (stack.length > 0) {
-      const current = stack.pop()!;
-      if (visited.has(current)) continue;
-      visited.add(current);
-
-      const item = allItems.find((i) => i.id === current);
-      if (!item?.dependsOn) continue;
-
-      for (const parentId of item.dependsOn) {
-        if (depSet.has(parentId)) {
-          // A dependency of our deps leads back to another of our deps — cycle
-          console.error(`Circular dependency detected`);
-          process.exit(1);
-        }
-        stack.push(parentId);
-      }
     }
   }
 }
