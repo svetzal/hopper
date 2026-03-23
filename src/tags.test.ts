@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { normalizeTag, mergeTags, matchesTags } from "./tags.ts";
+import { matchesTags, mergeTags, normalizeTag } from "./tags.ts";
 
 describe("normalizeTag", () => {
   test("lowercases input", () => {

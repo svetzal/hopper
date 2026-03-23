@@ -1,21 +1,21 @@
-import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm } from "fs/promises";
-import { join } from "path";
-import { tmpdir } from "os";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { Item } from "./store.ts";
 import {
-  loadItems,
-  saveItems,
   addItem,
-  setStoreDir,
-  getStorePath,
+  cancelItem,
   claimNextItem,
   completeItem,
-  requeueItem,
-  cancelItem,
   findItem,
+  getStorePath,
+  loadItems,
   reprioritizeItem,
+  requeueItem,
+  saveItems,
+  setStoreDir,
 } from "./store.ts";
-import type { Item } from "./store.ts";
 
 describe("store", () => {
   let tempDir: string;
@@ -51,8 +51,8 @@ describe("store", () => {
 
     const loaded = await loadItems();
     expect(loaded).toHaveLength(2);
-    expect(loaded[0]!.title).toBe("First");
-    expect(loaded[1]!.title).toBe("Second");
+    expect(loaded[0]?.title).toBe("First");
+    expect(loaded[1]?.title).toBe("Second");
   });
 
   test("saveItems creates directory if missing", async () => {
@@ -70,8 +70,8 @@ describe("store", () => {
 
     const loaded = await loadItems();
     expect(loaded).toHaveLength(2);
-    expect(loaded[0]!.title).toBe("New");
-    expect(loaded[1]!.title).toBe("Existing");
+    expect(loaded[0]?.title).toBe("New");
+    expect(loaded[1]?.title).toBe("Existing");
   });
 
   test("addItem works when no file exists yet", async () => {
@@ -79,7 +79,7 @@ describe("store", () => {
 
     const loaded = await loadItems();
     expect(loaded).toHaveLength(1);
-    expect(loaded[0]!.title).toBe("First ever");
+    expect(loaded[0]?.title).toBe("First ever");
   });
 
   test("getStorePath returns path inside store dir", () => {
@@ -94,7 +94,7 @@ describe("store", () => {
     await Bun.write(getStorePath(), JSON.stringify(legacy));
 
     const loaded = await loadItems();
-    expect(loaded[0]!.status).toBe("queued");
+    expect(loaded[0]?.status).toBe("queued");
   });
 
   // claimNextItem tests
@@ -105,11 +105,11 @@ describe("store", () => {
 
     const claimed = await claimNextItem("test-agent");
     expect(claimed).not.toBeNull();
-    expect(claimed!.title).toBe("Older");
-    expect(claimed!.status).toBe("in_progress");
-    expect(claimed!.claimedBy).toBe("test-agent");
-    expect(claimed!.claimToken).toBeDefined();
-    expect(claimed!.claimedAt).toBeDefined();
+    expect(claimed?.title).toBe("Older");
+    expect(claimed?.status).toBe("in_progress");
+    expect(claimed?.claimedBy).toBe("test-agent");
+    expect(claimed?.claimToken).toBeDefined();
+    expect(claimed?.claimedAt).toBeDefined();
   });
 
   test("claimNextItem returns null when queue is empty", async () => {
@@ -131,24 +131,24 @@ describe("store", () => {
     await saveItems([inProgress, queued]);
 
     const claimed = await claimNextItem();
-    expect(claimed!.title).toBe("Queued");
+    expect(claimed?.title).toBe("Queued");
   });
 
   test("claimNextItem populates all claim fields", async () => {
     await saveItems([makeItem()]);
 
     const claimed = await claimNextItem("my-agent");
-    expect(claimed!.status).toBe("in_progress");
-    expect(claimed!.claimedAt).toBeTruthy();
-    expect(claimed!.claimedBy).toBe("my-agent");
-    expect(claimed!.claimToken).toBeTruthy();
+    expect(claimed?.status).toBe("in_progress");
+    expect(claimed?.claimedAt).toBeTruthy();
+    expect(claimed?.claimedBy).toBe("my-agent");
+    expect(claimed?.claimToken).toBeTruthy();
   });
 
   // completeItem tests
   test("completeItem completes with valid token", async () => {
     await saveItems([makeItem()]);
     const claimed = await claimNextItem("agent");
-    const token = claimed!.claimToken!;
+    const token = claimed?.claimToken as string;
 
     const { completed } = await completeItem(token, "agent");
     expect(completed.status).toBe("completed");
@@ -167,40 +167,40 @@ describe("store", () => {
   test("completeItem stores result when provided", async () => {
     await saveItems([makeItem()]);
     const claimed = await claimNextItem("agent");
-    const token = claimed!.claimToken!;
+    const token = claimed?.claimToken as string;
 
     const { completed } = await completeItem(token, "agent", "Fixed the login bug");
     expect(completed.result).toBe("Fixed the login bug");
 
     const items = await loadItems();
-    expect(items[0]!.result).toBe("Fixed the login bug");
+    expect(items[0]?.result).toBe("Fixed the login bug");
   });
 
   test("completeItem leaves result undefined when not provided", async () => {
     await saveItems([makeItem()]);
     const claimed = await claimNextItem("agent");
-    const { completed } = await completeItem(claimed!.claimToken!, "agent");
+    const { completed } = await completeItem(claimed?.claimToken as string, "agent");
     expect(completed.result).toBeUndefined();
   });
 
   test("completeItem clears claim token after completion", async () => {
     await saveItems([makeItem()]);
     const claimed = await claimNextItem();
-    await completeItem(claimed!.claimToken!);
+    await completeItem(claimed?.claimToken as string);
 
     const items = await loadItems();
     // The first item might be a recurred item, find the completed one
-    const completedItem = items.find(i => i.status === "completed");
-    expect(completedItem!.claimToken).toBeUndefined();
+    const completedItem = items.find((i) => i.status === "completed");
+    expect(completedItem?.claimToken).toBeUndefined();
   });
 
   test("completeItem sets timestamps", async () => {
     await saveItems([makeItem()]);
     const claimed = await claimNextItem();
-    const { completed } = await completeItem(claimed!.claimToken!);
+    const { completed } = await completeItem(claimed?.claimToken as string);
 
     expect(completed.completedAt).toBeTruthy();
-    expect(new Date(completed.completedAt!).getTime()).toBeGreaterThan(0);
+    expect(new Date(completed.completedAt as string).getTime()).toBeGreaterThan(0);
   });
 
   // requeueItem tests
@@ -208,7 +208,7 @@ describe("store", () => {
     const item = makeItem();
     await saveItems([item]);
     const claimed = await claimNextItem();
-    const requeued = await requeueItem(claimed!.id, "needs more info");
+    const requeued = await requeueItem(claimed?.id as string, "needs more info");
 
     expect(requeued.status).toBe("queued");
     expect(requeued.requeueReason).toBe("needs more info");
@@ -227,7 +227,7 @@ describe("store", () => {
   test("requeueItem clears claim fields", async () => {
     await saveItems([makeItem()]);
     const claimed = await claimNextItem("agent");
-    const requeued = await requeueItem(claimed!.id, "blocked");
+    const requeued = await requeueItem(claimed?.id as string, "blocked");
 
     expect(requeued.claimedAt).toBeUndefined();
     expect(requeued.claimedBy).toBeUndefined();
@@ -247,8 +247,16 @@ describe("store", () => {
   });
 
   test("requeueItem throws on ambiguous prefix", async () => {
-    const a = makeItem({ id: "abcd0000-0000-0000-0000-000000000000", status: "in_progress", claimedAt: new Date().toISOString() });
-    const b = makeItem({ id: "abcd1111-0000-0000-0000-000000000000", status: "in_progress", claimedAt: new Date().toISOString() });
+    const a = makeItem({
+      id: "abcd0000-0000-0000-0000-000000000000",
+      status: "in_progress",
+      claimedAt: new Date().toISOString(),
+    });
+    const b = makeItem({
+      id: "abcd1111-0000-0000-0000-000000000000",
+      status: "in_progress",
+      claimedAt: new Date().toISOString(),
+    });
     await saveItems([a, b]);
     await expect(requeueItem("abcd", "reason")).rejects.toThrow("Ambiguous id prefix");
   });
@@ -268,14 +276,18 @@ describe("store", () => {
     const item = makeItem({ status: "in_progress", claimedAt: new Date().toISOString() });
     await saveItems([item]);
 
-    await expect(cancelItem(item.id)).rejects.toThrow('Cannot cancel item — status is "in_progress"');
+    await expect(cancelItem(item.id)).rejects.toThrow(
+      'Cannot cancel item — status is "in_progress"',
+    );
   });
 
   test("cancelItem rejects completed items", async () => {
     const item = makeItem({ status: "completed", completedAt: new Date().toISOString() });
     await saveItems([item]);
 
-    await expect(cancelItem(item.id)).rejects.toThrow("Only queued, scheduled, or blocked items can be cancelled");
+    await expect(cancelItem(item.id)).rejects.toThrow(
+      "Only queued, scheduled, or blocked items can be cancelled",
+    );
   });
 
   test("cancelItem supports prefix matching", async () => {
@@ -305,8 +317,8 @@ describe("store", () => {
     await cancelItem(item.id);
 
     const items = await loadItems();
-    expect(items[0]!.status).toBe("cancelled");
-    expect(items[0]!.cancelledAt).toBeDefined();
+    expect(items[0]?.status).toBe("cancelled");
+    expect(items[0]?.cancelledAt).toBeDefined();
   });
 
   // scheduled item tests
@@ -336,8 +348,8 @@ describe("store", () => {
 
     const claimed = await claimNextItem();
     expect(claimed).not.toBeNull();
-    expect(claimed!.title).toBe("Scheduled past");
-    expect(claimed!.status).toBe("in_progress");
+    expect(claimed?.title).toBe("Scheduled past");
+    expect(claimed?.status).toBe("in_progress");
   });
 
   test("claimNextItem prefers queued over not-yet-due scheduled", async () => {
@@ -356,7 +368,7 @@ describe("store", () => {
     await saveItems([scheduled, queued]);
 
     const claimed = await claimNextItem();
-    expect(claimed!.title).toBe("Queued");
+    expect(claimed?.title).toBe("Queued");
   });
 
   test("cancelItem cancels a scheduled item", async () => {
@@ -409,14 +421,14 @@ describe("store", () => {
     await addItem(item);
 
     const claimed = await claimNextItem("agent");
-    expect(claimed!.workingDir).toBe("/tmp/my-project");
+    expect(claimed?.workingDir).toBe("/tmp/my-project");
 
-    const { completed } = await completeItem(claimed!.claimToken!, "agent", "done");
+    const { completed } = await completeItem(claimed?.claimToken as string, "agent", "done");
     expect(completed.workingDir).toBe("/tmp/my-project");
 
     const items = await loadItems();
-    const completedItem = items.find(i => i.status === "completed");
-    expect(completedItem!.workingDir).toBe("/tmp/my-project");
+    const completedItem = items.find((i) => i.status === "completed");
+    expect(completedItem?.workingDir).toBe("/tmp/my-project");
   });
 
   test("items without workingDir still work (backward compat)", async () => {
@@ -425,9 +437,9 @@ describe("store", () => {
 
     await addItem(item);
     const claimed = await claimNextItem("agent");
-    expect(claimed!.workingDir).toBeUndefined();
+    expect(claimed?.workingDir).toBeUndefined();
 
-    const { completed } = await completeItem(claimed!.claimToken!, "agent");
+    const { completed } = await completeItem(claimed?.claimToken as string, "agent");
     expect(completed.workingDir).toBeUndefined();
   });
 
@@ -439,24 +451,28 @@ describe("store", () => {
     });
     await saveItems([item]);
     const claimed = await claimNextItem("agent");
-    const { completed, recurred } = await completeItem(claimed!.claimToken!, "agent", "done");
+    const { completed, recurred } = await completeItem(
+      claimed?.claimToken as string,
+      "agent",
+      "done",
+    );
 
     expect(completed.status).toBe("completed");
     expect(recurred).toBeDefined();
-    expect(recurred!.status).toBe("scheduled");
-    expect(recurred!.title).toBe("Recurring task");
-    expect(recurred!.recurrence).toEqual({ interval: "4h", intervalMs: 4 * 3_600_000 });
-    expect(recurred!.id).not.toBe(completed.id);
+    expect(recurred?.status).toBe("scheduled");
+    expect(recurred?.title).toBe("Recurring task");
+    expect(recurred?.recurrence).toEqual({ interval: "4h", intervalMs: 4 * 3_600_000 });
+    expect(recurred?.id).not.toBe(completed.id);
 
-    const scheduledTime = new Date(recurred!.scheduledAt!).getTime();
+    const scheduledTime = new Date(recurred?.scheduledAt as string).getTime();
     const expectedTime = Date.now() + 4 * 3_600_000;
     expect(scheduledTime).toBeGreaterThanOrEqual(expectedTime - 200);
     expect(scheduledTime).toBeLessThanOrEqual(expectedTime + 200);
 
     const items = await loadItems();
     expect(items).toHaveLength(2);
-    expect(items.filter(i => i.status === "scheduled")).toHaveLength(1);
-    expect(items.filter(i => i.status === "completed")).toHaveLength(1);
+    expect(items.filter((i) => i.status === "scheduled")).toHaveLength(1);
+    expect(items.filter((i) => i.status === "completed")).toHaveLength(1);
   });
 
   test("completeItem does not re-queue when recurrence.until has passed", async () => {
@@ -470,14 +486,14 @@ describe("store", () => {
     });
     await saveItems([item]);
     const claimed = await claimNextItem("agent");
-    const { completed, recurred } = await completeItem(claimed!.claimToken!, "agent");
+    const { completed, recurred } = await completeItem(claimed?.claimToken as string, "agent");
 
     expect(completed.status).toBe("completed");
     expect(recurred).toBeUndefined();
 
     const items = await loadItems();
     expect(items).toHaveLength(1);
-    expect(items[0]!.status).toBe("completed");
+    expect(items[0]?.status).toBe("completed");
   });
 
   test("completeItem preserves workingDir and branch on recurred item", async () => {
@@ -489,10 +505,10 @@ describe("store", () => {
     });
     await saveItems([item]);
     const claimed = await claimNextItem("agent");
-    const { recurred } = await completeItem(claimed!.claimToken!, "agent");
+    const { recurred } = await completeItem(claimed?.claimToken as string, "agent");
 
-    expect(recurred!.workingDir).toBe("/tmp/project");
-    expect(recurred!.branch).toBe("main");
+    expect(recurred?.workingDir).toBe("/tmp/project");
+    expect(recurred?.branch).toBe("main");
   });
 
   // priority tests
@@ -502,7 +518,7 @@ describe("store", () => {
     await saveItems([normal, high]);
 
     const claimed = await claimNextItem();
-    expect(claimed!.title).toBe("High");
+    expect(claimed?.title).toBe("High");
   });
 
   test("claimNextItem returns normal-priority item before low", async () => {
@@ -511,7 +527,7 @@ describe("store", () => {
     await saveItems([low, normal]);
 
     const claimed = await claimNextItem();
-    expect(claimed!.title).toBe("Normal");
+    expect(claimed?.title).toBe("Normal");
   });
 
   test("claimNextItem returns older item first within same priority", async () => {
@@ -520,7 +536,7 @@ describe("store", () => {
     await saveItems([newer, older]);
 
     const claimed = await claimNextItem();
-    expect(claimed!.title).toBe("Older");
+    expect(claimed?.title).toBe("Older");
   });
 
   test("items without priority field treated as normal", async () => {
@@ -529,7 +545,7 @@ describe("store", () => {
     await saveItems([noPriority, high]);
 
     const claimed = await claimNextItem();
-    expect(claimed!.title).toBe("High");
+    expect(claimed?.title).toBe("High");
   });
 
   test("completeItem decrements remainingRuns on recurred item", async () => {
@@ -539,10 +555,10 @@ describe("store", () => {
     });
     await saveItems([item]);
     const claimed = await claimNextItem("agent");
-    const { recurred } = await completeItem(claimed!.claimToken!, "agent");
+    const { recurred } = await completeItem(claimed?.claimToken as string, "agent");
 
     expect(recurred).toBeDefined();
-    expect(recurred!.recurrence!.remainingRuns).toBe(1);
+    expect(recurred?.recurrence?.remainingRuns).toBe(1);
   });
 
   test("completeItem stops recurrence when remainingRuns reaches 0", async () => {
@@ -552,14 +568,14 @@ describe("store", () => {
     });
     await saveItems([item]);
     const claimed = await claimNextItem("agent");
-    const { completed, recurred } = await completeItem(claimed!.claimToken!, "agent");
+    const { completed, recurred } = await completeItem(claimed?.claimToken as string, "agent");
 
     expect(completed.status).toBe("completed");
     expect(recurred).toBeUndefined();
 
     const items = await loadItems();
     expect(items).toHaveLength(1);
-    expect(items[0]!.status).toBe("completed");
+    expect(items[0]?.status).toBe("completed");
   });
 
   test("completeItem recurs normally when remainingRuns is not set", async () => {
@@ -569,10 +585,10 @@ describe("store", () => {
     });
     await saveItems([item]);
     const claimed = await claimNextItem("agent");
-    const { recurred } = await completeItem(claimed!.claimToken!, "agent");
+    const { recurred } = await completeItem(claimed?.claimToken as string, "agent");
 
     expect(recurred).toBeDefined();
-    expect(recurred!.recurrence!.remainingRuns).toBeUndefined();
+    expect(recurred?.recurrence?.remainingRuns).toBeUndefined();
   });
 
   test("completeItem preserves priority on recurred item", async () => {
@@ -583,9 +599,9 @@ describe("store", () => {
     });
     await saveItems([item]);
     const claimed = await claimNextItem("agent");
-    const { recurred } = await completeItem(claimed!.claimToken!, "agent");
+    const { recurred } = await completeItem(claimed?.claimToken as string, "agent");
 
-    expect(recurred!.priority).toBe("high");
+    expect(recurred?.priority).toBe("high");
   });
 
   // reprioritize tests
@@ -598,7 +614,7 @@ describe("store", () => {
     expect(oldPriority).toBe("normal");
 
     const items = await loadItems();
-    expect(items[0]!.priority).toBe("high");
+    expect(items[0]?.priority).toBe("high");
   });
 
   test("reprioritizeItem changes priority on scheduled item", async () => {
@@ -639,7 +655,7 @@ describe("store", () => {
     await saveItems([dep, blocked]);
 
     const claimed = await claimNextItem();
-    expect(claimed!.title).toBe("Dep");
+    expect(claimed?.title).toBe("Dep");
   });
 
   test("completing dependency unblocks dependent item to queued", async () => {
@@ -652,12 +668,12 @@ describe("store", () => {
     await saveItems([dep, blocked]);
 
     const claimed = await claimNextItem();
-    expect(claimed!.title).toBe("Dep");
-    await completeItem(claimed!.claimToken!, "agent");
+    expect(claimed?.title).toBe("Dep");
+    await completeItem(claimed?.claimToken as string, "agent");
 
     const items = await loadItems();
-    const unblockedItem = items.find(i => i.title === "Blocked");
-    expect(unblockedItem!.status).toBe("queued");
+    const unblockedItem = items.find((i) => i.title === "Blocked");
+    expect(unblockedItem?.status).toBe("queued");
   });
 
   test("completing dependency unblocks dependent with scheduledAt to scheduled", async () => {
@@ -671,11 +687,11 @@ describe("store", () => {
     await saveItems([dep, blocked]);
 
     const claimed = await claimNextItem();
-    await completeItem(claimed!.claimToken!, "agent");
+    await completeItem(claimed?.claimToken as string, "agent");
 
     const items = await loadItems();
-    const unblockedItem = items.find(i => i.title === "Blocked");
-    expect(unblockedItem!.status).toBe("scheduled");
+    const unblockedItem = items.find((i) => i.title === "Blocked");
+    expect(unblockedItem?.status).toBe("scheduled");
   });
 
   test("multiple dependencies: all must complete before unblock", async () => {
@@ -690,20 +706,20 @@ describe("store", () => {
 
     // Complete dep1
     const claimed1 = await claimNextItem();
-    await completeItem(claimed1!.claimToken!, "agent");
+    await completeItem(claimed1?.claimToken as string, "agent");
 
     let items = await loadItems();
-    let blockedItem = items.find(i => i.title === "Blocked");
-    expect(blockedItem!.status).toBe("blocked");
+    let blockedItem = items.find((i) => i.title === "Blocked");
+    expect(blockedItem?.status).toBe("blocked");
 
     // Complete dep2
     const claimed2 = await claimNextItem();
-    expect(claimed2!.title).toBe("Dep2");
-    await completeItem(claimed2!.claimToken!, "agent");
+    expect(claimed2?.title).toBe("Dep2");
+    await completeItem(claimed2?.claimToken as string, "agent");
 
     items = await loadItems();
-    blockedItem = items.find(i => i.title === "Blocked");
-    expect(blockedItem!.status).toBe("queued");
+    blockedItem = items.find((i) => i.title === "Blocked");
+    expect(blockedItem?.status).toBe("queued");
   });
 
   test("partial completion: item stays blocked", async () => {
@@ -717,11 +733,11 @@ describe("store", () => {
     await saveItems([dep1, dep2, blocked]);
 
     const claimed = await claimNextItem();
-    await completeItem(claimed!.claimToken!, "agent");
+    await completeItem(claimed?.claimToken as string, "agent");
 
     const items = await loadItems();
-    const blockedItem = items.find(i => i.title === "Blocked");
-    expect(blockedItem!.status).toBe("blocked");
+    const blockedItem = items.find((i) => i.title === "Blocked");
+    expect(blockedItem?.status).toBe("blocked");
   });
 
   test("cancelled dependency: blocked item stays blocked", async () => {
@@ -736,8 +752,8 @@ describe("store", () => {
     await cancelItem(dep.id);
 
     const items = await loadItems();
-    const blockedItem = items.find(i => i.title === "Blocked");
-    expect(blockedItem!.status).toBe("blocked");
+    const blockedItem = items.find((i) => i.title === "Blocked");
+    expect(blockedItem?.status).toBe("blocked");
   });
 
   test("cancelItem returns blocked dependent count", async () => {
@@ -784,17 +800,17 @@ describe("store", () => {
     // Complete the unrelated item
     const claimed = await claimNextItem();
     // Could claim either dep or unrelated, let's be specific
-    if (claimed!.title === "Unrelated") {
-      await completeItem(claimed!.claimToken!, "agent");
+    if (claimed?.title === "Unrelated") {
+      await completeItem(claimed?.claimToken as string, "agent");
       const items = await loadItems();
-      const blockedItem = items.find(i => i.title === "Blocked");
-      expect(blockedItem!.status).toBe("blocked");
+      const blockedItem = items.find((i) => i.title === "Blocked");
+      expect(blockedItem?.status).toBe("blocked");
     } else {
       // If dep was claimed first, complete it and verify unblock
-      await completeItem(claimed!.claimToken!, "agent");
+      await completeItem(claimed?.claimToken as string, "agent");
       const items = await loadItems();
-      const blockedItem = items.find(i => i.title === "Blocked");
-      expect(blockedItem!.status).toBe("queued");
+      const blockedItem = items.find((i) => i.title === "Blocked");
+      expect(blockedItem?.status).toBe("queued");
     }
   });
 
@@ -820,7 +836,7 @@ describe("store", () => {
     await saveItems([dep, blocked]);
 
     const items = await loadItems();
-    const blockedItem = items.find(i => i.title === "Blocked");
-    expect(blockedItem!.dependsOn).toEqual([dep.id]);
+    const blockedItem = items.find((i) => i.title === "Blocked");
+    expect(blockedItem?.dependsOn).toEqual([dep.id]);
   });
 });

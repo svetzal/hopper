@@ -16,9 +16,9 @@ export function parseDuration(input: string): number {
   let totalMs = 0;
   const parts = lower.matchAll(/(\d+(?:\.\d+)?)([smhdw])/g);
   for (const match of parts) {
-    const value = parseFloat(match[1]!);
-    const unit = match[2]!;
-    totalMs += value * UNIT_MS[unit]!;
+    const value = parseFloat(match[1] as string);
+    const unit = match[2] as string;
+    totalMs += value * (UNIT_MS[unit] as number);
   }
 
   if (totalMs === 0) {
@@ -35,9 +35,9 @@ function parseRelativeDuration(input: string): Date | null {
   let totalMs = 0;
   const parts = lower.matchAll(/(\d+(?:\.\d+)?)([smhdw])/g);
   for (const match of parts) {
-    const value = parseFloat(match[1]!);
-    const unit = match[2]!;
-    totalMs += value * UNIT_MS[unit]!;
+    const value = parseFloat(match[1] as string);
+    const unit = match[2] as string;
+    totalMs += value * (UNIT_MS[unit] as number);
   }
 
   if (totalMs === 0) return null;
@@ -87,7 +87,7 @@ function parseAbsoluteTime(input: string): Date | null {
     if (input.length === 10) {
       // Date only — treat as midnight local time
       const [year, month, day] = input.split("-").map(Number);
-      d = new Date(year!, month! - 1, day!);
+      d = new Date(year as number, (month as number) - 1, day as number);
     } else if (input.endsWith("Z") || /[+-]\d{2}:?\d{2}$/.test(input)) {
       d = new Date(input);
     } else {
@@ -104,7 +104,7 @@ function applyTimeOfDay(d: Date, timeStr: string): void {
   const match = timeStr.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
   if (!match) return;
 
-  let hours = parseInt(match[1]!, 10);
+  let hours = parseInt(match[1] as string, 10);
   const minutes = match[2] ? parseInt(match[2], 10) : 0;
   const meridiem = match[3]?.toLowerCase();
 

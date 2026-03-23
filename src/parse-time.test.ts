@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseTimeSpec, parseDuration } from "./parse-time.ts";
+import { parseDuration, parseTimeSpec } from "./parse-time.ts";
 
 describe("parseTimeSpec", () => {
   // Relative durations

@@ -1,9 +1,9 @@
-import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm } from "fs/promises";
-import { join } from "path";
-import { tmpdir } from "os";
-import { compareSemver, parseInstalledVersion, stampVersion, stripVersionInfo } from "./init.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { VERSION } from "../constants.ts";
+import { compareSemver, parseInstalledVersion } from "./init.ts";
 
 describe("init", () => {
   describe("compareSemver", () => {
@@ -94,7 +94,9 @@ describe("init", () => {
       return logs.join("\n");
     }
 
-    async function runInitJson(force: boolean = false): Promise<{ success: boolean; files: Array<{ action: string; warning?: string }> }> {
+    async function runInitJson(
+      force: boolean = false,
+    ): Promise<{ success: boolean; files: Array<{ action: string; warning?: string }> }> {
       const originalCwd = process.cwd();
       process.chdir(tmpDir);
       const logs: string[] = [];
@@ -107,13 +109,13 @@ describe("init", () => {
         process.chdir(originalCwd);
         console.log = originalLog;
       }
-      return JSON.parse(logs[0]!);
+      return JSON.parse(logs[0] as string);
     }
 
     test("no installed file → create", async () => {
       const result = await runInitJson();
       expect(result.success).toBe(true);
-      expect(result.files[0]!.action).toBe("created");
+      expect(result.files[0]?.action).toBe("created");
       const content = await readSkill();
       expect(content).toContain(`hopper-version: ${VERSION}`);
     });
@@ -122,14 +124,14 @@ describe("init", () => {
       await writeSkill(makeFrontmatter());
       const result = await runInitJson();
       expect(result.success).toBe(true);
-      expect(result.files[0]!.action).toBe("updated");
+      expect(result.files[0]?.action).toBe("updated");
     });
 
     test("installed version older than binary → overwrite", async () => {
       await writeSkill(makeFrontmatter("0.1.0"));
       const result = await runInitJson();
       expect(result.success).toBe(true);
-      expect(result.files[0]!.action).toBe("updated");
+      expect(result.files[0]?.action).toBe("updated");
     });
 
     test("installed version same as binary → up-to-date or updated", async () => {
@@ -138,16 +140,16 @@ describe("init", () => {
       // Run again — should be up-to-date
       const result = await runInitJson();
       expect(result.success).toBe(true);
-      expect(result.files[0]!.action).toBe("up-to-date");
+      expect(result.files[0]?.action).toBe("up-to-date");
     });
 
     test("installed version newer than binary → refuse without --force", async () => {
       await writeSkill(makeFrontmatter("99.0.0"));
       const result = await runInitJson();
       expect(result.success).toBe(false);
-      expect(result.files[0]!.action).toBe("skipped");
-      expect(result.files[0]!.warning).toContain("v99.0.0");
-      expect(result.files[0]!.warning).toContain("--force");
+      expect(result.files[0]?.action).toBe("skipped");
+      expect(result.files[0]?.warning).toContain("v99.0.0");
+      expect(result.files[0]?.warning).toContain("--force");
       // File should be unchanged
       const content = await readSkill();
       expect(content).toContain("hopper-version: 99.0.0");
@@ -157,8 +159,8 @@ describe("init", () => {
       await writeSkill(makeFrontmatter("99.0.0"));
       const result = await runInitJson(true);
       expect(result.success).toBe(true);
-      expect(result.files[0]!.action).toBe("updated");
-      expect(result.files[0]!.warning).toContain("Downgrading");
+      expect(result.files[0]?.action).toBe("updated");
+      expect(result.files[0]?.warning).toContain("Downgrading");
       // File should now have current version
       const content = await readSkill();
       expect(content).toContain(`hopper-version: ${VERSION}`);

@@ -11,8 +11,8 @@ import { requeueCommand } from "./commands/requeue.ts";
 import { showCommand } from "./commands/show.ts";
 import { tagCommand, untagCommand } from "./commands/tag.ts";
 import { workerCommand } from "./commands/worker.ts";
-import { createTitleGenerator } from "./titler.ts";
 import { VERSION } from "./constants.ts";
+import { createTitleGenerator } from "./titler.ts";
 
 export interface ParsedArgs {
   command: string;
@@ -38,14 +38,15 @@ function parseArgs(args: string[]): ParsedArgs {
 
   let i = 0;
   while (i < args.length) {
-    const arg = args[i]!;
+    const arg = args[i] as string;
     if (arg.startsWith("--")) {
       let key = arg.slice(2);
       key = FLAG_ALIASES[key] ?? key;
       const nextArg = args[i + 1];
       if (nextArg && !nextArg.startsWith("-")) {
         if (REPEATABLE_FLAGS.has(key)) {
-          (arrayFlags[key] ??= []).push(nextArg);
+          if (!arrayFlags[key]) arrayFlags[key] = [];
+          (arrayFlags[key] as string[]).push(nextArg);
         }
         flags[key] = nextArg;
         i += 2;
@@ -178,7 +179,11 @@ async function main(): Promise<void> {
       break;
     case "init": {
       const { initCommand } = await import("./commands/init.ts");
-      await initCommand(parsed.flags.json === true, parsed.flags.global === true, parsed.flags.force === true);
+      await initCommand(
+        parsed.flags.json === true,
+        parsed.flags.global === true,
+        parsed.flags.force === true,
+      );
       break;
     }
     case "worker":

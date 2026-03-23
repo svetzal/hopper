@@ -1,11 +1,10 @@
-import { mkdir, rm } from "fs/promises";
-import { homedir } from "os";
-import { join } from "path";
-import { VERSION } from "../constants.ts";
-
+import { mkdir, rm } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 // Embed skill files at build time via Bun text imports
 // Source of truth lives in skills/ — .claude/skills/ is the installed copy
 import COORDINATOR_SKILL_MD from "../../skills/hopper-coordinator/SKILL.md" with { type: "text" };
+import { VERSION } from "../constants.ts";
 
 interface SkillFile {
   relativePath: string;
@@ -17,9 +16,7 @@ const SKILL_FILES: SkillFile[] = [
 ];
 
 // Skills removed in previous versions — clean up if present
-const DEPRECATED_SKILL_DIRS: string[] = [
-  ".claude/skills/hopper-worker",
-];
+const DEPRECATED_SKILL_DIRS: string[] = [".claude/skills/hopper-worker"];
 
 type FileAction = "created" | "updated" | "up-to-date" | "removed" | "skipped";
 
@@ -39,7 +36,7 @@ interface InitResult {
 export function stampVersion(content: string): string {
   const closingIndex = content.indexOf("\n---", 1);
   if (closingIndex === -1) return content;
-  return content.slice(0, closingIndex) + `\nhopper-version: ${VERSION}` + content.slice(closingIndex);
+  return `${content.slice(0, closingIndex)}\nhopper-version: ${VERSION}${content.slice(closingIndex)}`;
 }
 
 export function stripVersionInfo(content: string): string {
@@ -56,7 +53,7 @@ export function stripVersionInfo(content: string): string {
 
 export function parseInstalledVersion(content: string): string | null {
   const match = content.match(/\nhopper-version:\s*(.+)/);
-  return match ? match[1]!.trim() : null;
+  return match ? (match[1]?.trim() ?? null) : null;
 }
 
 /** Compare two semver strings. Returns -1, 0, or 1. */
@@ -72,7 +69,11 @@ export function compareSemver(a: string, b: string): number {
   return 0;
 }
 
-export async function initCommand(jsonOutput: boolean, global: boolean = false, force: boolean = false): Promise<void> {
+export async function initCommand(
+  jsonOutput: boolean,
+  global: boolean = false,
+  force: boolean = false,
+): Promise<void> {
   const baseDir = global ? join(homedir(), ".claude") : process.cwd();
   const results: FileResult[] = [];
 
@@ -133,11 +134,11 @@ export async function initCommand(jsonOutput: boolean, global: boolean = false, 
     }
   }
 
-  const created = results.filter(r => r.action === "created").length;
-  const updated = results.filter(r => r.action === "updated").length;
-  const upToDate = results.filter(r => r.action === "up-to-date").length;
-  const removed = results.filter(r => r.action === "removed").length;
-  const skipped = results.filter(r => r.action === "skipped").length;
+  const created = results.filter((r) => r.action === "created").length;
+  const updated = results.filter((r) => r.action === "updated").length;
+  const upToDate = results.filter((r) => r.action === "up-to-date").length;
+  const removed = results.filter((r) => r.action === "removed").length;
+  const skipped = results.filter((r) => r.action === "skipped").length;
 
   const parts: string[] = [];
   if (created > 0) parts.push(`${created} created`);
@@ -150,7 +151,8 @@ export async function initCommand(jsonOutput: boolean, global: boolean = false, 
   if (jsonOutput) {
     const output: InitResult = {
       success: skipped === 0,
-      message: skipped > 0 ? `Skill files skipped: ${summary}` : `Skill files installed: ${summary}`,
+      message:
+        skipped > 0 ? `Skill files skipped: ${summary}` : `Skill files installed: ${summary}`,
       version: VERSION,
       files: results,
     };
@@ -160,17 +162,25 @@ export async function initCommand(jsonOutput: boolean, global: boolean = false, 
     console.log(`\nHopper v${VERSION} — skill files (${scope})\n`);
     for (const r of results) {
       const icon =
-        r.action === "created" ? "+" :
-        r.action === "updated" ? "~" :
-        r.action === "removed" ? "-" :
-        r.action === "skipped" ? "!" :
-        "=";
+        r.action === "created"
+          ? "+"
+          : r.action === "updated"
+            ? "~"
+            : r.action === "removed"
+              ? "-"
+              : r.action === "skipped"
+                ? "!"
+                : "=";
       const label =
-        r.action === "created" ? "Created" :
-        r.action === "updated" ? "Updated" :
-        r.action === "removed" ? "Removed" :
-        r.action === "skipped" ? "Skipped" :
-        "Up to date";
+        r.action === "created"
+          ? "Created"
+          : r.action === "updated"
+            ? "Updated"
+            : r.action === "removed"
+              ? "Removed"
+              : r.action === "skipped"
+                ? "Skipped"
+                : "Up to date";
       console.log(`  ${icon} ${r.path} (${label})`);
       if (r.warning) {
         console.log(`    ${r.warning}`);

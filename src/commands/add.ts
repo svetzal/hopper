@@ -1,24 +1,25 @@
-import type { ParsedArgs } from "../cli.ts";
-import type { TitleGenerator } from "../titler.ts";
-import { addItem, loadItems } from "../store.ts";
-import { findPreset } from "../presets.ts";
-import { parsePriority, priorityBadge } from "../priority.ts";
-import { shortId } from "../format.ts";
-import { normalizeTag, mergeTags } from "../tags.ts";
-import { Status } from "../constants.ts";
 import {
-  validateDirBranch,
-  validateTimesSpec,
-  resolveScheduling,
-  resolveDependencies,
   buildNewItem,
   formatValidationError,
+  resolveDependencies,
+  resolveScheduling,
+  validateDirBranch,
+  validateTimesSpec,
 } from "../add-workflow.ts";
+import type { ParsedArgs } from "../cli.ts";
+import { Status } from "../constants.ts";
+import { shortId } from "../format.ts";
+import { findPreset } from "../presets.ts";
+import type { Priority } from "../priority.ts";
+import { parsePriority, priorityBadge } from "../priority.ts";
+import { addItem, loadItems } from "../store.ts";
+import { mergeTags, normalizeTag } from "../tags.ts";
+import type { TitleGenerator } from "../titler.ts";
 
 export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Promise<void> {
   // 1. Resolve preset (I/O)
   const presetName = typeof parsed.flags.preset === "string" ? parsed.flags.preset : undefined;
-  let preset;
+  let preset: Awaited<ReturnType<typeof findPreset>>;
   if (presetName) {
     preset = await findPreset(presetName);
     if (!preset) {
@@ -61,8 +62,9 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
   }
 
   // 7. Parse priority
-  let priority;
-  const priorityFlag = typeof parsed.flags.priority === "string" ? parsed.flags.priority : undefined;
+  let priority: Priority | undefined;
+  const priorityFlag =
+    typeof parsed.flags.priority === "string" ? parsed.flags.priority : undefined;
   if (priorityFlag) {
     try {
       priority = parsePriority(priorityFlag);
@@ -84,14 +86,20 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
   // 9. Resolve scheduling
   const afterSpec = typeof parsed.flags.after === "string" ? parsed.flags.after : undefined;
   const untilSpec = typeof parsed.flags.until === "string" ? parsed.flags.until : undefined;
-  const schedulingResult = resolveScheduling(everySpec, afterSpec, untilSpec, timesResult.value, new Date());
+  const schedulingResult = resolveScheduling(
+    everySpec,
+    afterSpec,
+    untilSpec,
+    timesResult.value,
+    new Date(),
+  );
   if ("error" in schedulingResult) {
     console.error(formatValidationError(schedulingResult.error));
     process.exit(1);
   }
 
   // 10. Normalize tags
-  const rawTags = parsed.arrayFlags["tag"] ?? [];
+  const rawTags = parsed.arrayFlags.tag ?? [];
   let tags: string[] | undefined;
   if (rawTags.length > 0 || preset?.tags?.length) {
     try {
@@ -151,12 +159,16 @@ export async function addCommand(parsed: ParsedArgs, titler: TitleGenerator): Pr
     const pBadge = priorityBadge(priority);
     const tagBadge = tags?.length ? ` [${tags.join(", ")}]` : "";
     if (dependsOn) {
-      const depBadge = dependsOn.map(id => shortId(id)).join(", ");
+      const depBadge = dependsOn.map((id) => shortId(id)).join(", ");
       console.log(`Added: ${title}${pBadge}${tagBadge} (blocked on: ${depBadge})${presetSuffix}`);
     } else if (schedulingResult.recurrence) {
-      console.log(`Added: ${title}${pBadge}${tagBadge} (recurring every ${schedulingResult.recurrence.interval}, next run: ${new Date(schedulingResult.scheduledAt!).toLocaleString()})${presetSuffix}`);
+      console.log(
+        `Added: ${title}${pBadge}${tagBadge} (recurring every ${schedulingResult.recurrence.interval}, next run: ${schedulingResult.scheduledAt ? new Date(schedulingResult.scheduledAt).toLocaleString() : "unknown"})${presetSuffix}`,
+      );
     } else if (schedulingResult.scheduledAt) {
-      console.log(`Added: ${title}${pBadge}${tagBadge} (scheduled for ${new Date(schedulingResult.scheduledAt).toLocaleString()})${presetSuffix}`);
+      console.log(
+        `Added: ${title}${pBadge}${tagBadge} (scheduled for ${new Date(schedulingResult.scheduledAt).toLocaleString()})${presetSuffix}`,
+      );
     } else {
       console.log(`Added: ${title}${pBadge}${tagBadge}${presetSuffix}`);
     }

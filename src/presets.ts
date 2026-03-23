@@ -1,6 +1,6 @@
-import { mkdir } from "fs/promises";
-import { homedir } from "os";
-import { join } from "path";
+import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 export interface Preset {
   name: string;
@@ -37,7 +37,9 @@ export function validatePresetName(name: string): string {
   }
   const normalized = name.toLowerCase();
   if (!NAME_PATTERN.test(normalized)) {
-    throw new Error("Preset name may only contain alphanumeric characters, hyphens, and underscores");
+    throw new Error(
+      "Preset name may only contain alphanumeric characters, hyphens, and underscores",
+    );
   }
   return normalized;
 }
@@ -56,7 +58,7 @@ export async function loadPresets(): Promise<Preset[]> {
 
 export async function savePresets(presets: Preset[]): Promise<void> {
   await mkdir(storeDir, { recursive: true });
-  await Bun.write(getPresetsPath(), JSON.stringify(presets, null, 2) + "\n");
+  await Bun.write(getPresetsPath(), `${JSON.stringify(presets, null, 2)}\n`);
 }
 
 export async function addPreset(preset: Preset, force = false): Promise<void> {
@@ -86,7 +88,7 @@ export async function removePreset(name: string): Promise<Preset> {
   if (index === -1) {
     throw new Error(`No preset found with name: ${name}`);
   }
-  const removed = presets.splice(index, 1)[0]!;
+  const removed = presets.splice(index, 1)[0] as Preset;
   await savePresets(presets);
   return removed;
 }

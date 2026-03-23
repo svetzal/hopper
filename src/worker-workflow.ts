@@ -1,4 +1,4 @@
-import { join } from "path";
+import { join } from "node:path";
 import type { Item } from "./store.ts";
 
 // ---------------------------------------------------------------------------
@@ -95,8 +95,7 @@ export function resolveMergeAction(
   workBranch: string | undefined,
   item: Item,
 ): { shouldMerge: boolean } {
-  const shouldMerge =
-    claudeExitCode === 0 && !!workBranch && !!item.workingDir && !!item.branch;
+  const shouldMerge = claudeExitCode === 0 && !!workBranch && !!item.workingDir && !!item.branch;
   return { shouldMerge };
 }
 
@@ -118,9 +117,100 @@ export function resolveCompletionAction(
   mergeNote: string,
 ): CompletionAction {
   const result = claudeResult + mergeNote;
-  return claudeExitCode === 0
-    ? { action: "complete", result }
-    : { action: "failed", result };
+  return claudeExitCode === 0 ? { action: "complete", result } : { action: "failed", result };
+}
+
+// ---------------------------------------------------------------------------
+// Worker config
+// ---------------------------------------------------------------------------
+
+export interface WorkerConfig {
+  agentName: string;
+  pollInterval: number;
+  runOnce: boolean;
+  concurrency: number;
+}
+
+export function resolveWorkerConfig(flags: Record<string, string | boolean>): WorkerConfig {
+  return {
+    agentName: typeof flags.agent === "string" ? flags.agent : "claude-worker",
+    pollInterval: typeof flags.interval === "string" ? parseInt(flags.interval, 10) : 60,
+    runOnce: flags.once === true,
+    concurrency: typeof flags.concurrency === "string" ? parseInt(flags.concurrency, 10) : 1,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Loop action
+// ---------------------------------------------------------------------------
+
+export type LoopAction =
+  | { type: "wait-for-slot" }
+  | { type: "claim"; freeSlots: number; shouldLog: boolean }
+  | { type: "continue" };
+
+export function resolveLoopAction(
+  activeCount: number,
+  concurrency: number,
+  running: boolean,
+): LoopAction {
+  if (!running) {
+    return { type: "continue" };
+  }
+  if (activeCount >= concurrency) {
+    return { type: "wait-for-slot" };
+  }
+  const freeSlots = concurrency - activeCount;
+  const shouldLog = activeCount === 0;
+  return { type: "claim", freeSlots, shouldLog };
+}
+
+export type PostClaimAction =
+  | { type: "exit-no-work"; message: string }
+  | { type: "sleep"; message: string }
+  | { type: "wait-and-exit" }
+  | { type: "continue" };
+
+export function resolvePostClaimLoopAction(
+  activeCount: number,
+  claimedAny: boolean,
+  runOnce: boolean,
+  pollInterval: number,
+): PostClaimAction {
+  if (activeCount === 0 && !claimedAny) {
+    if (runOnce) {
+      return { type: "exit-no-work", message: "No work available." };
+    }
+    return { type: "sleep", message: `No work available. Waiting ${pollInterval}s...` };
+  }
+  if (runOnce) {
+    return { type: "wait-and-exit" };
+  }
+  return { type: "continue" };
+}
+
+// ---------------------------------------------------------------------------
+// Shutdown action
+// ---------------------------------------------------------------------------
+
+export type ShutdownAction =
+  | { type: "already-shutting-down" }
+  | { type: "shutdown"; message: string };
+
+export function resolveShutdownAction(
+  alreadyShuttingDown: boolean,
+  activeCount: number,
+): ShutdownAction {
+  if (alreadyShuttingDown) {
+    return { type: "already-shutting-down" };
+  }
+  if (activeCount > 0) {
+    return {
+      type: "shutdown",
+      message: `\nShutting down. Waiting for ${activeCount} active task(s) to finish...`,
+    };
+  }
+  return { type: "shutdown", message: "\nShutting down." };
 }
 
 // ---------------------------------------------------------------------------

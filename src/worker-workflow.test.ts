@@ -1,14 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import {
-  resolveWorkSetup,
-  buildTaskPrompt,
-  buildCommitMessage,
-  resolvePostClaudeAction,
-  resolveMergeAction,
-  resolveCompletionAction,
-  resolveAuditPaths,
-} from "./worker-workflow.ts";
 import type { Item } from "./store.ts";
+import {
+  buildCommitMessage,
+  buildTaskPrompt,
+  resolveAuditPaths,
+  resolveCompletionAction,
+  resolveLoopAction,
+  resolveMergeAction,
+  resolvePostClaimLoopAction,
+  resolvePostClaudeAction,
+  resolveShutdownAction,
+  resolveWorkerConfig,
+  resolveWorkSetup,
+} from "./worker-workflow.ts";
 
 const HOPPER_HOME = "/home/user/.hopper";
 
@@ -173,11 +177,7 @@ describe("worker-workflow", () => {
     });
 
     test("appends merge note to result on success", () => {
-      const action = resolveCompletionAction(
-        0,
-        "Task done.",
-        "\n\n---\nMerge: fast-forward",
-      );
+      const action = resolveCompletionAction(0, "Task done.", "\n\n---\nMerge: fast-forward");
       expect(action.action).toBe("complete");
       expect(action.result).toBe("Task done.\n\n---\nMerge: fast-forward");
     });
@@ -202,30 +202,155 @@ describe("worker-workflow", () => {
     });
   });
 
+  describe("resolveWorkerConfig", () => {
+    test("returns defaults when no flags provided", () => {
+      expect(resolveWorkerConfig({})).toEqual({
+        agentName: "claude-worker",
+        pollInterval: 60,
+        runOnce: false,
+        concurrency: 1,
+      });
+    });
+
+    test("uses custom agent name from flags", () => {
+      expect(resolveWorkerConfig({ agent: "my-agent" }).agentName).toBe("my-agent");
+    });
+
+    test("parses interval flag as integer", () => {
+      expect(resolveWorkerConfig({ interval: "30" }).pollInterval).toBe(30);
+    });
+
+    test("sets runOnce when once flag is true", () => {
+      expect(resolveWorkerConfig({ once: true }).runOnce).toBe(true);
+    });
+
+    test("parses concurrency flag as integer", () => {
+      expect(resolveWorkerConfig({ concurrency: "4" }).concurrency).toBe(4);
+    });
+
+    test("ignores boolean-typed agent flag (falls back to default)", () => {
+      expect(resolveWorkerConfig({ agent: true }).agentName).toBe("claude-worker");
+    });
+
+    test("ignores boolean-typed interval flag (falls back to default)", () => {
+      expect(resolveWorkerConfig({ interval: true }).pollInterval).toBe(60);
+    });
+  });
+
+  describe("resolveLoopAction", () => {
+    test("returns wait-for-slot when all slots occupied", () => {
+      expect(resolveLoopAction(3, 3, true)).toEqual({ type: "wait-for-slot" });
+    });
+
+    test("returns wait-for-slot when over concurrency", () => {
+      expect(resolveLoopAction(5, 3, true)).toEqual({ type: "wait-for-slot" });
+    });
+
+    test("returns claim with free slots and shouldLog true when no active tasks", () => {
+      expect(resolveLoopAction(0, 3, true)).toEqual({
+        type: "claim",
+        freeSlots: 3,
+        shouldLog: true,
+      });
+    });
+
+    test("returns claim with shouldLog false when some tasks active", () => {
+      expect(resolveLoopAction(1, 3, true)).toEqual({
+        type: "claim",
+        freeSlots: 2,
+        shouldLog: false,
+      });
+    });
+
+    test("returns continue when not running", () => {
+      expect(resolveLoopAction(0, 3, false)).toEqual({ type: "continue" });
+    });
+  });
+
+  describe("resolvePostClaimLoopAction", () => {
+    test("returns exit-no-work when nothing active, nothing claimed, and runOnce", () => {
+      expect(resolvePostClaimLoopAction(0, false, true, 60)).toEqual({
+        type: "exit-no-work",
+        message: "No work available.",
+      });
+    });
+
+    test("returns sleep when nothing active, nothing claimed, and not runOnce", () => {
+      expect(resolvePostClaimLoopAction(0, false, false, 60)).toEqual({
+        type: "sleep",
+        message: "No work available. Waiting 60s...",
+      });
+    });
+
+    test("includes custom poll interval in sleep message", () => {
+      const action = resolvePostClaimLoopAction(0, false, false, 30);
+      expect(action.type).toBe("sleep");
+      if (action.type === "sleep") {
+        expect(action.message).toContain("30s");
+      }
+    });
+
+    test("returns wait-and-exit when runOnce and tasks are active", () => {
+      expect(resolvePostClaimLoopAction(2, true, true, 60)).toEqual({ type: "wait-and-exit" });
+    });
+
+    test("returns wait-and-exit when runOnce with active tasks", () => {
+      expect(resolvePostClaimLoopAction(1, true, true, 60)).toEqual({ type: "wait-and-exit" });
+    });
+
+    test("returns continue when not runOnce and work was claimed", () => {
+      expect(resolvePostClaimLoopAction(1, true, false, 60)).toEqual({ type: "continue" });
+    });
+
+    test("returns continue when not runOnce and tasks still active even if nothing new claimed", () => {
+      expect(resolvePostClaimLoopAction(2, false, false, 60)).toEqual({ type: "continue" });
+    });
+  });
+
+  describe("resolveShutdownAction", () => {
+    test("returns already-shutting-down when flag is true", () => {
+      expect(resolveShutdownAction(true, 5)).toEqual({ type: "already-shutting-down" });
+    });
+
+    test("returns shutdown with active task count in message", () => {
+      const action = resolveShutdownAction(false, 3);
+      expect(action.type).toBe("shutdown");
+      if (action.type === "shutdown") {
+        expect(action.message).toContain("3 active task(s)");
+      }
+    });
+
+    test("returns shutdown with simple message when no active tasks", () => {
+      expect(resolveShutdownAction(false, 0)).toEqual({
+        type: "shutdown",
+        message: "\nShutting down.",
+      });
+    });
+
+    test("returns shutdown message for exactly 1 active task", () => {
+      const action = resolveShutdownAction(false, 1);
+      expect(action.type).toBe("shutdown");
+      if (action.type === "shutdown") {
+        expect(action.message).toContain("1 active task(s)");
+      }
+    });
+  });
+
   describe("resolveAuditPaths", () => {
     test("auditDir is <hopperHome>/audit", () => {
-      const { auditDir } = resolveAuditPaths(
-        "abcdef12-0000-0000-0000-000000000000",
-        HOPPER_HOME,
-      );
+      const { auditDir } = resolveAuditPaths("abcdef12-0000-0000-0000-000000000000", HOPPER_HOME);
       expect(auditDir).toBe("/home/user/.hopper/audit");
     });
 
     test("auditFile is named <itemId>-audit.jsonl inside auditDir", () => {
-      const { auditFile } = resolveAuditPaths(
-        "abcdef12-0000-0000-0000-000000000000",
-        HOPPER_HOME,
-      );
+      const { auditFile } = resolveAuditPaths("abcdef12-0000-0000-0000-000000000000", HOPPER_HOME);
       expect(auditFile).toBe(
         "/home/user/.hopper/audit/abcdef12-0000-0000-0000-000000000000-audit.jsonl",
       );
     });
 
     test("resultFile is named <itemId>-result.md inside auditDir", () => {
-      const { resultFile } = resolveAuditPaths(
-        "abcdef12-0000-0000-0000-000000000000",
-        HOPPER_HOME,
-      );
+      const { resultFile } = resolveAuditPaths("abcdef12-0000-0000-0000-000000000000", HOPPER_HOME);
       expect(resultFile).toBe(
         "/home/user/.hopper/audit/abcdef12-0000-0000-0000-000000000000-result.md",
       );

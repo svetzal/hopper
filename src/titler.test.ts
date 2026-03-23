@@ -1,4 +1,4 @@
-import { describe, expect, test, mock } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { TitleGenerator } from "./titler.ts";
 
 // Unit test the title generator contract without hitting the real LLM.
@@ -12,7 +12,9 @@ describe("titler", () => {
       },
     };
 
-    const title = await titler.generateTitle("Refactor the authentication module to use JWT tokens");
+    const title = await titler.generateTitle(
+      "Refactor the authentication module to use JWT tokens",
+    );
     expect(title).toBe("Refactor auth to JWT");
   });
 

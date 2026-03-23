@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import type { AddValidationError } from "./add-workflow.ts";
 import {
-  validateDirBranch,
-  validateTimesSpec,
-  resolveScheduling,
-  hasCycle,
-  resolveDependencies,
   buildNewItem,
   formatValidationError,
+  hasCycle,
+  resolveDependencies,
+  resolveScheduling,
+  validateDirBranch,
+  validateTimesSpec,
 } from "./add-workflow.ts";
-import type { AddValidationError, RecurrenceResult } from "./add-workflow.ts";
 import type { Item } from "./store.ts";
 
 // ---------------------------------------------------------------------------
@@ -193,7 +193,13 @@ describe("resolveScheduling", () => {
 
   test("UNTIL_BEFORE_START when until is before or equal to scheduledAt", () => {
     // scheduledAt = 2035-06-15T12:00 (from afterSpec), until = 2035-06-15T10:00 (before it)
-    const result = resolveScheduling("1h", "2035-06-15T12:00:00Z", "2035-06-15T10:00:00Z", undefined, NOW);
+    const result = resolveScheduling(
+      "1h",
+      "2035-06-15T12:00:00Z",
+      "2035-06-15T10:00:00Z",
+      undefined,
+      NOW,
+    );
     expect("error" in result).toBe(true);
     if ("error" in result) {
       expect(result.error.code).toBe("UNTIL_BEFORE_START");
@@ -202,7 +208,13 @@ describe("resolveScheduling", () => {
 
   test("until is stored in recurrence when valid", () => {
     // everySpec=1h, afterSpec=2035-06-15T12:00, untilSpec=2035-12-31T00:00 (after scheduledAt)
-    const result = resolveScheduling("1h", "2035-06-15T12:00:00Z", "2035-12-31T00:00:00Z", undefined, NOW);
+    const result = resolveScheduling(
+      "1h",
+      "2035-06-15T12:00:00Z",
+      "2035-12-31T00:00:00Z",
+      undefined,
+      NOW,
+    );
     expect("error" in result).toBe(false);
     if (!("error" in result)) {
       expect(result.recurrence?.until).toBeDefined();
@@ -274,10 +286,7 @@ describe("resolveDependencies", () => {
   ];
 
   test("resolves exact full IDs", () => {
-    const result = resolveDependencies(
-      ["aaaaaaaa-1111-0000-0000-000000000000"],
-      items,
-    );
+    const result = resolveDependencies(["aaaaaaaa-1111-0000-0000-000000000000"], items);
     expect(result).toEqual({
       ok: true,
       resolvedIds: ["aaaaaaaa-1111-0000-0000-000000000000"],
@@ -287,7 +296,10 @@ describe("resolveDependencies", () => {
 
   test("resolves ID prefixes", () => {
     const result = resolveDependencies(["aaaaaaaa"], items);
-    expect(result).toMatchObject({ ok: true, resolvedIds: ["aaaaaaaa-1111-0000-0000-000000000000"] });
+    expect(result).toMatchObject({
+      ok: true,
+      resolvedIds: ["aaaaaaaa-1111-0000-0000-000000000000"],
+    });
   });
 
   test("DEP_NOT_FOUND when prefix matches no items", () => {
@@ -327,8 +339,14 @@ describe("resolveDependencies", () => {
 
   test("CIRCULAR_DEPENDENCY when cycle detected", () => {
     const cycleItems = [
-      makeItem({ id: "id-alpha-0000-0000-0000-000000000000", dependsOn: ["id-beta-0000-0000-0000-000000000000"] }),
-      makeItem({ id: "id-beta-0000-0000-0000-000000000000", dependsOn: ["id-alpha-0000-0000-0000-000000000000"] }),
+      makeItem({
+        id: "id-alpha-0000-0000-0000-000000000000",
+        dependsOn: ["id-beta-0000-0000-0000-000000000000"],
+      }),
+      makeItem({
+        id: "id-beta-0000-0000-0000-000000000000",
+        dependsOn: ["id-alpha-0000-0000-0000-000000000000"],
+      }),
     ];
     const result = resolveDependencies(
       ["id-alpha-0000-0000-0000-000000000000", "id-beta-0000-0000-0000-000000000000"],

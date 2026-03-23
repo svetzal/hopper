@@ -35,9 +35,10 @@ async function runSession(
   const exitCode = await proc.exited;
 
   if (append) {
-    const existing = await Bun.file(auditFile).text().catch(() => "");
-    const separator =
-      JSON.stringify({ type: "session-separator", label: "auto-commit session" }) + "\n";
+    const existing = await Bun.file(auditFile)
+      .text()
+      .catch(() => "");
+    const separator = `${JSON.stringify({ type: "session-separator", label: "auto-commit session" })}\n`;
     await Bun.write(auditFile, existing + separator + output + stderr);
   } else {
     await Bun.write(auditFile, output + stderr);

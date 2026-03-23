@@ -10,7 +10,9 @@ export function normalizeTag(input: string): string {
     throw new Error(`Invalid tag '${input}'. Tags must be ${MAX_TAG_LENGTH} characters or fewer.`);
   }
   if (!TAG_PATTERN.test(trimmed)) {
-    throw new Error(`Invalid tag '${input}'. Tags may contain letters, numbers, hyphens, and underscores.`);
+    throw new Error(
+      `Invalid tag '${input}'. Tags may contain letters, numbers, hyphens, and underscores.`,
+    );
   }
   return trimmed;
 }

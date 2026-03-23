@@ -1,7 +1,8 @@
 import type { ParsedArgs } from "../cli.ts";
-import { reprioritizeItem } from "../store.ts";
-import { parsePriority } from "../priority.ts";
 import { shortId } from "../format.ts";
+import type { Priority } from "../priority.ts";
+import { parsePriority } from "../priority.ts";
+import { reprioritizeItem } from "../store.ts";
 
 export async function reprioritizeCommand(parsed: ParsedArgs): Promise<void> {
   const id = parsed.positional[0];
@@ -12,7 +13,7 @@ export async function reprioritizeCommand(parsed: ParsedArgs): Promise<void> {
     process.exit(1);
   }
 
-  let priority;
+  let priority: Priority | undefined;
   try {
     priority = parsePriority(levelArg);
   } catch (e) {

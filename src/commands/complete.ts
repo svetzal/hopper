@@ -1,6 +1,6 @@
 import type { ParsedArgs } from "../cli.ts";
-import { completeItem } from "../store.ts";
 import { formatDuration } from "../format.ts";
+import { completeItem } from "../store.ts";
 
 export async function completeCommand(parsed: ParsedArgs): Promise<void> {
   const token = parsed.positional[0];
@@ -24,7 +24,9 @@ export async function completeCommand(parsed: ParsedArgs): Promise<void> {
           : "unknown";
       console.log(`Completed: ${item.title} (${duration})`);
       if (recurred) {
-        console.log(`Re-queued: ${item.title} (next run: ${new Date(recurred.scheduledAt!).toLocaleString()})`);
+        console.log(
+          `Re-queued: ${item.title} (next run: ${recurred.scheduledAt ? new Date(recurred.scheduledAt).toLocaleString() : "unknown"})`,
+        );
       }
     }
   } catch (err) {

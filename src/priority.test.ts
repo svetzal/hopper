@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parsePriority, priorityBadge, comparePriority } from "./priority.ts";
+import { comparePriority, parsePriority, priorityBadge } from "./priority.ts";
 
 describe("parsePriority", () => {
   test("parses full names", () => {
@@ -23,7 +23,9 @@ describe("parsePriority", () => {
   });
 
   test("rejects invalid values", () => {
-    expect(() => parsePriority("urgent")).toThrow("Invalid priority 'urgent'. Use high, normal, or low.");
+    expect(() => parsePriority("urgent")).toThrow(
+      "Invalid priority 'urgent'. Use high, normal, or low.",
+    );
     expect(() => parsePriority("")).toThrow("Invalid priority");
     expect(() => parsePriority("x")).toThrow("Invalid priority");
   });

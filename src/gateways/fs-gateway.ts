@@ -1,4 +1,4 @@
-import { mkdir } from "fs/promises";
+import { mkdir } from "node:fs/promises";
 
 export interface FsGateway {
   ensureDir(path: string): Promise<void>;

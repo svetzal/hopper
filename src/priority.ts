@@ -1,14 +1,14 @@
-export type Priority = 'high' | 'normal' | 'low';
+export type Priority = "high" | "normal" | "low";
 
 const PRIORITY_MAP: Record<string, Priority> = {
-  high: 'high',
-  h: 'high',
-  hi: 'high',
-  normal: 'normal',
-  n: 'normal',
-  low: 'low',
-  l: 'low',
-  lo: 'low',
+  high: "high",
+  h: "high",
+  hi: "high",
+  normal: "normal",
+  n: "normal",
+  low: "low",
+  l: "low",
+  lo: "low",
 };
 
 export function parsePriority(value: string): Priority {
@@ -20,9 +20,9 @@ export function parsePriority(value: string): Priority {
 }
 
 export function priorityBadge(priority: Priority | undefined): string {
-  if (priority === 'high') return ' [\u{1F534} high]';
-  if (priority === 'low') return ' [\u{1F535} low]';
-  return '';
+  if (priority === "high") return " [\u{1F534} high]";
+  if (priority === "low") return " [\u{1F535} low]";
+  return "";
 }
 
 const PRIORITY_ORDER: Record<Priority, number> = { high: 0, normal: 1, low: 2 };
@@ -33,5 +33,5 @@ const PRIORITY_ORDER: Record<Priority, number> = { high: 0, normal: 1, low: 2 };
  * Undefined priorities are treated as 'normal'.
  */
 export function comparePriority(a: Priority | undefined, b: Priority | undefined): number {
-  return PRIORITY_ORDER[a ?? 'normal'] - PRIORITY_ORDER[b ?? 'normal'];
+  return PRIORITY_ORDER[a ?? "normal"] - PRIORITY_ORDER[b ?? "normal"];
 }

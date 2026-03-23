@@ -1,7 +1,7 @@
 import { Status } from "./constants.ts";
 import { parseDuration, parseTimeSpec } from "./parse-time.ts";
-import type { Item } from "./store.ts";
 import type { Priority } from "./priority.ts";
+import type { Item } from "./store.ts";
 
 // ---------------------------------------------------------------------------
 // Validation error discriminated union
@@ -175,7 +175,7 @@ export function hasCycle(depIds: string[], allItems: Item[]): boolean {
     const stack = [startId];
 
     while (stack.length > 0) {
-      const current = stack.pop()!;
+      const current = stack.pop() as string;
       if (visited.has(current)) continue;
       visited.add(current);
 
@@ -212,10 +212,7 @@ export type DepResolutionResult =
  *
  * After resolving all IDs, checks for circular dependencies.
  */
-export function resolveDependencies(
-  idPrefixes: string[],
-  allItems: Item[],
-): DepResolutionResult {
+export function resolveDependencies(idPrefixes: string[], allItems: Item[]): DepResolutionResult {
   const resolvedIds: string[] = [];
   const warnings: string[] = [];
 
@@ -229,7 +226,7 @@ export function resolveDependencies(
       return { ok: false, error: { code: "DEP_AMBIGUOUS", idPrefix, matchCount: matches.length } };
     }
 
-    const dep = matches[0]!;
+    const dep = matches[0] as (typeof matches)[0];
     if (dep.status === Status.COMPLETED) {
       warnings.push(`Warning: dependency ${dep.id.slice(0, 8)} is already completed`);
     }
@@ -272,7 +269,7 @@ export function buildNewItem(params: {
     description: params.description,
     status: params.status as Item["status"],
     createdAt: params.createdAt,
-    ...(params.priority && params.priority !== 'normal' ? { priority: params.priority } : {}),
+    ...(params.priority && params.priority !== "normal" ? { priority: params.priority } : {}),
     ...(params.scheduledAt ? { scheduledAt: params.scheduledAt } : {}),
     ...(params.dir ? { workingDir: params.dir } : {}),
     ...(params.branch ? { branch: params.branch } : {}),

@@ -1,7 +1,7 @@
 import type { ParsedArgs } from "../cli.ts";
-import { updateItemTags, removeItemTags } from "../store.ts";
-import { normalizeTag } from "../tags.ts";
 import { shortId } from "../format.ts";
+import { removeItemTags, updateItemTags } from "../store.ts";
+import { normalizeTag } from "../tags.ts";
 
 export async function tagCommand(parsed: ParsedArgs): Promise<void> {
   const id = parsed.positional[0];

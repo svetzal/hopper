@@ -1,9 +1,9 @@
 // mkdir is the one Node.js stdlib import — Bun.write() does not create parent directories
-import { mkdir } from "fs/promises";
-import { homedir } from "os";
-import { join } from "path";
-import { Status } from "./constants.ts";
+import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { ItemStatus } from "./constants.ts";
+import { Status } from "./constants.ts";
 import { comparePriority } from "./priority.ts";
 
 export interface Item {
@@ -18,7 +18,7 @@ export interface Item {
   completedAt?: string;
   completedBy?: string;
   result?: string;
-  priority?: 'high' | 'normal' | 'low';
+  priority?: "high" | "normal" | "low";
   requeueReason?: string;
   requeuedBy?: string;
   cancelledAt?: string;
@@ -70,7 +70,7 @@ export async function loadItems(): Promise<Item[]> {
 
 export async function saveItems(items: Item[]): Promise<void> {
   await mkdir(storeDir, { recursive: true });
-  await Bun.write(getStorePath(), JSON.stringify(items, null, 2) + "\n");
+  await Bun.write(getStorePath(), `${JSON.stringify(items, null, 2)}\n`);
 }
 
 export async function addItem(item: Item): Promise<void> {
@@ -85,7 +85,8 @@ export async function claimNextItem(agent?: string): Promise<Item | null> {
   const queued = items
     .filter((i) => {
       if (i.status === Status.QUEUED) return true;
-      if (i.status === Status.SCHEDULED && i.scheduledAt && new Date(i.scheduledAt) <= now) return true;
+      if (i.status === Status.SCHEDULED && i.scheduledAt && new Date(i.scheduledAt) <= now)
+        return true;
       return false;
     })
     .sort((a, b) => {
@@ -111,7 +112,11 @@ export interface CompleteResult {
   recurred?: Item;
 }
 
-export async function completeItem(token: string, agent?: string, result?: string): Promise<CompleteResult> {
+export async function completeItem(
+  token: string,
+  agent?: string,
+  result?: string,
+): Promise<CompleteResult> {
   const items = await loadItems();
   const item = items.find((i) => i.claimToken === token);
 
@@ -129,9 +134,9 @@ export async function completeItem(token: string, agent?: string, result?: strin
   item.claimToken = undefined;
 
   // Unblock items that depended on this completed item
-  for (const blocked of items.filter(i => i.status === Status.BLOCKED)) {
-    const allDepsComplete = (blocked.dependsOn ?? []).every(depId =>
-      items.find(i => i.id === depId)?.status === Status.COMPLETED
+  for (const blocked of items.filter((i) => i.status === Status.BLOCKED)) {
+    const allDepsComplete = (blocked.dependsOn ?? []).every(
+      (depId) => items.find((i) => i.id === depId)?.status === Status.COMPLETED,
     );
     if (allDepsComplete) {
       blocked.status = blocked.scheduledAt ? Status.SCHEDULED : Status.QUEUED;
@@ -142,7 +147,8 @@ export async function completeItem(token: string, agent?: string, result?: strin
   if (item.recurrence) {
     const now = Date.now();
     const untilExpired = item.recurrence.until && new Date(item.recurrence.until).getTime() <= now;
-    const runsExhausted = item.recurrence.remainingRuns !== undefined && item.recurrence.remainingRuns <= 0;
+    const runsExhausted =
+      item.recurrence.remainingRuns !== undefined && item.recurrence.remainingRuns <= 0;
     if (!untilExpired && !runsExhausted) {
       const nextRecurrence = { ...item.recurrence };
       if (nextRecurrence.remainingRuns !== undefined) {
@@ -177,10 +183,12 @@ function resolveItem(items: Item[], id: string): Item {
     throw new Error(`No item found with id: ${id}`);
   }
   if (matches.length > 1) {
-    throw new Error(`Ambiguous id prefix "${id}" matches ${matches.length} items. Use a longer prefix.`);
+    throw new Error(
+      `Ambiguous id prefix "${id}" matches ${matches.length} items. Use a longer prefix.`,
+    );
   }
 
-  return matches[0]!;
+  return matches[0] as Item;
 }
 
 export async function findItem(id: string): Promise<Item> {
@@ -214,15 +222,21 @@ export interface CancelResult {
 export async function cancelItem(id: string): Promise<CancelResult> {
   const items = await loadItems();
   const item = resolveItem(items, id);
-  if (item.status !== Status.QUEUED && item.status !== Status.SCHEDULED && item.status !== Status.BLOCKED) {
-    throw new Error(`Cannot cancel item — status is "${item.status}". Only queued, scheduled, or blocked items can be cancelled.`);
+  if (
+    item.status !== Status.QUEUED &&
+    item.status !== Status.SCHEDULED &&
+    item.status !== Status.BLOCKED
+  ) {
+    throw new Error(
+      `Cannot cancel item — status is "${item.status}". Only queued, scheduled, or blocked items can be cancelled.`,
+    );
   }
 
   item.status = Status.CANCELLED;
   item.cancelledAt = new Date().toISOString();
 
-  const blockedDependentCount = items.filter(i =>
-    i.status === Status.BLOCKED && (i.dependsOn ?? []).includes(item.id)
+  const blockedDependentCount = items.filter(
+    (i) => i.status === Status.BLOCKED && (i.dependsOn ?? []).includes(item.id),
   ).length;
 
   await saveItems(items);
@@ -253,14 +267,19 @@ export interface ReprioritizeResult {
   oldPriority: string;
 }
 
-export async function reprioritizeItem(id: string, priority: 'high' | 'normal' | 'low'): Promise<ReprioritizeResult> {
+export async function reprioritizeItem(
+  id: string,
+  priority: "high" | "normal" | "low",
+): Promise<ReprioritizeResult> {
   const items = await loadItems();
   const item = resolveItem(items, id);
   if (item.status !== Status.QUEUED && item.status !== Status.SCHEDULED) {
-    throw new Error(`Cannot reprioritize item — status is "${item.status}". Only queued or scheduled items can be reprioritized.`);
+    throw new Error(
+      `Cannot reprioritize item — status is "${item.status}". Only queued or scheduled items can be reprioritized.`,
+    );
   }
 
-  const oldPriority = item.priority ?? 'normal';
+  const oldPriority = item.priority ?? "normal";
   item.priority = priority;
 
   await saveItems(items);

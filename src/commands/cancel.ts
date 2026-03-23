@@ -15,7 +15,9 @@ export async function cancelCommand(parsed: ParsedArgs): Promise<void> {
       console.log(JSON.stringify(item, null, 2));
     } else {
       if (blockedDependentCount > 0) {
-        console.warn(`Warning: ${blockedDependentCount} item(s) depend on this item and will remain blocked.`);
+        console.warn(
+          `Warning: ${blockedDependentCount} item(s) depend on this item and will remain blocked.`,
+        );
       }
       if (item.recurrence) {
         console.log(`Cancelled: ${item.title} (recurrence stopped)`);

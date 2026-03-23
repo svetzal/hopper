@@ -4,7 +4,7 @@ import { requeueItem } from "../store.ts";
 export async function requeueCommand(parsed: ParsedArgs): Promise<void> {
   const id = parsed.positional[0];
   if (!id) {
-    console.error("Usage: hopper requeue <id> --reason \"...\"");
+    console.error('Usage: hopper requeue <id> --reason "..."');
     process.exit(1);
   }
 

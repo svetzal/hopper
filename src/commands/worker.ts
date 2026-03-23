@@ -1,8 +1,7 @@
-import { homedir } from "os";
-import { join } from "path";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { ParsedArgs } from "../cli.ts";
-import { claimNextItem, completeItem } from "../store.ts";
-import type { Item } from "../store.ts";
+import { shortId } from "../format.ts";
 import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import { createClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
@@ -11,14 +10,19 @@ import type { GitGateway } from "../gateways/git-gateway.ts";
 import { createGitGateway } from "../gateways/git-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import { createShellGateway } from "../gateways/shell-gateway.ts";
-import { shortId } from "../format.ts";
+import type { Item } from "../store.ts";
+import { claimNextItem, completeItem } from "../store.ts";
 import {
   buildCommitMessage,
   buildTaskPrompt,
   resolveAuditPaths,
   resolveCompletionAction,
+  resolveLoopAction,
   resolveMergeAction,
+  resolvePostClaimLoopAction,
   resolvePostClaudeAction,
+  resolveShutdownAction,
+  resolveWorkerConfig,
   resolveWorkSetup,
 } from "../worker-workflow.ts";
 
@@ -56,10 +60,7 @@ export async function processItem(
   if (item.branch) log(`Branch:  ${item.branch}`);
   if (item.command) log(`Command: ${item.command}`);
 
-  const { auditDir, auditFile, resultFile } = resolveAuditPaths(
-    item.id,
-    hopperHome,
-  );
+  const { auditDir, auditFile, resultFile } = resolveAuditPaths(item.id, hopperHome);
   await fs.ensureDir(auditDir);
 
   const workSetup = resolveWorkSetup(item, hopperHome);
@@ -98,11 +99,7 @@ export async function processItem(
     } else {
       const prompt = buildTaskPrompt(item);
       log(`Starting Claude session...\nAudit log: ${auditFile}`);
-      ({ exitCode, result } = await claude.runSession(
-        prompt,
-        workDir ?? process.cwd(),
-        auditFile,
-      ));
+      ({ exitCode, result } = await claude.runSession(prompt, workDir ?? process.cwd(), auditFile));
     }
 
     // Commit any uncommitted changes Claude left in the worktree
@@ -129,15 +126,11 @@ export async function processItem(
     const { shouldMerge } = resolveMergeAction(exitCode, workBranch, item);
     if (shouldMerge && workBranch && item.workingDir && item.branch) {
       log(`Merging ${workBranch} → ${item.branch}...`);
-      const mergeResult = await git.mergeWorkBranch(
-        item.workingDir,
-        item.branch,
-        workBranch,
-      );
+      const mergeResult = await git.mergeWorkBranch(item.workingDir, item.branch, workBranch);
       log(mergeResult.message);
       mergeNote = `\n\n---\nMerge: ${mergeResult.message}`;
       if (mergeResult.success) {
-        const pushResult = await git.push(item.workingDir, item.branch!);
+        const pushResult = await git.push(item.workingDir, item.branch as string);
         log(pushResult.message);
         if (!pushResult.success) {
           mergeNote += `\nPush: ${pushResult.message}`;
@@ -147,11 +140,7 @@ export async function processItem(
       }
     }
 
-    const { action, result: finalResult } = resolveCompletionAction(
-      exitCode,
-      result,
-      mergeNote,
-    );
+    const { action, result: finalResult } = resolveCompletionAction(exitCode, result, mergeNote);
     await fs.writeFile(resultFile, finalResult);
 
     const outputLabel = item.command ? "Command" : "Claude";
@@ -162,10 +151,16 @@ export async function processItem(
 
     if (action === "complete") {
       log("Marking item complete...");
-      const { completed, recurred } = await completeItem(item.claimToken!, agentName, finalResult);
+      const { completed, recurred } = await completeItem(
+        item.claimToken as string,
+        agentName,
+        finalResult,
+      );
       log(`Completed: ${completed.title}`);
       if (recurred) {
-        log(`Re-queued: ${completed.title} (next run: ${new Date(recurred.scheduledAt!).toLocaleString()})`);
+        log(
+          `Re-queued: ${completed.title} (next run: ${recurred.scheduledAt ? new Date(recurred.scheduledAt).toLocaleString() : "unknown"})`,
+        );
       }
     } else {
       const sessionLabel = item.command ? "Command" : "Claude session";
@@ -181,26 +176,13 @@ export async function processItem(
   }
 }
 
-export async function workerCommand(
-  parsed: ParsedArgs,
-  deps?: WorkerDeps,
-): Promise<void> {
+export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Promise<void> {
   const git = deps?.git ?? createGitGateway();
   const claude = deps?.claude ?? createClaudeGateway();
   const fs = deps?.fs ?? createFsGateway();
   const shell = deps?.shell ?? createShellGateway();
 
-  const agentName =
-    typeof parsed.flags.agent === "string" ? parsed.flags.agent : "claude-worker";
-  const pollInterval =
-    typeof parsed.flags.interval === "string"
-      ? parseInt(parsed.flags.interval, 10)
-      : 60;
-  const runOnce = parsed.flags.once === true;
-  const concurrency =
-    typeof parsed.flags.concurrency === "string"
-      ? parseInt(parsed.flags.concurrency, 10)
-      : 1;
+  const { agentName, pollInterval, runOnce, concurrency } = resolveWorkerConfig(parsed.flags);
 
   const hopperHome = join(homedir(), ".hopper");
 
@@ -209,14 +191,11 @@ export async function workerCommand(
   let cancelSleep: (() => void) | undefined;
 
   const shutdown = () => {
-    if (!running) return;
+    const action = resolveShutdownAction(!running, activeTasks.size);
+    if (action.type === "already-shutting-down") return;
     running = false;
     cancelSleep?.();
-    if (activeTasks.size > 0) {
-      console.log(`\nShutting down. Waiting for ${activeTasks.size} active task(s) to finish...`);
-    } else {
-      console.log("\nShutting down.");
-    }
+    console.log(action.message);
   };
 
   process.on("SIGINT", shutdown);
@@ -227,61 +206,72 @@ export async function workerCommand(
   );
 
   while (running) {
-    // Wait for at least one free slot if all slots are occupied
-    if (activeTasks.size >= concurrency) {
+    const loopAction = resolveLoopAction(activeTasks.size, concurrency, running);
+
+    if (loopAction.type === "wait-for-slot") {
+      // Wait for any active task to finish, then prune settled tasks
       await Promise.race(activeTasks.values());
-      // Clean up finished tasks
       for (const [id, p] of activeTasks) {
-        const settled = await Promise.race([
-          p.then(() => true),
-          Promise.resolve(false),
-        ]);
+        const settled = await Promise.race([p.then(() => true), Promise.resolve(false)]);
         if (settled) activeTasks.delete(id);
       }
       continue;
     }
 
-    const freeSlots = concurrency - activeTasks.size;
-
-    if (freeSlots > 0 && activeTasks.size === 0) {
-      console.log("\nChecking for work...");
-    }
-
-    let claimedAny = false;
-    for (let i = 0; i < freeSlots; i++) {
-      const item = await claimNextItem(agentName);
-      if (!item) break;
-
-      claimedAny = true;
-      const task = processItem(item, agentName, hopperHome, { git, claude, fs, shell }, concurrency)
-        .catch((err) => {
-          console.error(`Error processing item ${shortId(item.id)}: ${err}`);
-        })
-        .finally(() => activeTasks.delete(item.id));
-      activeTasks.set(item.id, task);
-    }
-
-    if (activeTasks.size === 0 && !claimedAny) {
-      // No work available and nothing running
-      if (runOnce) {
-        console.log("No work available.");
-        return;
+    if (loopAction.type === "claim") {
+      if (loopAction.shouldLog) {
+        console.log("\nChecking for work...");
       }
-      console.log(`No work available. Waiting ${pollInterval}s...`);
-      await new Promise<void>((r) => {
-        const timer = setTimeout(r, pollInterval * 1000);
-        cancelSleep = () => { clearTimeout(timer); r(); };
-      });
-      cancelSleep = undefined;
-      continue;
-    }
 
-    if (runOnce) {
-      // --once with concurrency: wait for all active tasks to finish, then exit
-      if (activeTasks.size > 0) {
-        await Promise.allSettled(activeTasks.values());
+      let claimedAny = false;
+      for (let i = 0; i < loopAction.freeSlots; i++) {
+        const item = await claimNextItem(agentName);
+        if (!item) break;
+        claimedAny = true;
+        const task = processItem(
+          item,
+          agentName,
+          hopperHome,
+          { git, claude, fs, shell },
+          concurrency,
+        )
+          .catch((err) => {
+            console.error(`Error processing item ${shortId(item.id)}: ${err}`);
+          })
+          .finally(() => activeTasks.delete(item.id));
+        activeTasks.set(item.id, task);
       }
-      return;
+
+      const postAction = resolvePostClaimLoopAction(
+        activeTasks.size,
+        claimedAny,
+        runOnce,
+        pollInterval,
+      );
+
+      switch (postAction.type) {
+        case "exit-no-work":
+          console.log(postAction.message);
+          return;
+        case "sleep":
+          console.log(postAction.message);
+          await new Promise<void>((r) => {
+            const timer = setTimeout(r, pollInterval * 1000);
+            cancelSleep = () => {
+              clearTimeout(timer);
+              r();
+            };
+          });
+          cancelSleep = undefined;
+          continue;
+        case "wait-and-exit":
+          if (activeTasks.size > 0) {
+            await Promise.allSettled(activeTasks.values());
+          }
+          return;
+        case "continue":
+          break;
+      }
     }
   }
 
@@ -294,9 +284,6 @@ export async function workerCommand(
         resolve();
       }, SHUTDOWN_TIMEOUT),
     );
-    await Promise.race([
-      Promise.allSettled(activeTasks.values()),
-      timeout,
-    ]);
+    await Promise.race([Promise.allSettled(activeTasks.values()), timeout]);
   }
 }

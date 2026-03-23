@@ -1,13 +1,13 @@
-import { describe, expect, test, beforeEach, mock } from "bun:test";
-import { processItem } from "./worker.ts";
-import type { Item } from "../store.ts";
-import type { GitGateway } from "../gateways/git-gateway.ts";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
+import type { GitGateway } from "../gateways/git-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
-
+import type { Item } from "../store.ts";
 // Mock the store module so processItem doesn't touch the real items.json
 import * as store from "../store.ts";
+import { processItem } from "./worker.ts";
+
 mock.module("../store.ts", () => ({
   ...store,
   completeItem: mock(async () => ({
@@ -125,7 +125,7 @@ describe("processItem", () => {
     expect(claude.runSession).toHaveBeenCalledTimes(1);
     // Hopper commits directly with item title + Claude summary
     expect(git.commitAll).toHaveBeenCalledTimes(1);
-    const commitMsg = (git.commitAll as ReturnType<typeof mock>).mock.calls[0]![1];
+    const commitMsg = (git.commitAll as ReturnType<typeof mock>).mock.calls[0]?.[1];
     expect(commitMsg).toContain("Test task");
     expect(commitMsg).toContain("Fixed the bug.");
   });
@@ -152,8 +152,8 @@ describe("processItem", () => {
     const git = makeMockGit();
     const fs = makeMockFs();
 
-    let resolve1: () => void;
-    let resolve2: () => void;
+    let _resolve1: () => void;
+    let _resolve2: () => void;
     const claude: ClaudeGateway = {
       runSession: mock(async () => {
         // Introduce a small async gap to test true concurrency
@@ -185,7 +185,13 @@ describe("processItem", () => {
     console.log = (...args: unknown[]) => logs.push(args.join(" "));
 
     try {
-      await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() }, 2);
+      await processItem(
+        item,
+        "test-agent",
+        HOPPER_HOME,
+        { git, claude, fs, shell: makeMockShell() },
+        2,
+      );
     } finally {
       console.log = origLog;
     }
@@ -194,9 +200,7 @@ describe("processItem", () => {
     const prefixedLines = logs.filter((l) => l.startsWith("[abcdef12]"));
     expect(prefixedLines.length).toBeGreaterThan(0);
     // No unprefixed lines from processItem (except possibly from completeItem mock)
-    const unprefixedProcessLines = logs.filter(
-      (l) => !l.startsWith("[abcdef12]"),
-    );
+    const unprefixedProcessLines = logs.filter((l) => !l.startsWith("[abcdef12]"));
     expect(unprefixedProcessLines).toHaveLength(0);
   });
 
@@ -211,7 +215,13 @@ describe("processItem", () => {
     console.log = (...args: unknown[]) => logs.push(args.join(" "));
 
     try {
-      await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() }, 1);
+      await processItem(
+        item,
+        "test-agent",
+        HOPPER_HOME,
+        { git, claude, fs, shell: makeMockShell() },
+        1,
+      );
     } finally {
       console.log = origLog;
     }
@@ -275,7 +285,7 @@ describe("processItem", () => {
 
     expect(git.worktreeAdd).not.toHaveBeenCalled();
     expect(shell.runCommand).toHaveBeenCalledTimes(1);
-    const callArgs = (shell.runCommand as ReturnType<typeof mock>).mock.calls[0]!;
+    const callArgs = (shell.runCommand as ReturnType<typeof mock>).mock.calls[0] as unknown[];
     expect(callArgs[0]).toBe("ls");
     expect(callArgs[1]).toBe("/some/dir");
   });

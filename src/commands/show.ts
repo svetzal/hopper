@@ -1,6 +1,6 @@
 import type { ParsedArgs } from "../cli.ts";
-import { findItem } from "../store.ts";
 import { shortId } from "../format.ts";
+import { findItem } from "../store.ts";
 
 export async function showCommand(parsed: ParsedArgs): Promise<void> {
   const id = parsed.positional[0];
@@ -39,7 +39,8 @@ export async function showCommand(parsed: ParsedArgs): Promise<void> {
       }
       console.log(`Recurrence:  ${recurrenceStr}`);
     }
-    if (item.dependsOn?.length) console.log(`Depends on:  ${item.dependsOn.map(id => shortId(id)).join(", ")}`);
+    if (item.dependsOn?.length)
+      console.log(`Depends on:  ${item.dependsOn.map((id) => shortId(id)).join(", ")}`);
     if (item.requeueReason) console.log(`Requeue reason: ${item.requeueReason}`);
     if (item.requeuedBy) console.log(`Requeued by: ${item.requeuedBy}`);
     console.log();

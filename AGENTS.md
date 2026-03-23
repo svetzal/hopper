@@ -37,7 +37,7 @@ A pre-push hook runs `bun run lint` and `bun test` automatically.
 | `src/format.ts` | Display helpers (relative time, duration, short ID) |
 | `src/titler.ts` | LLM title generation via OpenAI API (gpt-4.1-nano). Falls back to truncation if no `OPENAI_API_KEY` |
 | `src/extract-result.ts` | Pure JSONL parser that extracts the final result string from a Claude `stream-json` session |
-| `src/worker-workflow.ts` | Pure decision functions for the worker: work setup, prompt building, auto-commit, merge, and completion decisions |
+| `src/worker-workflow.ts` | Pure decision functions for the worker: work setup, prompt building, auto-commit, merge, completion decisions, worker config parsing, loop action resolution, and shutdown action |
 | `src/gateways/git-gateway.ts` | `GitGateway` interface + real implementation (thin wrapper around `git` subprocesses via `Bun.spawn`) |
 | `src/gateways/claude-gateway.ts` | `ClaudeGateway` interface + real implementation (thin wrapper around the `claude` CLI process) |
 | `src/gateways/fs-gateway.ts` | `FsGateway` interface + real implementation (thin wrapper around `mkdir` and `Bun.write`) |
@@ -59,6 +59,10 @@ A pre-push hook runs `bun run lint` and `bun test` automatically.
 - **Version stamping**: The `VERSION` constant from `src/constants.ts` is written into SKILL.md frontmatter as `hopper-version` at install time
 - **Version guard**: `hopper init` refuses to overwrite an installed skill that has a newer `hopper-version` than the running binary. Use `--force` to downgrade
 - **Release note**: Skill content updates are automatically picked up via embedded imports — no manual version bump needed for skill-only changes
+
+### Linting and Formatting
+
+The project uses [Biome](https://biomejs.dev/) for linting and formatting. Run `bun run lint` (type-check + Biome check) before pushing. Run `bun run format` to auto-fix style issues.
 
 ### Worker integration
 

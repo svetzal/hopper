@@ -34,7 +34,9 @@ async function presetAddCommand(parsed: ParsedArgs): Promise<void> {
   const description = parsed.positional[2];
 
   if (!rawName || !description) {
-    console.error("Usage: hopper preset add <name> <description> [--dir <path>] [--branch <branch>]");
+    console.error(
+      "Usage: hopper preset add <name> <description> [--dir <path>] [--branch <branch>]",
+    );
     process.exit(1);
   }
 
@@ -61,7 +63,7 @@ async function presetAddCommand(parsed: ParsedArgs): Promise<void> {
         ...(command ? { command } : {}),
         createdAt: new Date().toISOString(),
       },
-      force
+      force,
     );
   } catch (err) {
     console.error((err as Error).message);
@@ -92,7 +94,7 @@ async function presetListCommand(parsed: ParsedArgs): Promise<void> {
   for (const preset of presets) {
     const snippet =
       preset.description.length > 60
-        ? preset.description.slice(0, 60).trim() + "..."
+        ? `${preset.description.slice(0, 60).trim()}...`
         : preset.description;
     const extras: string[] = [];
     if (preset.workingDir) extras.push(`dir: ${preset.workingDir}`);
