@@ -6,10 +6,17 @@ import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import { createClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import { createFsGateway } from "../gateways/fs-gateway.ts";
-import type { GitGateway } from "../gateways/git-gateway.ts";
+import type { GitGateway, MergeOutcome } from "../gateways/git-gateway.ts";
 import { createGitGateway } from "../gateways/git-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import { createShellGateway } from "../gateways/shell-gateway.ts";
+import {
+  buildWorkBranchName,
+  resolveBranchSetup,
+  resolveFfResult,
+  resolveMergeCommitResult,
+  resolveMergeStep,
+} from "../git-workflow.ts";
 import type { Item } from "../store.ts";
 import { claimNextItem, completeItem } from "../store.ts";
 import {
@@ -43,6 +50,71 @@ function createLogger(itemId: string, concurrency: number): LogFn {
   return (message: string) => console.log(message);
 }
 
+async function orchestrateWorktreeSetup(
+  git: GitGateway,
+  repoDir: string,
+  branch: string,
+  worktreePath: string,
+  itemId: string,
+): Promise<string> {
+  const localExists = await git.branchExists(repoDir, branch);
+  const remoteExists = await git.remoteBranchExists(repoDir, branch);
+  const branchAction = resolveBranchSetup(branch, { localExists, remoteExists });
+
+  switch (branchAction.type) {
+    case "track-remote":
+      await git.createTrackingBranch(repoDir, branch, branchAction.remoteRef);
+      break;
+    case "create-from-head":
+      await git.createBranch(repoDir, branch);
+      break;
+    case "use-existing":
+      break;
+  }
+
+  const workBranch = buildWorkBranchName(itemId);
+  await git.createWorktree(repoDir, worktreePath, workBranch, branch);
+  return workBranch;
+}
+
+async function orchestrateMerge(
+  git: GitGateway,
+  repoDir: string,
+  targetBranch: string,
+  workBranch: string,
+): Promise<MergeOutcome> {
+  const currentBranch = await git.getCurrentBranch(repoDir);
+  const mergeCtx = { workBranch, targetBranch };
+  const initialStep = resolveMergeStep(currentBranch, targetBranch);
+
+  if (initialStep.type === "skip") {
+    return initialStep.outcome;
+  }
+
+  const ffExit = await git.mergeFastForward(repoDir, workBranch);
+  const ffResult = resolveFfResult(ffExit, mergeCtx);
+
+  if (ffResult.type === "ff-succeeded") {
+    await git.deleteBranch(repoDir, workBranch);
+    return ffResult.outcome;
+  }
+
+  const mergeExit = await git.mergeCommit(repoDir, workBranch);
+  const mcResult = resolveMergeCommitResult(mergeExit, mergeCtx);
+
+  if (mcResult.type === "merge-commit-succeeded") {
+    await git.deleteBranch(repoDir, workBranch);
+    return mcResult.outcome;
+  }
+
+  await git.mergeAbort(repoDir);
+  // resolveMergeCommitResult only returns "merge-commit-succeeded" or "conflict-abort"
+  if (mcResult.type !== "conflict-abort") {
+    throw new Error(`Unexpected merge step type: ${mcResult.type}`);
+  }
+  return mcResult.outcome;
+}
+
 export async function processItem(
   item: Item,
   agentName: string,
@@ -74,10 +146,11 @@ export async function processItem(
       worktreePath = workSetup.worktreePath;
       await fs.ensureDir(join(hopperHome, "worktrees"));
       log(`Setting up worktree at ${worktreePath}...`);
-      workBranch = await git.worktreeAdd(
+      workBranch = await orchestrateWorktreeSetup(
+        git,
         workSetup.repoDir,
-        worktreePath,
         workSetup.branch,
+        worktreePath,
         item.id,
       );
       log(`Work branch: ${workBranch}`);
@@ -126,7 +199,7 @@ export async function processItem(
     const { shouldMerge } = resolveMergeAction(exitCode, workBranch, item);
     if (shouldMerge && workBranch && item.workingDir && item.branch) {
       log(`Merging ${workBranch} → ${item.branch}...`);
-      const mergeResult = await git.mergeWorkBranch(item.workingDir, item.branch, workBranch);
+      const mergeResult = await orchestrateMerge(git, item.workingDir, item.branch, workBranch);
       log(mergeResult.message);
       mergeNote = `\n\n---\nMerge: ${mergeResult.message}`;
       if (mergeResult.success) {

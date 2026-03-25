@@ -32,18 +32,23 @@ function makeItem(overrides?: Partial<Item>): Item {
   };
 }
 
-function makeMockGit(): GitGateway {
+function makeMockGit(overrides?: Partial<GitGateway>): GitGateway {
   return {
-    worktreeAdd: mock(async () => "hopper/aaaaaaaa"),
+    branchExists: mock(async () => true),
+    remoteBranchExists: mock(async () => false),
+    createTrackingBranch: mock(async () => {}),
+    createBranch: mock(async () => {}),
+    createWorktree: mock(async () => {}),
     worktreeRemove: mock(async () => {}),
     isWorktreeDirty: mock(async () => false),
     commitAll: mock(async () => {}),
-    mergeWorkBranch: mock(async () => ({
-      type: "fast-forward" as const,
-      success: true as const,
-      message: "Merged.",
-    })),
+    getCurrentBranch: mock(async () => "main"),
+    mergeFastForward: mock(async () => 0),
+    mergeCommit: mock(async () => 0),
+    mergeAbort: mock(async () => {}),
+    deleteBranch: mock(async () => {}),
     push: mock(async () => ({ success: true, message: "Pushed main to origin." })),
+    ...overrides,
   };
 }
 
@@ -84,7 +89,7 @@ describe("processItem", () => {
     expect(claude.runSession).toHaveBeenCalledTimes(1);
     expect(completeItemMock).toHaveBeenCalledWith("tok-1234", "test-agent", "All done.");
     // No worktree operations
-    expect(git.worktreeAdd).not.toHaveBeenCalled();
+    expect(git.createWorktree).not.toHaveBeenCalled();
     expect(git.worktreeRemove).not.toHaveBeenCalled();
   });
 
@@ -107,9 +112,9 @@ describe("processItem", () => {
 
     await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
 
-    expect(git.worktreeAdd).toHaveBeenCalledTimes(1);
+    expect(git.createWorktree).toHaveBeenCalledTimes(1);
     expect(git.worktreeRemove).toHaveBeenCalledTimes(1);
-    expect(git.mergeWorkBranch).toHaveBeenCalledTimes(1);
+    expect(git.mergeFastForward).toHaveBeenCalledTimes(1);
   });
 
   test("commits directly when worktree is dirty after Claude session", async () => {
@@ -267,7 +272,7 @@ describe("processItem", () => {
 
     await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell });
 
-    expect(git.worktreeAdd).toHaveBeenCalledTimes(1);
+    expect(git.createWorktree).toHaveBeenCalledTimes(1);
     expect(git.worktreeRemove).toHaveBeenCalledTimes(1);
     expect(shell.runCommand).toHaveBeenCalledTimes(1);
     expect(claude.runSession).not.toHaveBeenCalled();
@@ -283,10 +288,82 @@ describe("processItem", () => {
 
     await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell });
 
-    expect(git.worktreeAdd).not.toHaveBeenCalled();
+    expect(git.createWorktree).not.toHaveBeenCalled();
     expect(shell.runCommand).toHaveBeenCalledTimes(1);
     const callArgs = (shell.runCommand as ReturnType<typeof mock>).mock.calls[0] as unknown[];
     expect(callArgs[0]).toBe("ls");
     expect(callArgs[1]).toBe("/some/dir");
+  });
+
+  test("branch setup tracks remote when local absent and remote exists", async () => {
+    const item = makeItem({ workingDir: "/repo", branch: "main" });
+    const git = makeMockGit({
+      branchExists: mock(async () => false),
+      remoteBranchExists: mock(async () => true),
+    });
+    const claude = makeMockClaude();
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+
+    expect(git.createTrackingBranch).toHaveBeenCalledTimes(1);
+    expect(git.createBranch).not.toHaveBeenCalled();
+  });
+
+  test("branch setup creates from HEAD when neither local nor remote exists", async () => {
+    const item = makeItem({ workingDir: "/repo", branch: "main" });
+    const git = makeMockGit({
+      branchExists: mock(async () => false),
+      remoteBranchExists: mock(async () => false),
+    });
+    const claude = makeMockClaude();
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+
+    expect(git.createBranch).toHaveBeenCalledTimes(1);
+    expect(git.createTrackingBranch).not.toHaveBeenCalled();
+  });
+
+  test("branch setup uses existing branch when it exists locally", async () => {
+    const item = makeItem({ workingDir: "/repo", branch: "main" });
+    const git = makeMockGit({
+      branchExists: mock(async () => true),
+    });
+    const claude = makeMockClaude();
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+
+    expect(git.createTrackingBranch).not.toHaveBeenCalled();
+    expect(git.createBranch).not.toHaveBeenCalled();
+  });
+
+  test("merge is skipped when target branch is not checked out", async () => {
+    const item = makeItem({ workingDir: "/repo", branch: "main" });
+    const git = makeMockGit({
+      getCurrentBranch: mock(async () => "develop"),
+    });
+    const claude = makeMockClaude();
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+
+    expect(git.mergeFastForward).not.toHaveBeenCalled();
+  });
+
+  test("merge aborts and preserves work branch on conflict", async () => {
+    const item = makeItem({ workingDir: "/repo", branch: "main" });
+    const git = makeMockGit({
+      mergeFastForward: mock(async () => 1),
+      mergeCommit: mock(async () => 1),
+    });
+    const claude = makeMockClaude();
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+
+    expect(git.mergeAbort).toHaveBeenCalledTimes(1);
+    expect(git.deleteBranch).not.toHaveBeenCalled();
   });
 });
