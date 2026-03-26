@@ -112,9 +112,9 @@ describe("store", () => {
     expect(claimed?.claimedAt).toBeDefined();
   });
 
-  test("claimNextItem returns null when queue is empty", async () => {
+  test("claimNextItem returns undefined when queue is empty", async () => {
     const result = await claimNextItem();
-    expect(result).toBeNull();
+    expect(result).toBeUndefined();
   });
 
   test("claimNextItem skips in_progress items", async () => {
@@ -333,7 +333,7 @@ describe("store", () => {
     await saveItems([scheduled]);
 
     const claimed = await claimNextItem();
-    expect(claimed).toBeNull();
+    expect(claimed).toBeUndefined();
   });
 
   test("claimNextItem claims scheduled items that are due", async () => {
@@ -814,7 +814,7 @@ describe("store", () => {
     }
   });
 
-  test("claimNextItem returns null when only blocked items exist", async () => {
+  test("claimNextItem returns undefined when only blocked items exist", async () => {
     const blocked = makeItem({
       title: "Blocked",
       status: "blocked",
@@ -823,7 +823,7 @@ describe("store", () => {
     await saveItems([blocked]);
 
     const claimed = await claimNextItem();
-    expect(claimed).toBeNull();
+    expect(claimed).toBeUndefined();
   });
 
   test("dependsOn field is preserved through save/load", async () => {

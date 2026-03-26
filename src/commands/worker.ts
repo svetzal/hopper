@@ -17,7 +17,7 @@ import {
   resolveMergeCommitResult,
   resolveMergeStep,
 } from "../git-workflow.ts";
-import type { Item } from "../store.ts";
+import type { ClaimedItem, Item } from "../store.ts";
 import { claimNextItem, completeItem } from "../store.ts";
 import {
   buildCommitMessage,
@@ -31,6 +31,7 @@ import {
   resolveShutdownAction,
   resolveWorkerConfig,
   resolveWorkSetup,
+  type WorkerConfig,
 } from "../worker-workflow.ts";
 
 export interface WorkerDeps {
@@ -122,8 +123,113 @@ async function orchestrateMerge(
   }
 }
 
-export async function processItem(
+async function handleCompletion(
+  item: ClaimedItem,
+  agentName: string,
+  exitCode: number,
+  result: string,
+  mergeNote: string,
+  workBranch: string | undefined,
+  fs: FsGateway,
+  resultFile: string,
+  log: LogFn,
+): Promise<void> {
+  const { action, result: finalResult } = resolveCompletionAction(exitCode, result, mergeNote);
+  await fs.writeFile(resultFile, finalResult);
+
+  const outputLabel = item.command ? "Command" : "Claude";
+  log(`--- ${outputLabel} Output ---`);
+  log(result);
+  if (mergeNote) log(mergeNote.trim());
+  log("---------------------");
+
+  if (action === "complete") {
+    log("Marking item complete...");
+    const { completed, recurred } = await completeItem(item.claimToken, agentName, finalResult);
+    log(`Completed: ${completed.title}`);
+    if (recurred) {
+      log(
+        `Re-queued: ${completed.title} (next run: ${recurred.scheduledAt ? new Date(recurred.scheduledAt).toLocaleString() : "unknown"})`,
+      );
+    }
+  } else {
+    const sessionLabel = item.command ? "Command" : "Claude session";
+    log(`${sessionLabel} failed for: ${item.title} (${item.id})`);
+    if (workBranch) log(`Work branch ${workBranch} preserved for review.`);
+    log(`Use 'hopper requeue ${item.id} --reason "..."' to retry.`);
+  }
+}
+
+async function mergeAndPush(
+  git: GitGateway,
   item: Item,
+  workBranch: string,
+  log: LogFn,
+): Promise<string> {
+  const targetBranch = item.branch as string;
+  const repoDir = item.workingDir as string;
+  log(`Merging ${workBranch} → ${targetBranch}...`);
+  const mergeResult = await orchestrateMerge(git, repoDir, targetBranch, workBranch);
+  log(mergeResult.message);
+  let mergeNote = `\n\n---\nMerge: ${mergeResult.message}`;
+  if (mergeResult.success) {
+    const pushResult = await git.push(repoDir, targetBranch);
+    log(pushResult.message);
+    if (!pushResult.success) {
+      mergeNote += `\nPush: ${pushResult.message}`;
+    }
+  } else {
+    log(`Action required: manually merge branch ${workBranch}.`);
+  }
+  return mergeNote;
+}
+
+async function teardownWorktree(
+  git: GitGateway,
+  repoDir: string,
+  worktreePath: string,
+  log: LogFn,
+): Promise<void> {
+  log("Removing worktree...");
+  await git.worktreeRemove(repoDir, worktreePath);
+}
+
+async function commitWorktreeChanges(
+  git: GitGateway,
+  worktreePath: string,
+  item: Item,
+  result: string,
+  log: LogFn,
+): Promise<void> {
+  const dirty = await git.isWorktreeDirty(worktreePath);
+  const { shouldCommit } = resolvePostClaudeAction(true, dirty);
+  if (shouldCommit) {
+    const commitMsg = buildCommitMessage(item, result);
+    log("Committing changes...");
+    await git.commitAll(worktreePath, commitMsg);
+    log("Committed.");
+  }
+}
+
+async function executeWork(
+  item: Item,
+  workDir: string | undefined,
+  auditFile: string,
+  deps: { claude: ClaudeGateway; shell: ShellGateway },
+  log: LogFn,
+): Promise<{ exitCode: number; result: string }> {
+  const { claude, shell } = deps;
+  if (item.command) {
+    log(`Starting command...\nAudit log: ${auditFile}`);
+    return shell.runCommand(item.command, workDir ?? process.cwd(), auditFile);
+  }
+  const prompt = buildTaskPrompt(item);
+  log(`Starting Claude session...\nAudit log: ${auditFile}`);
+  return claude.runSession(prompt, workDir ?? process.cwd(), auditFile);
+}
+
+export async function processItem(
+  item: ClaimedItem,
   agentName: string,
   hopperHome: string,
   deps: { git: GitGateway; claude: ClaudeGateway; fs: FsGateway; shell: ShellGateway },
@@ -166,88 +272,40 @@ export async function processItem(
       workDir = workSetup.dir;
     }
 
-    let exitCode: number;
-    let result: string;
+    const { exitCode, result } = await executeWork(
+      item,
+      workDir,
+      auditFile,
+      { claude, shell },
+      log,
+    );
 
-    if (item.command) {
-      log(`Starting command...\nAudit log: ${auditFile}`);
-      ({ exitCode, result } = await shell.runCommand(
-        item.command,
-        workDir ?? process.cwd(),
-        auditFile,
-      ));
-    } else {
-      const prompt = buildTaskPrompt(item);
-      log(`Starting Claude session...\nAudit log: ${auditFile}`);
-      ({ exitCode, result } = await claude.runSession(prompt, workDir ?? process.cwd(), auditFile));
-    }
-
-    // Commit any uncommitted changes Claude left in the worktree
     if (worktreePath) {
-      const dirty = await git.isWorktreeDirty(worktreePath);
-      const { shouldCommit } = resolvePostClaudeAction(true, dirty);
-      if (shouldCommit) {
-        const commitMsg = buildCommitMessage(item, result);
-        log("Committing changes...");
-        await git.commitAll(worktreePath, commitMsg);
-        log("Committed.");
-      }
+      await commitWorktreeChanges(git, worktreePath, item, result, log);
     }
 
-    // Remove worktree (branch is preserved for merge step)
     if (worktreePath && item.workingDir) {
-      log("Removing worktree...");
-      await git.worktreeRemove(item.workingDir, worktreePath);
+      await teardownWorktree(git, item.workingDir, worktreePath, log);
       worktreePath = undefined;
     }
 
-    // Merge work branch back to target (only on clean Claude exit)
-    let mergeNote = "";
     const { shouldMerge } = resolveMergeAction(exitCode, workBranch, item);
-    if (shouldMerge && workBranch && item.workingDir && item.branch) {
-      log(`Merging ${workBranch} → ${item.branch}...`);
-      const mergeResult = await orchestrateMerge(git, item.workingDir, item.branch, workBranch);
-      log(mergeResult.message);
-      mergeNote = `\n\n---\nMerge: ${mergeResult.message}`;
-      if (mergeResult.success) {
-        const pushResult = await git.push(item.workingDir, item.branch as string);
-        log(pushResult.message);
-        if (!pushResult.success) {
-          mergeNote += `\nPush: ${pushResult.message}`;
-        }
-      } else {
-        log(`Action required: manually merge branch ${workBranch}.`);
-      }
-    }
+    const mergeNote =
+      shouldMerge && workBranch && item.workingDir && item.branch
+        ? await mergeAndPush(git, item, workBranch, log)
+        : "";
 
-    const { action, result: finalResult } = resolveCompletionAction(exitCode, result, mergeNote);
-    await fs.writeFile(resultFile, finalResult);
-
-    const outputLabel = item.command ? "Command" : "Claude";
-    log(`--- ${outputLabel} Output ---`);
-    log(result);
-    if (mergeNote) log(mergeNote.trim());
-    log("---------------------");
-
-    if (action === "complete") {
-      log("Marking item complete...");
-      const { completed, recurred } = await completeItem(
-        item.claimToken as string,
-        agentName,
-        finalResult,
-      );
-      log(`Completed: ${completed.title}`);
-      if (recurred) {
-        log(
-          `Re-queued: ${completed.title} (next run: ${recurred.scheduledAt ? new Date(recurred.scheduledAt).toLocaleString() : "unknown"})`,
-        );
-      }
-    } else {
-      const sessionLabel = item.command ? "Command" : "Claude session";
-      log(`${sessionLabel} failed for: ${item.title} (${item.id})`);
-      if (workBranch) log(`Work branch ${workBranch} preserved for review.`);
-      log(`Use 'hopper requeue ${item.id} --reason "..."' to retry.`);
-    }
+    await handleCompletion(
+      item,
+      agentName,
+      exitCode,
+      result,
+      mergeNote,
+      workBranch,
+      fs,
+      resultFile,
+      log,
+    );
   } finally {
     // Belt-and-suspenders: clean up worktree if something threw mid-flight
     if (worktreePath && item.workingDir) {
@@ -256,32 +314,66 @@ export async function processItem(
   }
 }
 
-export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Promise<void> {
-  const git = deps?.git ?? createGitGateway();
-  const claude = deps?.claude ?? createClaudeGateway();
-  const fs = deps?.fs ?? createFsGateway();
-  const shell = deps?.shell ?? createShellGateway();
+export interface WorkerLoopDeps {
+  claimNext: (agentName: string) => Promise<ClaimedItem | null | undefined>;
+  processItem: (
+    item: ClaimedItem,
+    agentName: string,
+    hopperHome: string,
+    deps: { git: GitGateway; claude: ClaudeGateway; fs: FsGateway; shell: ShellGateway },
+    concurrency: number,
+  ) => Promise<void>;
+  sleep: (ms: number) => Promise<{ cancelled: boolean }>;
+  log: (message: string) => void;
+  onSignal: (signal: "SIGINT" | "SIGTERM", handler: () => void) => void;
+}
 
-  const { agentName, pollInterval, runOnce, concurrency } = resolveWorkerConfig(parsed.flags);
+function createCancellableSleep(): {
+  sleep: (ms: number) => Promise<{ cancelled: boolean }>;
+  cancel: () => void;
+} {
+  let cancelFn: (() => void) | undefined;
 
-  const hopperHome = join(homedir(), ".hopper");
+  const sleep = (ms: number): Promise<{ cancelled: boolean }> =>
+    new Promise<{ cancelled: boolean }>((resolve) => {
+      const timer = setTimeout(() => resolve({ cancelled: false }), ms);
+      cancelFn = () => {
+        clearTimeout(timer);
+        resolve({ cancelled: true });
+      };
+    });
+
+  const cancel = () => {
+    cancelFn?.();
+    cancelFn = undefined;
+  };
+
+  return { sleep, cancel };
+}
+
+export async function runWorkerLoop(
+  config: WorkerConfig,
+  hopperHome: string,
+  gatewayDeps: { git: GitGateway; claude: ClaudeGateway; fs: FsGateway; shell: ShellGateway },
+  loopDeps: WorkerLoopDeps,
+): Promise<void> {
+  const { agentName, pollInterval, runOnce, concurrency } = config;
+  const { claimNext, processItem: doProcessItem, sleep, log, onSignal } = loopDeps;
 
   let running = true;
   const activeTasks = new Map<string, Promise<void>>();
-  let cancelSleep: (() => void) | undefined;
 
   const shutdown = () => {
     const action = resolveShutdownAction(!running, activeTasks.size);
     if (action.type === "already-shutting-down") return;
     running = false;
-    cancelSleep?.();
-    console.log(action.message);
+    log(action.message);
   };
 
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  onSignal("SIGINT", shutdown);
+  onSignal("SIGTERM", shutdown);
 
-  console.log(
+  log(
     `Hopper worker starting (agent: ${agentName}, poll: ${pollInterval}s, concurrency: ${concurrency})`,
   );
 
@@ -289,7 +381,6 @@ export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Prom
     const loopAction = resolveLoopAction(activeTasks.size, concurrency, running);
 
     if (loopAction.type === "wait-for-slot") {
-      // Wait for any active task to finish, then prune settled tasks
       await Promise.race(activeTasks.values());
       for (const [id, p] of activeTasks) {
         const settled = await Promise.race([p.then(() => true), Promise.resolve(false)]);
@@ -300,21 +391,15 @@ export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Prom
 
     if (loopAction.type === "claim") {
       if (loopAction.shouldLog) {
-        console.log("\nChecking for work...");
+        log("\nChecking for work...");
       }
 
       let claimedAny = false;
       for (let i = 0; i < loopAction.freeSlots; i++) {
-        const item = await claimNextItem(agentName);
+        const item = await claimNext(agentName);
         if (!item) break;
         claimedAny = true;
-        const task = processItem(
-          item,
-          agentName,
-          hopperHome,
-          { git, claude, fs, shell },
-          concurrency,
-        )
+        const task = doProcessItem(item, agentName, hopperHome, gatewayDeps, concurrency)
           .catch((err) => {
             console.error(`Error processing item ${shortId(item.id)}: ${err}`);
           })
@@ -331,18 +416,11 @@ export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Prom
 
       switch (postAction.type) {
         case "exit-no-work":
-          console.log(postAction.message);
+          log(postAction.message);
           return;
         case "sleep":
-          console.log(postAction.message);
-          await new Promise<void>((r) => {
-            const timer = setTimeout(r, pollInterval * 1000);
-            cancelSleep = () => {
-              clearTimeout(timer);
-              r();
-            };
-          });
-          cancelSleep = undefined;
+          log(postAction.message);
+          await sleep(pollInterval * 1000);
           continue;
         case "wait-and-exit":
           if (activeTasks.size > 0) {
@@ -360,10 +438,35 @@ export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Prom
     const SHUTDOWN_TIMEOUT = 60_000;
     const timeout = new Promise<void>((resolve) =>
       setTimeout(() => {
-        console.log("Warning: shutdown timeout reached (60s). Some tasks may not have finished.");
+        log("Warning: shutdown timeout reached (60s). Some tasks may not have finished.");
         resolve();
       }, SHUTDOWN_TIMEOUT),
     );
     await Promise.race([Promise.allSettled(activeTasks.values()), timeout]);
   }
+}
+
+export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Promise<void> {
+  const git = deps?.git ?? createGitGateway();
+  const claude = deps?.claude ?? createClaudeGateway();
+  const fs = deps?.fs ?? createFsGateway();
+  const shell = deps?.shell ?? createShellGateway();
+
+  const config = resolveWorkerConfig(parsed.flags);
+  const hopperHome = join(homedir(), ".hopper");
+  const { sleep, cancel } = createCancellableSleep();
+
+  const loopDeps: WorkerLoopDeps = {
+    claimNext: claimNextItem,
+    processItem,
+    sleep,
+    log: (msg) => console.log(msg),
+    onSignal: (signal, handler) =>
+      process.on(signal, () => {
+        cancel();
+        handler();
+      }),
+  };
+
+  await runWorkerLoop(config, hopperHome, { git, claude, fs, shell }, loopDeps);
 }

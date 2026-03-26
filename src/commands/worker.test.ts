@@ -3,7 +3,7 @@ import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
-import type { Item } from "../store.ts";
+import type { ClaimedItem, Item } from "../store.ts";
 // Mock the store module so processItem doesn't touch the real items.json
 import * as store from "../store.ts";
 import { processItem } from "./worker.ts";
@@ -18,7 +18,7 @@ mock.module("../store.ts", () => ({
 const { completeItem } = await import("../store.ts");
 const completeItemMock = completeItem as ReturnType<typeof mock>;
 
-function makeItem(overrides?: Partial<Item>): Item {
+function makeItem(overrides?: Partial<ClaimedItem>): ClaimedItem {
   return {
     id: "aaaaaaaa-0000-0000-0000-000000000000",
     title: "Test task",

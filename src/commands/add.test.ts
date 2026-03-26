@@ -32,7 +32,7 @@ describe("addCommand", () => {
   });
 
   test("returns error when no description is provided", async () => {
-    const result = await addCommand(makeParsed([]), makeTitler());
+    const result = await addCommand(makeParsed([]), makeTitler(), async () => "");
 
     expect(result.status).toBe("error");
     if (result.status === "error") {

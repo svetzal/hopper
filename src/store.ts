@@ -36,6 +36,13 @@ export interface Item {
   };
 }
 
+export type ClaimedItem = Item & {
+  status: "in_progress";
+  claimedAt: string;
+  claimedBy: string;
+  claimToken: string;
+};
+
 const DEFAULT_STORE_DIR = join(homedir(), ".hopper");
 const ITEMS_FILE = "items.json";
 
@@ -79,7 +86,7 @@ export async function addItem(item: Item): Promise<void> {
   await saveItems(items);
 }
 
-export async function claimNextItem(agent?: string): Promise<Item | null> {
+export async function claimNextItem(agent?: string): Promise<ClaimedItem | undefined> {
   const items = await loadItems();
   const now = new Date();
   const queued = items
@@ -96,7 +103,7 @@ export async function claimNextItem(agent?: string): Promise<Item | null> {
     });
 
   const next = queued[0];
-  if (!next) return null;
+  if (!next) return undefined;
 
   next.status = Status.IN_PROGRESS;
   next.claimedAt = new Date().toISOString();
@@ -104,7 +111,7 @@ export async function claimNextItem(agent?: string): Promise<Item | null> {
   next.claimToken = crypto.randomUUID();
 
   await saveItems(items);
-  return next;
+  return next as ClaimedItem;
 }
 
 export interface CompleteResult {

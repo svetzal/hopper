@@ -21,6 +21,7 @@ import type { TitleGenerator } from "../titler.ts";
 export async function addCommand(
   parsed: ParsedArgs,
   titler: TitleGenerator,
+  readStdin: () => Promise<string> = () => new Response(Bun.stdin.stream()).text(),
 ): Promise<CommandResult> {
   // 1. Resolve preset (I/O)
   const presetName = stringFlag(parsed, "preset");
@@ -36,8 +37,7 @@ export async function addCommand(
   let description = parsed.positional[0] ?? "";
 
   if (!description && !process.stdin.isTTY) {
-    description = await new Response(Bun.stdin.stream()).text();
-    description = description.trim();
+    description = (await readStdin()).trim();
   }
 
   if (!description && preset) {
