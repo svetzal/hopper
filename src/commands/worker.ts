@@ -87,32 +87,39 @@ async function orchestrateMerge(
   const mergeCtx = { workBranch, targetBranch };
   const initialStep = resolveMergeStep(currentBranch, targetBranch);
 
-  if (initialStep.type === "skip") {
-    return initialStep.outcome;
+  let restoreBranch: string | undefined;
+  if (initialStep.type === "checkout-and-attempt-ff") {
+    restoreBranch = initialStep.originalBranch;
+    await git.checkout(repoDir, targetBranch);
   }
 
-  const ffExit = await git.mergeFastForward(repoDir, workBranch);
-  const ffResult = resolveFfResult(ffExit, mergeCtx);
+  try {
+    const ffExit = await git.mergeFastForward(repoDir, workBranch);
+    const ffResult = resolveFfResult(ffExit, mergeCtx);
 
-  if (ffResult.type === "ff-succeeded") {
-    await git.deleteBranch(repoDir, workBranch);
-    return ffResult.outcome;
-  }
+    if (ffResult.type === "ff-succeeded") {
+      await git.deleteBranch(repoDir, workBranch);
+      return ffResult.outcome;
+    }
 
-  const mergeExit = await git.mergeCommit(repoDir, workBranch);
-  const mcResult = resolveMergeCommitResult(mergeExit, mergeCtx);
+    const mergeExit = await git.mergeCommit(repoDir, workBranch);
+    const mcResult = resolveMergeCommitResult(mergeExit, mergeCtx);
 
-  if (mcResult.type === "merge-commit-succeeded") {
-    await git.deleteBranch(repoDir, workBranch);
+    if (mcResult.type === "merge-commit-succeeded") {
+      await git.deleteBranch(repoDir, workBranch);
+      return mcResult.outcome;
+    }
+
+    await git.mergeAbort(repoDir);
+    if (mcResult.type !== "conflict-abort") {
+      throw new Error(`Unexpected merge step type: ${mcResult.type}`);
+    }
     return mcResult.outcome;
+  } finally {
+    if (restoreBranch) {
+      await git.checkout(repoDir, restoreBranch);
+    }
   }
-
-  await git.mergeAbort(repoDir);
-  // resolveMergeCommitResult only returns "merge-commit-succeeded" or "conflict-abort"
-  if (mcResult.type !== "conflict-abort") {
-    throw new Error(`Unexpected merge step type: ${mcResult.type}`);
-  }
-  return mcResult.outcome;
 }
 
 export async function processItem(

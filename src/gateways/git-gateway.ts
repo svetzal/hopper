@@ -17,6 +17,7 @@ export interface GitGateway {
   isWorktreeDirty(worktreePath: string): Promise<boolean>;
   commitAll(worktreePath: string, message: string): Promise<void>;
   getCurrentBranch(repoDir: string): Promise<string>;
+  checkout(repoDir: string, branch: string): Promise<void>;
   mergeFastForward(repoDir: string, branch: string): Promise<number>;
   mergeCommit(repoDir: string, branch: string): Promise<number>;
   mergeAbort(repoDir: string): Promise<void>;
@@ -142,6 +143,18 @@ async function getCurrentBranch(repoDir: string): Promise<string> {
   return stdout.trim();
 }
 
+async function checkout(repoDir: string, branch: string): Promise<void> {
+  const proc = Bun.spawn(["git", "checkout", branch], {
+    cwd: repoDir,
+    stdout: "ignore",
+    stderr: "pipe",
+  });
+  const stderr = await new Response(proc.stderr).text();
+  if ((await proc.exited) !== 0) {
+    throw new Error(`git checkout "${branch}" failed: ${stderr.trim()}`);
+  }
+}
+
 async function mergeFastForward(repoDir: string, branch: string): Promise<number> {
   const proc = Bun.spawn(["git", "merge", "--ff-only", branch], {
     cwd: repoDir,
@@ -205,6 +218,7 @@ export function createGitGateway(): GitGateway {
     isWorktreeDirty,
     commitAll,
     getCurrentBranch,
+    checkout,
     mergeFastForward,
     mergeCommit,
     mergeAbort,

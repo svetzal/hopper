@@ -57,24 +57,15 @@ describe("resolveMergeStep", () => {
     expect(result).toEqual({ type: "attempt-ff" });
   });
 
-  test("skips when current branch differs from target", () => {
+  test("returns checkout-and-attempt-ff when current branch differs from target", () => {
     const result = resolveMergeStep("develop", "main");
-    expect(result.type).toBe("skip");
+    expect(result).toEqual({ type: "checkout-and-attempt-ff", originalBranch: "develop" });
   });
 
-  test("skip outcome has success false", () => {
-    const result = resolveMergeStep("develop", "main");
-    if (result.type === "skip") {
-      expect(result.outcome.success).toBe(false);
-      expect(result.outcome.type).toBe("skipped");
-    }
-  });
-
-  test("skip message mentions target branch and current branch", () => {
-    const result = resolveMergeStep("develop", "main");
-    if (result.type === "skip") {
-      expect(result.outcome.message).toContain("main");
-      expect(result.outcome.message).toContain("develop");
+  test("checkout-and-attempt-ff preserves original branch name", () => {
+    const result = resolveMergeStep("feature/xyz", "main");
+    if (result.type === "checkout-and-attempt-ff") {
+      expect(result.originalBranch).toBe("feature/xyz");
     }
   });
 });

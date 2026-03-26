@@ -55,30 +55,23 @@ export type MergeContext = {
 };
 
 export type MergeStepAction =
-  | { type: "skip"; outcome: MergeOutcome }
   | { type: "attempt-ff" }
+  | { type: "checkout-and-attempt-ff"; originalBranch: string }
   | { type: "ff-succeeded"; outcome: MergeOutcome }
   | { type: "attempt-merge-commit" }
   | { type: "merge-commit-succeeded"; outcome: MergeOutcome }
   | { type: "conflict-abort"; outcome: MergeOutcome };
 
 /**
- * Decide whether to attempt a merge at all.
+ * Decide how to proceed with the merge.
  *
- * The merge can only succeed when the target branch is currently checked out
- * in the main worktree. If HEAD points elsewhere the merge is skipped so the
- * work branch is preserved for the developer to merge manually.
+ * When the target branch is already checked out, merge directly. When HEAD
+ * points elsewhere, the caller must checkout the target first (and restore the
+ * original branch afterwards).
  */
 export function resolveMergeStep(currentBranch: string, targetBranch: string): MergeStepAction {
   if (currentBranch !== targetBranch) {
-    return {
-      type: "skip",
-      outcome: {
-        type: "skipped",
-        success: false,
-        message: `Target branch "${targetBranch}" is not checked out (currently on "${currentBranch}"); skipping merge.`,
-      },
-    };
+    return { type: "checkout-and-attempt-ff", originalBranch: currentBranch };
   }
   return { type: "attempt-ff" };
 }

@@ -43,6 +43,7 @@ function makeMockGit(overrides?: Partial<GitGateway>): GitGateway {
     isWorktreeDirty: mock(async () => false),
     commitAll: mock(async () => {}),
     getCurrentBranch: mock(async () => "main"),
+    checkout: mock(async () => {}),
     mergeFastForward: mock(async () => 0),
     mergeCommit: mock(async () => 0),
     mergeAbort: mock(async () => {}),
@@ -339,17 +340,22 @@ describe("processItem", () => {
     expect(git.createBranch).not.toHaveBeenCalled();
   });
 
-  test("merge is skipped when target branch is not checked out", async () => {
+  test("merge checks out target branch when not currently checked out, then restores original", async () => {
     const item = makeItem({ workingDir: "/repo", branch: "main" });
+    const checkoutCalls: string[] = [];
     const git = makeMockGit({
       getCurrentBranch: mock(async () => "develop"),
+      checkout: mock(async (_dir: string, branch: string) => {
+        checkoutCalls.push(branch);
+      }),
     });
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
     await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
 
-    expect(git.mergeFastForward).not.toHaveBeenCalled();
+    expect(git.mergeFastForward).toHaveBeenCalledTimes(1);
+    expect(checkoutCalls).toEqual(["main", "develop"]);
   });
 
   test("merge aborts and preserves work branch on conflict", async () => {
