@@ -1,5 +1,23 @@
 import { describe, expect, test } from "bun:test";
-import { formatDuration, relativeTime, relativeTimeFuture, shortId } from "./format.ts";
+import {
+  formatDuration,
+  formatItemDetail,
+  relativeTime,
+  relativeTimeFuture,
+  shortId,
+} from "./format.ts";
+import type { Item } from "./store.ts";
+
+function makeItem(overrides?: Partial<Item>): Item {
+  return {
+    id: "abcdef12-3456-7890-abcd-ef1234567890",
+    title: "Test item",
+    description: "A test description",
+    status: "queued",
+    createdAt: "2025-01-01T10:00:00Z",
+    ...overrides,
+  };
+}
 
 describe("format", () => {
   describe("relativeTime", () => {
@@ -83,6 +101,78 @@ describe("format", () => {
 
     test("handles short strings", () => {
       expect(shortId("abc")).toBe("abc");
+    });
+  });
+
+  describe("formatItemDetail", () => {
+    test("includes ID, title, status, and created date", () => {
+      const item = makeItem();
+      const output = formatItemDetail(item);
+
+      expect(output).toContain("ID:");
+      expect(output).toContain("abcdef12");
+      expect(output).toContain("Title:");
+      expect(output).toContain("Test item");
+      expect(output).toContain("Status:");
+      expect(output).toContain("queued");
+      expect(output).toContain("Created:");
+    });
+
+    test("includes description section", () => {
+      const item = makeItem({ description: "Do the thing" });
+      const output = formatItemDetail(item);
+
+      expect(output).toContain("Description:");
+      expect(output).toContain("Do the thing");
+    });
+
+    test("includes optional claimed fields when present", () => {
+      const item = makeItem({
+        status: "in_progress",
+        claimedAt: "2025-01-01T11:00:00Z",
+        claimedBy: "bot",
+      });
+      const output = formatItemDetail(item);
+
+      expect(output).toContain("Claimed:");
+      expect(output).toContain("Claimed by:");
+      expect(output).toContain("bot");
+    });
+
+    test("includes result section when present", () => {
+      const item = makeItem({ result: "All tasks done." });
+      const output = formatItemDetail(item);
+
+      expect(output).toContain("Result:");
+      expect(output).toContain("All tasks done.");
+    });
+
+    test("includes tags when present", () => {
+      const item = makeItem({ tags: ["frontend", "backend"] });
+      const output = formatItemDetail(item);
+
+      expect(output).toContain("Tags:");
+      expect(output).toContain("frontend, backend");
+    });
+
+    test("includes recurrence details when present", () => {
+      const item = makeItem({
+        recurrence: { interval: "1d", intervalMs: 86400000, remainingRuns: 3 },
+      });
+      const output = formatItemDetail(item);
+
+      expect(output).toContain("Recurrence:");
+      expect(output).toContain("every 1d");
+      expect(output).toContain("3 runs remaining");
+    });
+
+    test("omits optional fields when not present", () => {
+      const item = makeItem();
+      const output = formatItemDetail(item);
+
+      expect(output).not.toContain("Claimed:");
+      expect(output).not.toContain("Tags:");
+      expect(output).not.toContain("Result:");
     });
   });
 });

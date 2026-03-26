@@ -1,36 +1,35 @@
 import type { ParsedArgs } from "../cli.ts";
+import { stringFlag } from "../command-flags.ts";
+import type { CommandResult } from "../command-result.ts";
 import { formatDuration } from "../format.ts";
 import { completeItem } from "../store.ts";
 
-export async function completeCommand(parsed: ParsedArgs): Promise<void> {
+export async function completeCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const token = parsed.positional[0];
   if (!token) {
-    console.error("Usage: hopper complete <token>");
-    process.exit(1);
+    return { status: "error", message: "Usage: hopper complete <token>" };
   }
 
-  const agent = typeof parsed.flags.agent === "string" ? parsed.flags.agent : undefined;
-  const result = typeof parsed.flags.result === "string" ? parsed.flags.result : undefined;
+  const agent = stringFlag(parsed, "agent");
+  const result = stringFlag(parsed, "result");
 
-  try {
-    const { completed: item, recurred } = await completeItem(token, agent, result);
+  const { completed: item, recurred } = await completeItem(token, agent, result);
 
-    if (parsed.flags.json === true) {
-      console.log(JSON.stringify({ completed: item, ...(recurred ? { recurred } : {}) }, null, 2));
-    } else {
-      const duration =
-        item.claimedAt && item.completedAt
-          ? formatDuration(item.claimedAt, item.completedAt)
-          : "unknown";
-      console.log(`Completed: ${item.title} (${duration})`);
-      if (recurred) {
-        console.log(
-          `Re-queued: ${item.title} (next run: ${recurred.scheduledAt ? new Date(recurred.scheduledAt).toLocaleString() : "unknown"})`,
-        );
-      }
-    }
-  } catch (err) {
-    console.error((err as Error).message);
-    process.exit(1);
+  const duration =
+    item.claimedAt && item.completedAt
+      ? formatDuration(item.claimedAt, item.completedAt)
+      : "unknown";
+
+  const lines = [`Completed: ${item.title} (${duration})`];
+  if (recurred) {
+    lines.push(
+      `Re-queued: ${item.title} (next run: ${recurred.scheduledAt ? new Date(recurred.scheduledAt).toLocaleString() : "unknown"})`,
+    );
   }
+
+  return {
+    status: "success",
+    data: { completed: item, ...(recurred ? { recurred } : {}) },
+    humanOutput: lines.join("\n"),
+  };
 }

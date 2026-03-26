@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import { runCommand } from "./command-runner.ts";
 import { addCommand } from "./commands/add.ts";
 import { cancelCommand } from "./commands/cancel.ts";
 import { claimCommand } from "./commands/claim.ts";
@@ -144,38 +145,38 @@ async function main(): Promise<void> {
   switch (parsed.command) {
     case "add": {
       const titler = createTitleGenerator();
-      await addCommand(parsed, titler);
+      await runCommand((p) => addCommand(p, titler), parsed);
       break;
     }
     case "list":
-      await listCommand(parsed);
+      await runCommand(listCommand, parsed);
       break;
     case "claim":
-      await claimCommand(parsed);
+      await runCommand(claimCommand, parsed);
       break;
     case "cancel":
-      await cancelCommand(parsed);
+      await runCommand(cancelCommand, parsed);
       break;
     case "complete":
-      await completeCommand(parsed);
+      await runCommand(completeCommand, parsed);
       break;
     case "requeue":
-      await requeueCommand(parsed);
+      await runCommand(requeueCommand, parsed);
       break;
     case "reprioritize":
-      await reprioritizeCommand(parsed);
+      await runCommand(reprioritizeCommand, parsed);
       break;
     case "show":
-      await showCommand(parsed);
+      await runCommand(showCommand, parsed);
       break;
     case "tag":
-      await tagCommand(parsed);
+      await runCommand(tagCommand, parsed);
       break;
     case "untag":
-      await untagCommand(parsed);
+      await runCommand(untagCommand, parsed);
       break;
     case "preset":
-      await presetCommand(parsed);
+      await runCommand(presetCommand, parsed);
       break;
     case "init": {
       const { initCommand } = await import("./commands/init.ts");

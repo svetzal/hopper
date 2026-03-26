@@ -44,3 +44,45 @@ export function formatDuration(startIso: string, endIso: string): string {
 export function shortId(uuid: string): string {
   return uuid.slice(0, 8);
 }
+
+import type { Item } from "./store.ts";
+
+/** Format full details of an item as a multi-line string (for the show command). */
+export function formatItemDetail(item: Item): string {
+  const lines: string[] = [];
+  lines.push(`ID:          ${shortId(item.id)}`);
+  lines.push(`Title:       ${item.title}`);
+  lines.push(`Status:      ${item.status}`);
+  lines.push(`Created:     ${item.createdAt}`);
+  if (item.claimedAt) lines.push(`Claimed:     ${item.claimedAt}`);
+  if (item.claimedBy) lines.push(`Claimed by:  ${item.claimedBy}`);
+  if (item.completedAt) lines.push(`Completed:   ${item.completedAt}`);
+  if (item.completedBy) lines.push(`Completed by: ${item.completedBy}`);
+  if (item.tags?.length) lines.push(`Tags:        ${item.tags.join(", ")}`);
+  if (item.scheduledAt) lines.push(`Scheduled:   ${item.scheduledAt}`);
+  if (item.workingDir) lines.push(`Directory:   ${item.workingDir}`);
+  if (item.command) lines.push(`Command:     ${item.command}`);
+  if (item.recurrence) {
+    let recurrenceStr = `every ${item.recurrence.interval}`;
+    if (item.recurrence.remainingRuns !== undefined) {
+      recurrenceStr += ` (${item.recurrence.remainingRuns} runs remaining)`;
+    }
+    if (item.recurrence.until) {
+      recurrenceStr += ` until ${item.recurrence.until}`;
+    }
+    lines.push(`Recurrence:  ${recurrenceStr}`);
+  }
+  if (item.dependsOn?.length)
+    lines.push(`Depends on:  ${item.dependsOn.map((id) => shortId(id)).join(", ")}`);
+  if (item.requeueReason) lines.push(`Requeue reason: ${item.requeueReason}`);
+  if (item.requeuedBy) lines.push(`Requeued by: ${item.requeuedBy}`);
+  lines.push("");
+  lines.push("Description:");
+  lines.push(`  ${item.description}`);
+  if (item.result) {
+    lines.push("");
+    lines.push("Result:");
+    lines.push(`  ${item.result}`);
+  }
+  return lines.join("\n");
+}

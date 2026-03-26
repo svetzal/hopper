@@ -1,4 +1,6 @@
 import type { ParsedArgs } from "../cli.ts";
+import { stringFlag } from "../command-flags.ts";
+import type { CommandResult } from "../command-result.ts";
 import {
   addPreset,
   findPreset,
@@ -7,50 +9,44 @@ import {
   validatePresetName,
 } from "../presets.ts";
 
-export async function presetCommand(parsed: ParsedArgs): Promise<void> {
+export async function presetCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const subcommand = parsed.positional[0];
 
   switch (subcommand) {
     case "add":
-      await presetAddCommand(parsed);
-      break;
+      return presetAddCommand(parsed);
     case "list":
-      await presetListCommand(parsed);
-      break;
+      return presetListCommand(parsed);
     case "remove":
-      await presetRemoveCommand(parsed);
-      break;
+      return presetRemoveCommand(parsed);
     case "show":
-      await presetShowCommand(parsed);
-      break;
+      return presetShowCommand(parsed);
     default:
-      console.error("Usage: hopper preset <add|list|remove|show>");
-      process.exit(1);
+      return { status: "error", message: "Usage: hopper preset <add|list|remove|show>" };
   }
 }
 
-async function presetAddCommand(parsed: ParsedArgs): Promise<void> {
+async function presetAddCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const rawName = parsed.positional[1];
   const description = parsed.positional[2];
 
   if (!rawName || !description) {
-    console.error(
-      "Usage: hopper preset add <name> <description> [--dir <path>] [--branch <branch>]",
-    );
-    process.exit(1);
+    return {
+      status: "error",
+      message: "Usage: hopper preset add <name> <description> [--dir <path>] [--branch <branch>]",
+    };
   }
 
   let name: string;
   try {
     name = validatePresetName(rawName);
   } catch (err) {
-    console.error((err as Error).message);
-    process.exit(1);
+    return { status: "error", message: (err as Error).message };
   }
 
-  const dir = typeof parsed.flags.dir === "string" ? parsed.flags.dir : undefined;
-  const branch = typeof parsed.flags.branch === "string" ? parsed.flags.branch : undefined;
-  const command = typeof parsed.flags.command === "string" ? parsed.flags.command : undefined;
+  const dir = stringFlag(parsed, "dir");
+  const branch = stringFlag(parsed, "branch");
+  const command = stringFlag(parsed, "command");
   const force = parsed.flags.force === true;
 
   try {
@@ -66,31 +62,30 @@ async function presetAddCommand(parsed: ParsedArgs): Promise<void> {
       force,
     );
   } catch (err) {
-    console.error((err as Error).message);
-    process.exit(1);
+    return { status: "error", message: (err as Error).message };
   }
 
-  if (parsed.flags.json === true) {
-    const preset = await findPreset(name);
-    console.log(JSON.stringify(preset, null, 2));
-  } else {
-    console.log(`Preset saved: ${name}`);
-  }
+  const preset = await findPreset(name);
+
+  return {
+    status: "success",
+    data: preset,
+    humanOutput: `Preset saved: ${name}`,
+  };
 }
 
-async function presetListCommand(parsed: ParsedArgs): Promise<void> {
+async function presetListCommand(_parsed: ParsedArgs): Promise<CommandResult> {
   const presets = await loadPresets();
 
   if (presets.length === 0) {
-    console.log("No presets saved.");
-    return;
+    return {
+      status: "success",
+      data: [],
+      humanOutput: "No presets saved.",
+    };
   }
 
-  if (parsed.flags.json === true) {
-    console.log(JSON.stringify(presets, null, 2));
-    return;
-  }
-
+  const lines: string[] = [];
   for (const preset of presets) {
     const snippet =
       preset.description.length > 60
@@ -101,57 +96,62 @@ async function presetListCommand(parsed: ParsedArgs): Promise<void> {
     if (preset.branch) extras.push(`branch: ${preset.branch}`);
     if (preset.command) extras.push(`command: ${preset.command}`);
     const extraStr = extras.length > 0 ? `  (${extras.join(", ")})` : "";
-    console.log(`  ${preset.name}${extraStr}`);
-    console.log(`    ${snippet}`);
-    console.log();
+    lines.push(`  ${preset.name}${extraStr}`);
+    lines.push(`    ${snippet}`);
+    lines.push("");
   }
+
+  // Remove the trailing empty line so console.log doesn't add double newline
+  if (lines[lines.length - 1] === "") {
+    lines.pop();
+  }
+
+  return {
+    status: "success",
+    data: presets,
+    humanOutput: lines.join("\n"),
+  };
 }
 
-async function presetRemoveCommand(parsed: ParsedArgs): Promise<void> {
+async function presetRemoveCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const name = parsed.positional[1];
   if (!name) {
-    console.error("Usage: hopper preset remove <name>");
-    process.exit(1);
+    return { status: "error", message: "Usage: hopper preset remove <name>" };
   }
 
-  try {
-    await removePreset(name);
-  } catch (err) {
-    console.error((err as Error).message);
-    process.exit(1);
-  }
+  await removePreset(name);
 
-  if (parsed.flags.json === true) {
-    console.log(JSON.stringify({ removed: name.toLowerCase() }));
-  } else {
-    console.log(`Preset removed: ${name.toLowerCase()}`);
-  }
+  return {
+    status: "success",
+    data: { removed: name.toLowerCase() },
+    humanOutput: `Preset removed: ${name.toLowerCase()}`,
+  };
 }
 
-async function presetShowCommand(parsed: ParsedArgs): Promise<void> {
+async function presetShowCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const name = parsed.positional[1];
   if (!name) {
-    console.error("Usage: hopper preset show <name>");
-    process.exit(1);
+    return { status: "error", message: "Usage: hopper preset show <name>" };
   }
 
   const preset = await findPreset(name);
   if (!preset) {
-    console.error(`No preset found with name: ${name}`);
-    process.exit(1);
+    return { status: "error", message: `No preset found with name: ${name}` };
   }
 
-  if (parsed.flags.json === true) {
-    console.log(JSON.stringify(preset, null, 2));
-    return;
-  }
+  const lines: string[] = [];
+  lines.push(`Name:        ${preset.name}`);
+  if (preset.workingDir) lines.push(`Directory:   ${preset.workingDir}`);
+  if (preset.branch) lines.push(`Branch:      ${preset.branch}`);
+  if (preset.command) lines.push(`Command:     ${preset.command}`);
+  lines.push(`Created:     ${preset.createdAt}`);
+  lines.push("");
+  lines.push("Description:");
+  lines.push(`  ${preset.description}`);
 
-  console.log(`Name:        ${preset.name}`);
-  if (preset.workingDir) console.log(`Directory:   ${preset.workingDir}`);
-  if (preset.branch) console.log(`Branch:      ${preset.branch}`);
-  if (preset.command) console.log(`Command:     ${preset.command}`);
-  console.log(`Created:     ${preset.createdAt}`);
-  console.log();
-  console.log(`Description:`);
-  console.log(`  ${preset.description}`);
+  return {
+    status: "success",
+    data: preset,
+    humanOutput: lines.join("\n"),
+  };
 }

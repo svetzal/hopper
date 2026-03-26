@@ -1,20 +1,20 @@
 import type { ParsedArgs } from "../cli.ts";
+import { stringFlag } from "../command-flags.ts";
+import type { CommandResult } from "../command-result.ts";
 import { claimNextItem } from "../store.ts";
 
-export async function claimCommand(parsed: ParsedArgs): Promise<void> {
-  const agent = typeof parsed.flags.agent === "string" ? parsed.flags.agent : undefined;
+export async function claimCommand(parsed: ParsedArgs): Promise<CommandResult> {
+  const agent = stringFlag(parsed, "agent");
 
   const item = await claimNextItem(agent);
 
   if (!item) {
-    console.error("No queued items available.");
-    process.exit(1);
+    return { status: "error", message: "No queued items available." };
   }
 
-  if (parsed.flags.json === true) {
-    console.log(JSON.stringify(item, null, 2));
-  } else {
-    console.log(`Claimed: ${item.title}`);
-    console.log(`Token:   ${item.claimToken}`);
-  }
+  return {
+    status: "success",
+    data: item,
+    humanOutput: `Claimed: ${item.title}\nToken:   ${item.claimToken}`,
+  };
 }

@@ -1,64 +1,53 @@
 import type { ParsedArgs } from "../cli.ts";
+import type { CommandResult } from "../command-result.ts";
 import { shortId } from "../format.ts";
 import { removeItemTags, updateItemTags } from "../store.ts";
 import { normalizeTag } from "../tags.ts";
 
-export async function tagCommand(parsed: ParsedArgs): Promise<void> {
+export async function tagCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const id = parsed.positional[0];
   const rawTags = parsed.positional.slice(1);
 
   if (!id || rawTags.length === 0) {
-    console.error("Usage: hopper tag <id> <tag> [<tag>...]");
-    process.exit(1);
+    return { status: "error", message: "Usage: hopper tag <id> <tag> [<tag>...]" };
   }
 
   let tags: string[];
   try {
     tags = rawTags.map(normalizeTag);
   } catch (e) {
-    console.error((e as Error).message);
-    process.exit(1);
+    return { status: "error", message: (e as Error).message };
   }
 
-  try {
-    const item = await updateItemTags(id, tags);
-    if (parsed.flags.json === true) {
-      console.log(JSON.stringify(item, null, 2));
-    } else {
-      console.log(`Tagged ${shortId(item.id)}: ${tags.join(", ")}`);
-    }
-  } catch (err) {
-    console.error((err as Error).message);
-    process.exit(1);
-  }
+  const item = await updateItemTags(id, tags);
+
+  return {
+    status: "success",
+    data: item,
+    humanOutput: `Tagged ${shortId(item.id)}: ${tags.join(", ")}`,
+  };
 }
 
-export async function untagCommand(parsed: ParsedArgs): Promise<void> {
+export async function untagCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const id = parsed.positional[0];
   const rawTags = parsed.positional.slice(1);
 
   if (!id || rawTags.length === 0) {
-    console.error("Usage: hopper untag <id> <tag> [<tag>...]");
-    process.exit(1);
+    return { status: "error", message: "Usage: hopper untag <id> <tag> [<tag>...]" };
   }
 
   let tags: string[];
   try {
     tags = rawTags.map(normalizeTag);
   } catch (e) {
-    console.error((e as Error).message);
-    process.exit(1);
+    return { status: "error", message: (e as Error).message };
   }
 
-  try {
-    const item = await removeItemTags(id, tags);
-    if (parsed.flags.json === true) {
-      console.log(JSON.stringify(item, null, 2));
-    } else {
-      console.log(`Untagged ${shortId(item.id)}: ${tags.join(", ")}`);
-    }
-  } catch (err) {
-    console.error((err as Error).message);
-    process.exit(1);
-  }
+  const item = await removeItemTags(id, tags);
+
+  return {
+    status: "success",
+    data: item,
+    humanOutput: `Untagged ${shortId(item.id)}: ${tags.join(", ")}`,
+  };
 }

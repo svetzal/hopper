@@ -1,58 +1,19 @@
 import type { ParsedArgs } from "../cli.ts";
-import { shortId } from "../format.ts";
+import type { CommandResult } from "../command-result.ts";
+import { formatItemDetail } from "../format.ts";
 import { findItem } from "../store.ts";
 
-export async function showCommand(parsed: ParsedArgs): Promise<void> {
+export async function showCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const id = parsed.positional[0];
   if (!id) {
-    console.error("Usage: hopper show <id>");
-    process.exit(1);
+    return { status: "error", message: "Usage: hopper show <id>" };
   }
 
-  try {
-    const item = await findItem(id);
+  const item = await findItem(id);
 
-    if (parsed.flags.json === true) {
-      console.log(JSON.stringify(item, null, 2));
-      return;
-    }
-
-    console.log(`ID:          ${shortId(item.id)}`);
-    console.log(`Title:       ${item.title}`);
-    console.log(`Status:      ${item.status}`);
-    console.log(`Created:     ${item.createdAt}`);
-    if (item.claimedAt) console.log(`Claimed:     ${item.claimedAt}`);
-    if (item.claimedBy) console.log(`Claimed by:  ${item.claimedBy}`);
-    if (item.completedAt) console.log(`Completed:   ${item.completedAt}`);
-    if (item.completedBy) console.log(`Completed by: ${item.completedBy}`);
-    if (item.tags?.length) console.log(`Tags:        ${item.tags.join(", ")}`);
-    if (item.scheduledAt) console.log(`Scheduled:   ${item.scheduledAt}`);
-    if (item.workingDir) console.log(`Directory:   ${item.workingDir}`);
-    if (item.command) console.log(`Command:     ${item.command}`);
-    if (item.recurrence) {
-      let recurrenceStr = `every ${item.recurrence.interval}`;
-      if (item.recurrence.remainingRuns !== undefined) {
-        recurrenceStr += ` (${item.recurrence.remainingRuns} runs remaining)`;
-      }
-      if (item.recurrence.until) {
-        recurrenceStr += ` until ${item.recurrence.until}`;
-      }
-      console.log(`Recurrence:  ${recurrenceStr}`);
-    }
-    if (item.dependsOn?.length)
-      console.log(`Depends on:  ${item.dependsOn.map((id) => shortId(id)).join(", ")}`);
-    if (item.requeueReason) console.log(`Requeue reason: ${item.requeueReason}`);
-    if (item.requeuedBy) console.log(`Requeued by: ${item.requeuedBy}`);
-    console.log();
-    console.log(`Description:`);
-    console.log(`  ${item.description}`);
-    if (item.result) {
-      console.log();
-      console.log(`Result:`);
-      console.log(`  ${item.result}`);
-    }
-  } catch (err) {
-    console.error((err as Error).message);
-    process.exit(1);
-  }
+  return {
+    status: "success",
+    data: item,
+    humanOutput: formatItemDetail(item),
+  };
 }
