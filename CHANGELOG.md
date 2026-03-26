@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-03-25
+
+### Fixed
+
+- Automatic merge-back now works for newly created target branches — previously skipped with "target branch not checked out" when the branch didn't exist before the worker created it
+
+### Changed
+
+- Extracted git workflow decisions (branch setup, merge steps) to pure functions in `git-workflow.ts`
+- Extracted add command logic to functional core in `add-workflow.ts`
+
+### Maintenance
+
+- Upgraded TypeScript to 6.0.2
+- Updated @types/bun to 1.3.11
+- Added local installation instructions to AGENTS.md
+
 ## [1.2.1] - 2026-03-17
 
 ### Added
