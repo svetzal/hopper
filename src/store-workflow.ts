@@ -3,6 +3,14 @@ import { comparePriority } from "./priority.ts";
 import type { ClaimedItem, Item } from "./store.ts";
 
 // ---------------------------------------------------------------------------
+// Internal helper
+// ---------------------------------------------------------------------------
+
+function replaceItem(items: Item[], id: string, replacement: Item): Item[] {
+  return items.map((i) => (i.id === id ? replacement : i));
+}
+
+// ---------------------------------------------------------------------------
 // claimNext
 // ---------------------------------------------------------------------------
 
@@ -12,8 +20,9 @@ export interface ClaimNextResult {
 }
 
 /**
- * Pure function: select and claim the next workable item.
+ * Select and claim the next workable item.
  * Accepts injected `now` and `newUUID` to keep this side-effect-free.
+ * Returns a new items array — the input is never mutated.
  */
 export function claimNext(
   items: Item[],
@@ -37,12 +46,15 @@ export function claimNext(
   const next = claimable[0];
   if (!next) return { items, claimed: undefined };
 
-  next.status = Status.IN_PROGRESS;
-  next.claimedAt = now.toISOString();
-  next.claimedBy = agent;
-  next.claimToken = newUUID;
-
-  return { items, claimed: next as ClaimedItem };
+  const claimed: ClaimedItem = {
+    ...next,
+    status: Status.IN_PROGRESS,
+    claimedAt: now.toISOString(),
+    claimedBy: agent,
+    claimToken: newUUID,
+  };
+  const updatedItems = replaceItem(items, next.id, claimed);
+  return { items: updatedItems, claimed };
 }
 
 // ---------------------------------------------------------------------------
@@ -56,9 +68,10 @@ export interface WorkflowCompleteResult {
 }
 
 /**
- * Pure function: mark an item as completed by claim token.
+ * Mark an item as completed by claim token.
  * Handles dependency unblocking and recurrence scheduling.
  * Accepts injected `now` and `newUUID` to keep this side-effect-free.
+ * Returns a new items array — the input is never mutated.
  */
 export function complete(
   items: Item[],
@@ -77,21 +90,26 @@ export function complete(
     throw new Error(`Item is not in progress (status: ${item.status})`);
   }
 
-  item.status = Status.COMPLETED;
-  item.completedAt = now.toISOString();
-  item.completedBy = agent;
-  item.result = result;
-  item.claimToken = undefined;
+  const completedItem: Item = {
+    ...item,
+    status: Status.COMPLETED,
+    completedAt: now.toISOString(),
+    completedBy: agent,
+    result,
+    claimToken: undefined,
+  };
 
-  // Unblock items that depended on this completed item
-  for (const blocked of items.filter((i) => i.status === Status.BLOCKED)) {
-    const allDepsComplete = (blocked.dependsOn ?? []).every(
-      (depId) => items.find((i) => i.id === depId)?.status === Status.COMPLETED,
+  // Replace the completed item and unblock dependents in one pass
+  let updatedItems = replaceItem(items, item.id, completedItem);
+
+  updatedItems = updatedItems.map((i) => {
+    if (i.status !== Status.BLOCKED) return i;
+    const allDepsComplete = (i.dependsOn ?? []).every(
+      (depId) => updatedItems.find((x) => x.id === depId)?.status === Status.COMPLETED,
     );
-    if (allDepsComplete) {
-      blocked.status = blocked.scheduledAt ? Status.SCHEDULED : Status.QUEUED;
-    }
-  }
+    if (!allDepsComplete) return i;
+    return { ...i, status: i.scheduledAt ? Status.SCHEDULED : Status.QUEUED };
+  });
 
   let recurredItem: Item | undefined;
   if (item.recurrence) {
@@ -119,11 +137,11 @@ export function complete(
         ...(item.command ? { command: item.command } : {}),
         ...(item.tags?.length ? { tags: [...item.tags] } : {}),
       };
-      items.unshift(recurredItem);
+      updatedItems = [recurredItem, ...updatedItems];
     }
   }
 
-  return { items, completed: item, recurred: recurredItem };
+  return { items: updatedItems, completed: completedItem, recurred: recurredItem };
 }
 
 // ---------------------------------------------------------------------------
@@ -136,8 +154,9 @@ export interface RequeueResult {
 }
 
 /**
- * Pure function: reset an in-progress item back to queued.
+ * Reset an in-progress item back to queued.
  * Clears claim fields and records the requeue reason and agent.
+ * Returns a new items array — the input is never mutated.
  */
 export function requeue(
   items: Item[],
@@ -150,14 +169,17 @@ export function requeue(
     throw new Error(`Item is not in progress (status: ${item.status})`);
   }
 
-  item.status = Status.QUEUED;
-  item.claimedAt = undefined;
-  item.claimedBy = undefined;
-  item.claimToken = undefined;
-  item.requeueReason = reason;
-  item.requeuedBy = agent;
-
-  return { items, requeued: item };
+  const requeued: Item = {
+    ...item,
+    status: Status.QUEUED,
+    claimedAt: undefined,
+    claimedBy: undefined,
+    claimToken: undefined,
+    requeueReason: reason,
+    requeuedBy: agent,
+  };
+  const updatedItems = replaceItem(items, item.id, requeued);
+  return { items: updatedItems, requeued };
 }
 
 // ---------------------------------------------------------------------------
@@ -171,8 +193,9 @@ export interface CancelWorkflowResult {
 }
 
 /**
- * Pure function: cancel a queued, scheduled, or blocked item.
+ * Cancel a queued, scheduled, or blocked item.
  * Counts how many blocked items depended on the cancelled item.
+ * Returns a new items array — the input is never mutated.
  */
 export function cancel(items: Item[], id: string, now: Date): CancelWorkflowResult {
   const item = resolveItem(items, id);
@@ -186,14 +209,18 @@ export function cancel(items: Item[], id: string, now: Date): CancelWorkflowResu
     );
   }
 
-  item.status = Status.CANCELLED;
-  item.cancelledAt = now.toISOString();
+  const cancelled: Item = {
+    ...item,
+    status: Status.CANCELLED,
+    cancelledAt: now.toISOString(),
+  };
+  const updatedItems = replaceItem(items, item.id, cancelled);
 
   const blockedDependentCount = items.filter(
     (i) => i.status === Status.BLOCKED && (i.dependsOn ?? []).includes(item.id),
   ).length;
 
-  return { items, cancelled: item, blockedDependentCount };
+  return { items: updatedItems, cancelled, blockedDependentCount };
 }
 
 // ---------------------------------------------------------------------------
@@ -207,7 +234,8 @@ export interface ReprioritizeWorkflowResult {
 }
 
 /**
- * Pure function: change priority of a queued or scheduled item.
+ * Change priority of a queued or scheduled item.
+ * Returns a new items array — the input is never mutated.
  */
 export function reprioritize(
   items: Item[],
@@ -222,9 +250,9 @@ export function reprioritize(
   }
 
   const oldPriority = item.priority ?? "normal";
-  item.priority = priority;
-
-  return { items, item, oldPriority };
+  const updated: Item = { ...item, priority };
+  const updatedItems = replaceItem(items, item.id, updated);
+  return { items: updatedItems, item: updated, oldPriority };
 }
 
 // ---------------------------------------------------------------------------
@@ -237,25 +265,29 @@ export interface TagResult {
 }
 
 /**
- * Pure function: merge tags into an item (deduplicates and sorts).
+ * Merge tags into an item (deduplicates and sorts).
+ * Returns a new items array — the input is never mutated.
  */
 export function addTags(items: Item[], id: string, tags: string[]): TagResult {
   const item = resolveItem(items, id);
   const merged = [...new Set([...(item.tags ?? []), ...tags])].sort();
-  item.tags = merged;
-  return { items, item };
+  const updated: Item = { ...item, tags: merged };
+  const updatedItems = replaceItem(items, item.id, updated);
+  return { items: updatedItems, item: updated };
 }
 
 /**
- * Pure function: remove specific tags from an item.
+ * Remove specific tags from an item.
  * Clears the tags field entirely if no tags remain.
+ * Returns a new items array — the input is never mutated.
  */
 export function removeTags(items: Item[], id: string, tags: string[]): TagResult {
   const item = resolveItem(items, id);
   const tagSet = new Set(tags);
-  item.tags = (item.tags ?? []).filter((t) => !tagSet.has(t));
-  if (item.tags.length === 0) item.tags = undefined;
-  return { items, item };
+  const remaining = (item.tags ?? []).filter((t) => !tagSet.has(t));
+  const updated: Item = { ...item, tags: remaining.length > 0 ? remaining : undefined };
+  const updatedItems = replaceItem(items, item.id, updated);
+  return { items: updatedItems, item: updated };
 }
 
 // ---------------------------------------------------------------------------
@@ -263,7 +295,7 @@ export function removeTags(items: Item[], id: string, tags: string[]): TagResult
 // ---------------------------------------------------------------------------
 
 /**
- * Pure function: return a new array with `item` prepended.
+ * Return a new array with `item` prepended.
  */
 export function prependItem(items: Item[], item: Item): Item[] {
   return [item, ...items];

@@ -161,15 +161,17 @@ describe("claimNext", () => {
     expect(result.claimed?.claimToken).toBe(FIXED_UUID);
   });
 
-  test("mutates item in the items array (same reference)", () => {
+  test("returns new items array with claimed item updated (does not mutate input)", () => {
     const item = makeItem();
     const items = [item];
     const result = claimNext(items, "agent", FIXED_NOW, FIXED_UUID);
 
+    // Original item is unchanged
+    expect(item.status).toBe("queued");
+    // Returned items array is a new reference
+    expect(result.items).not.toBe(items);
+    // Returned items array has the updated item
     expect(result.items[0]?.status).toBe("in_progress");
-    // Verify the claimed item is the same object reference as the item in the array
-    expect(result.claimed?.id).toBe(item.id);
-    expect(result.claimed).toBe(result.items[0] as typeof result.claimed);
   });
 
   test("does not mutate items array when nothing to claim", () => {
@@ -179,6 +181,16 @@ describe("claimNext", () => {
 
     expect(result.claimed).toBeUndefined();
     expect(result.items).toBe(items);
+  });
+
+  test("does not mutate the original items or their properties", () => {
+    const item = makeItem({ status: "queued" });
+    const items = [item];
+    const originalStatus = item.status;
+    claimNext(items, "agent", FIXED_NOW, FIXED_UUID);
+
+    expect(item.status).toBe(originalStatus);
+    expect(items).toHaveLength(1);
   });
 });
 
@@ -248,9 +260,10 @@ describe("complete", () => {
       status: "blocked",
       dependsOn: [dep.id],
     });
-    complete([dep, blocked], FIXED_UUID, "agent", undefined, FIXED_NOW, "new-uuid");
+    const result = complete([dep, blocked], FIXED_UUID, "agent", undefined, FIXED_NOW, "new-uuid");
 
-    expect(blocked.status).toBe("queued");
+    const updatedBlocked = result.items.find((i) => i.id === blocked.id);
+    expect(updatedBlocked?.status).toBe("queued");
   });
 
   test("unblocks blocked item with scheduledAt to scheduled", () => {
@@ -262,9 +275,10 @@ describe("complete", () => {
       dependsOn: [dep.id],
       scheduledAt: futureDate,
     });
-    complete([dep, blocked], FIXED_UUID, "agent", undefined, FIXED_NOW, "new-uuid");
+    const result = complete([dep, blocked], FIXED_UUID, "agent", undefined, FIXED_NOW, "new-uuid");
 
-    expect(blocked.status).toBe("scheduled");
+    const updatedBlocked = result.items.find((i) => i.id === blocked.id);
+    expect(updatedBlocked?.status).toBe("scheduled");
   });
 
   test("multi-dependency: stays blocked until all deps complete", () => {
@@ -278,9 +292,17 @@ describe("complete", () => {
       status: "blocked",
       dependsOn: [dep1.id, dep2.id],
     });
-    complete([dep1, dep2, blocked], FIXED_UUID, "agent", undefined, FIXED_NOW, "new-uuid");
+    const result = complete(
+      [dep1, dep2, blocked],
+      FIXED_UUID,
+      "agent",
+      undefined,
+      FIXED_NOW,
+      "new-uuid",
+    );
 
-    expect(blocked.status).toBe("blocked");
+    const updatedBlocked = result.items.find((i) => i.id === blocked.id);
+    expect(updatedBlocked?.status).toBe("blocked");
   });
 
   test("recurrence creates new scheduled item with decremented remainingRuns", () => {
@@ -363,6 +385,25 @@ describe("complete", () => {
     expect(result.items[0]?.id).toBe("recurred-uuid");
     expect(result.items).toHaveLength(2);
   });
+
+  test("does not mutate the original item or items array", () => {
+    const item = makeInProgressItem();
+    const items = [item];
+    const originalStatus = item.status;
+    complete(items, FIXED_UUID, "agent", undefined, FIXED_NOW, "new-uuid");
+
+    expect(item.status).toBe(originalStatus);
+    expect(items).toHaveLength(1);
+  });
+
+  test("returns new items array reference", () => {
+    const item = makeInProgressItem();
+    const items = [item];
+    const result = complete(items, FIXED_UUID, "agent", undefined, FIXED_NOW, "new-uuid");
+
+    expect(result.items).not.toBe(items);
+    expect(result.items[0]?.status).toBe("completed");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -426,12 +467,22 @@ describe("requeue", () => {
     expect(result.requeued.createdAt).toBe(originalCreatedAt);
   });
 
-  test("returns updated items array", () => {
+  test("returns new items array (does not mutate input)", () => {
     const item = makeItem({ status: "in_progress", claimToken: FIXED_UUID });
     const items = [item];
     const result = requeue(items, item.id, "reason", undefined);
 
-    expect(result.items).toBe(items);
+    expect(result.items).not.toBe(items);
+    expect(result.items[0]?.status).toBe("queued");
+  });
+
+  test("does not mutate the original item or items array", () => {
+    const item = makeItem({ status: "in_progress", claimToken: FIXED_UUID });
+    const items = [item];
+    requeue(items, item.id, "reason", undefined);
+
+    expect(item.status).toBe("in_progress");
+    expect(items).toHaveLength(1);
   });
 });
 
@@ -520,6 +571,24 @@ describe("cancel", () => {
     const b = makeItem({ id: "abcd1111-cancel-0000-0000-000000000000" });
     expect(() => cancel([a, b], "abcd", FIXED_NOW)).toThrow("Ambiguous id prefix");
   });
+
+  test("does not mutate the original item or items array", () => {
+    const item = makeItem({ status: "queued" });
+    const items = [item];
+    cancel(items, item.id, FIXED_NOW);
+
+    expect(item.status).toBe("queued");
+    expect(items).toHaveLength(1);
+  });
+
+  test("returns new items array reference", () => {
+    const item = makeItem({ status: "queued" });
+    const items = [item];
+    const result = cancel(items, item.id, FIXED_NOW);
+
+    expect(result.items).not.toBe(items);
+    expect(result.items[0]?.status).toBe("cancelled");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -580,12 +649,22 @@ describe("reprioritize", () => {
     expect(() => reprioritize([a, b], "abcd", "high")).toThrow("Ambiguous id prefix");
   });
 
-  test("returns updated items array", () => {
+  test("returns new items array (does not mutate input)", () => {
     const item = makeItem({ status: "queued" });
     const items = [item];
     const result = reprioritize(items, item.id, "low");
 
-    expect(result.items).toBe(items);
+    expect(result.items).not.toBe(items);
+    expect(result.items[0]?.priority).toBe("low");
+  });
+
+  test("does not mutate the original item or items array", () => {
+    const item = makeItem({ status: "queued" });
+    const items = [item];
+    reprioritize(items, item.id, "low");
+
+    expect(item.priority).toBeUndefined();
+    expect(items).toHaveLength(1);
   });
 });
 
@@ -626,6 +705,23 @@ describe("addTags", () => {
     const item = makeItem();
     expect(() => addTags([item], "nonexistent", ["tag"])).toThrow("No item found");
   });
+
+  test("does not mutate the original item or items array", () => {
+    const item = makeItem({ tags: ["original"] });
+    const items = [item];
+    addTags(items, item.id, ["new"]);
+
+    expect(item.tags).toEqual(["original"]);
+    expect(items).toHaveLength(1);
+  });
+
+  test("returns new items array reference", () => {
+    const item = makeItem();
+    const items = [item];
+    const result = addTags(items, item.id, ["tag"]);
+
+    expect(result.items).not.toBe(items);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -664,6 +760,23 @@ describe("removeTags", () => {
   test("throws on no match", () => {
     const item = makeItem();
     expect(() => removeTags([item], "nonexistent", ["tag"])).toThrow("No item found");
+  });
+
+  test("does not mutate the original item or items array", () => {
+    const item = makeItem({ tags: ["keep", "remove"] });
+    const items = [item];
+    removeTags(items, item.id, ["remove"]);
+
+    expect(item.tags).toEqual(["keep", "remove"]);
+    expect(items).toHaveLength(1);
+  });
+
+  test("returns new items array reference", () => {
+    const item = makeItem({ tags: ["tag"] });
+    const items = [item];
+    const result = removeTags(items, item.id, ["tag"]);
+
+    expect(result.items).not.toBe(items);
   });
 });
 

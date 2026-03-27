@@ -47,7 +47,7 @@ export interface Item {
 export type ClaimedItem = Item & {
   status: "in_progress";
   claimedAt: string;
-  claimedBy: string;
+  claimedBy?: string;
   claimToken: string;
 };
 
