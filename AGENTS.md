@@ -31,9 +31,10 @@ A pre-push hook runs `bun run lint` and `bun test` automatically.
 ### Source layout
 
 | File | Purpose |
-|------|---------|
+| ---- | ------- |
 | `src/cli.ts` | Entry point, arg parser, command dispatch |
-| `src/store.ts` | All data operations (load, save, claim, complete, requeue, cancel, find). Module-level `storeDir` set via `setStoreDir()` for testing |
+| `src/store.ts` | I/O shell for data operations (load, save, claim, complete, requeue, cancel, find). Delegates all logic to `store-workflow.ts`. Module-level gateway updated via `setStoreDir()` for testing |
+| `src/store-workflow.ts` | Pure functions for all store domain logic: `claimNext`, `complete`, `requeue`, `cancel`, `reprioritize`, `addTags`, `removeTags`, `prependItem`, `resolveItem` |
 | `src/format.ts` | Display helpers (relative time, duration, short ID, `formatItemDetail`) |
 | `src/titler.ts` | LLM title generation via OpenAI API (gpt-4.1-nano). Falls back to truncation if no `OPENAI_API_KEY` |
 | `src/extract-result.ts` | Pure JSONL parser that extracts the final result string from a Claude `stream-json` session |
@@ -45,6 +46,7 @@ A pre-push hook runs `bun run lint` and `bun test` automatically.
 | `src/gateways/git-gateway.ts` | `GitGateway` interface + real implementation (thin wrapper around `git` subprocesses via `Bun.spawn`) |
 | `src/gateways/claude-gateway.ts` | `ClaudeGateway` interface + real implementation (thin wrapper around the `claude` CLI process) |
 | `src/gateways/fs-gateway.ts` | `FsGateway` interface + real implementation (thin wrapper around `mkdir` and `Bun.write`) |
+| `src/gateways/store-gateway.ts` | `StoreGateway` interface + real implementation (thin wrapper around `Bun.file`/`Bun.write` for `~/.hopper/items.json`) |
 | `src/commands/*.ts` | One file per CLI command, each returns `CommandResult` |
 | `src/text-imports.d.ts` | Type declaration for Bun's `*.md` text imports |
 
@@ -54,7 +56,7 @@ A pre-push hook runs `bun run lint` and `bun test` automatically.
 - **ID prefix matching**: `findItem`, `requeueItem`, and `cancelItem` accept UUID prefixes (e.g. first 8 chars)
 - **`--json` flag**: All commands support `--json` for machine-readable output. Human-friendly output is the default
 - **Skill embedding**: `hopper init` installs `.claude/skills/` files into target repos. The SKILL.md content is embedded at build time via Bun text imports from `skills/`
-- **Gateway pattern**: The worker command's I/O operations (git subprocesses, Claude CLI, filesystem writes) are isolated behind `GitGateway`, `ClaudeGateway`, and `FsGateway` interfaces. The worker accepts these as optional deps for testing. Gateway implementations in `src/gateways/` are thin wrappers with no business logic. All workflow decisions live in the pure functions in `src/worker-workflow.ts`
+- **Gateway pattern**: I/O operations are isolated behind gateway interfaces. `GitGateway`, `ClaudeGateway`, and `FsGateway` serve the worker command. `StoreGateway` encapsulates `~/.hopper/items.json` file access used by `store.ts`. Gateway implementations in `src/gateways/` are thin wrappers with no business logic. All workflow decisions live in pure functions (`src/worker-workflow.ts`, `src/store-workflow.ts`, etc.)
 - **Command results**: Commands in `src/commands/` return `CommandResult` (discriminated union from `src/command-result.ts`) instead of calling `console.log`/`process.exit` directly. The `runCommand()` function in `src/command-runner.ts` handles JSON/human output branching, warning display, and error exit codes. This keeps commands testable as pure functions. Exceptions: `worker.ts` (long-running loop) and `init.ts` (unique interface) manage their own I/O.
 
 ### Skill Distribution
