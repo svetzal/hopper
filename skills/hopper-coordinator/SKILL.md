@@ -25,6 +25,8 @@ Recurring items: completed --> new scheduled copy created automatically
 
 Items without a `--command` flag consume a full Claude Code session, so those should represent meaningful, well-defined work — not quick fixes or vague ideas. Items with `--command` run a shell command instead and are useful for automated maintenance, builds, or any scriptable task.
 
+Workers follow an **analyze → plan → execute → validate** cycle. Descriptions that include explicit validation criteria help workers verify their own work before finishing.
+
 ### Item Statuses
 
 | Status | Meaning |
@@ -113,6 +115,13 @@ Since an autonomous agent will execute this work with no human oversight, descri
 - Be specific about what "done" looks like — expected behavior, files to create or modify, tests to pass
 - Reference file paths, function names, or other concrete details
 - One piece of work per item — avoid compound tasks
+- Always include validation criteria — specify which commands must pass (test, lint, type-check, build) and any project-specific checks. Workers validate their work automatically, but explicit steps in the description make expectations unambiguous
+
+**Recommended description structure:**
+
+1. **Context** — what exists today and why the change is needed
+2. **Work** — what specifically to do, with file paths and concrete details
+3. **Validation** — what commands must pass and what success looks like (e.g., "Run `bun test` and `bun run lint` — both must pass with zero errors")
 
 ### Listing Items
 
@@ -240,11 +249,11 @@ When chaining, add the first item normally, capture its ID from the output, then
 ### Basic work dispatch
 
 ```bash
-hopper add "Add input validation to the signup form in src/components/SignupForm.tsx — validate email format, password strength (min 8 chars, 1 number), and display inline error messages. Add unit tests in src/components/SignupForm.test.tsx covering valid inputs, invalid email, and weak password cases." \
+hopper add "Add input validation to the signup form in src/components/SignupForm.tsx — validate email format, password strength (min 8 chars, 1 number), and display inline error messages. Add unit tests in src/components/SignupForm.test.tsx covering valid inputs, invalid email, and weak password cases. Run the full test suite and linter before finishing — both must pass with zero errors." \
   --dir ~/Work/Projects/webapp \
   --branch feat/signup-validation
 
-hopper add "Migrate the user table to add a 'preferences' JSONB column with a default empty object. Update the User model in src/models/user.ts and add a migration file in src/migrations/. Run existing tests to confirm nothing breaks." \
+hopper add "Migrate the user table to add a 'preferences' JSONB column with a default empty object. Update the User model in src/models/user.ts and add a migration file in src/migrations/. Run existing tests and the type checker to confirm nothing breaks — zero failures required." \
   --dir ~/Work/Projects/api-server \
   --branch feat/user-preferences
 ```
@@ -252,7 +261,7 @@ hopper add "Migrate the user table to add a 'preferences' JSONB column with a de
 ### Prioritized and tagged work
 
 ```bash
-hopper add "Fix the race condition in the WebSocket reconnection logic..." \
+hopper add "Fix the race condition in the WebSocket reconnection logic. Add a regression test that reproduces the race condition and verifies the fix. Run the full test suite and linter before finishing — both must pass." \
   --dir ~/Work/Projects/app \
   --branch fix/ws-reconnect \
   -p high \
@@ -266,13 +275,13 @@ hopper add "Fix the race condition in the WebSocket reconnection logic..." \
 # even though they're conceptually independent work
 
 # First item queues normally
-hopper add "Add input validation to the signup form..." \
+hopper add "Add input validation to the signup form. Validate email format and password strength. Add unit tests. Run the test suite and linter — both must pass." \
   --dir ~/Work/Projects/webapp \
   --branch feat/form-improvements
 # Output: Created item a1b2c3d4-...
 
 # Second item chains off the first to prevent concurrent execution
-hopper add "Add loading spinners to all form submit buttons..." \
+hopper add "Add loading spinners to all form submit buttons. Run the test suite and linter — both must pass." \
   --dir ~/Work/Projects/webapp \
   --branch feat/form-improvements \
   --after-item a1b2c3d4
@@ -284,12 +293,12 @@ hopper add "Add loading spinners to all form submit buttons..." \
 # Here the sequencing is both conflict-prevention AND logical —
 # the API endpoint needs the migration to exist first
 
-hopper add "Add the orders table migration..." \
+hopper add "Add the orders table migration. Run existing tests and type checker to confirm nothing breaks." \
   --dir ~/Work/Projects/api \
   --branch feat/orders
 # Output: Created item e5f6g7h8-...
 
-hopper add "Implement GET /api/orders endpoint..." \
+hopper add "Implement GET /api/orders endpoint with pagination. Add integration tests. Run the full test suite and linter — both must pass." \
   --dir ~/Work/Projects/api \
   --branch feat/orders \
   --after-item e5f6g7h8

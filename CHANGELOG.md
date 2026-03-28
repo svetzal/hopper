@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-03-28
+
+### Changed
+
+- Worker task prompt now instructs agents to follow analyze → plan → execute → validate phases, requiring tests and linter to pass before declaring work done
+- Coordinator skill adds validation criteria guidance, recommended description structure (Context / Work / Validation), and updated examples that consistently include validation requirements
+
 ## [1.3.0] - 2026-03-25
 
 ### Fixed

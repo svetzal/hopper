@@ -86,6 +86,13 @@ describe("worker-workflow", () => {
       expect(prompt).toContain("Do NOT commit");
       expect(prompt).toContain("summary");
     });
+
+    test("instructs the agent to validate work before finishing", () => {
+      const prompt = buildTaskPrompt(makeItem());
+      expect(prompt).toContain("validate your work");
+      expect(prompt).toContain("test suite");
+      expect(prompt).toContain("linter");
+    });
   });
 
   describe("buildCommitMessage", () => {

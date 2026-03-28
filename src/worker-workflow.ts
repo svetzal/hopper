@@ -45,9 +45,16 @@ export function buildTaskPrompt(item: Item): string {
     `You have been assigned the following task:\n\n` +
     `Title: ${item.title}\n` +
     `Description: ${item.description}\n\n` +
-    `Please complete this task. Do NOT commit your changes — the caller ` +
-    `will handle committing. When you are finished, provide a clear summary ` +
-    `of what you did.`
+    `## Instructions\n\n` +
+    `1. Analyze the task and plan your approach before writing code.\n` +
+    `2. Implement the changes described above.\n` +
+    `3. Before finishing, validate your work:\n` +
+    `   - Run the project's test suite and ensure all tests pass.\n` +
+    `   - Run the project's linter/type checker and fix any errors.\n` +
+    `   - If the task description specifies additional validation steps, run those too.\n` +
+    `   - If any checks fail, fix the issues before declaring done.\n` +
+    `4. Do NOT commit your changes — the caller will handle committing.\n` +
+    `5. Provide a clear summary of what you did, including validation results.\n`
   );
 }
 
