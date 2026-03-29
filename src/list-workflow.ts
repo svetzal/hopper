@@ -2,7 +2,7 @@ import { Status } from "./constants.ts";
 import { formatDuration, relativeTime, relativeTimeFuture, shortId } from "./format.ts";
 import { comparePriority, parsePriority, priorityBadge } from "./priority.ts";
 import type { Item } from "./store.ts";
-import { matchesTags, normalizeTag } from "./tags.ts";
+import { matchesTags, normalizeTags, tagBadge } from "./tags.ts";
 
 export type ListFilter =
   | { mode: "default" }
@@ -50,12 +50,9 @@ export function filterAndSortItems(
   }
 
   if (tagFilter.length > 0) {
-    try {
-      const normalizedTags = tagFilter.map(normalizeTag);
-      items = items.filter((i) => matchesTags(i.tags, normalizedTags));
-    } catch (e) {
-      return { ok: false, error: (e as Error).message };
-    }
+    const tagResult = normalizeTags(tagFilter);
+    if (!tagResult.ok) return { ok: false, error: tagResult.error };
+    items = items.filter((i) => matchesTags(i.tags, tagResult.tags));
   }
 
   items.sort((a, b) => {
@@ -95,7 +92,7 @@ export function formatItemList(items: Item[]): string {
     const id = shortId(item.id);
     const timing = itemTiming(item);
     const pBadge = priorityBadge(item.priority);
-    const tagBadge = item.tags?.length ? ` [${item.tags.join(", ")}]` : "";
+    const tBadge = tagBadge(item.tags);
     const dirBadge = item.workingDir ? ` [dir]` : "";
     const recurrenceBadge =
       item.recurrence && item.scheduledAt
@@ -122,7 +119,7 @@ export function formatItemList(items: Item[]): string {
                 ? scheduledBadge
                 : "";
 
-    lines.push(`  ${id}${badge}${pBadge}${tagBadge}${dirBadge}  ${item.title}${timing}`);
+    lines.push(`  ${id}${badge}${pBadge}${tBadge}${dirBadge}  ${item.title}${timing}`);
     lines.push(`    ${snippet}`);
     lines.push("");
   }

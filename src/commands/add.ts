@@ -15,7 +15,7 @@ import { findPreset } from "../presets.ts";
 import type { Priority } from "../priority.ts";
 import { parsePriority, priorityBadge } from "../priority.ts";
 import { addItem, loadItems } from "../store.ts";
-import { mergeTags, normalizeTag } from "../tags.ts";
+import { mergeTags, normalizeTags, tagBadge } from "../tags.ts";
 import type { TitleGenerator } from "../titler.ts";
 
 export async function addCommand(
@@ -101,13 +101,10 @@ export async function addCommand(
   let tags: string[] | undefined;
   const warnings: string[] = [];
   if (rawTags.length > 0 || preset?.tags?.length) {
-    try {
-      const normalizedFlags = rawTags.map(normalizeTag);
-      const presetTags = preset?.tags ?? [];
-      tags = mergeTags(presetTags, normalizedFlags);
-    } catch (e) {
-      return { status: "error", message: (e as Error).message };
-    }
+    const tagResult = normalizeTags(rawTags);
+    if (!tagResult.ok) return { status: "error", message: tagResult.error };
+    const presetTags = preset?.tags ?? [];
+    tags = mergeTags(presetTags, tagResult.tags);
   }
 
   // 11. Resolve dependencies (I/O)
@@ -151,17 +148,17 @@ export async function addCommand(
   // 14. Build human output
   const presetSuffix = preset ? ` (from preset: ${preset.name})` : "";
   const pBadge = priorityBadge(priority);
-  const tagBadge = tags?.length ? ` [${tags.join(", ")}]` : "";
+  const tBadge = tagBadge(tags);
   let humanOutput: string;
   if (dependsOn) {
     const depBadge = dependsOn.map((id) => shortId(id)).join(", ");
-    humanOutput = `Added: ${title}${pBadge}${tagBadge} (blocked on: ${depBadge})${presetSuffix}`;
+    humanOutput = `Added: ${title}${pBadge}${tBadge} (blocked on: ${depBadge})${presetSuffix}`;
   } else if (schedulingResult.recurrence) {
-    humanOutput = `Added: ${title}${pBadge}${tagBadge} (recurring every ${schedulingResult.recurrence.interval}, next run: ${schedulingResult.scheduledAt ? new Date(schedulingResult.scheduledAt).toLocaleString() : "unknown"})${presetSuffix}`;
+    humanOutput = `Added: ${title}${pBadge}${tBadge} (recurring every ${schedulingResult.recurrence.interval}, next run: ${schedulingResult.scheduledAt ? new Date(schedulingResult.scheduledAt).toLocaleString() : "unknown"})${presetSuffix}`;
   } else if (schedulingResult.scheduledAt) {
-    humanOutput = `Added: ${title}${pBadge}${tagBadge} (scheduled for ${new Date(schedulingResult.scheduledAt).toLocaleString()})${presetSuffix}`;
+    humanOutput = `Added: ${title}${pBadge}${tBadge} (scheduled for ${new Date(schedulingResult.scheduledAt).toLocaleString()})${presetSuffix}`;
   } else {
-    humanOutput = `Added: ${title}${pBadge}${tagBadge}${presetSuffix}`;
+    humanOutput = `Added: ${title}${pBadge}${tBadge}${presetSuffix}`;
   }
 
   return {

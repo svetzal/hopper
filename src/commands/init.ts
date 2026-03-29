@@ -20,6 +20,14 @@ const DEPRECATED_SKILL_DIRS: string[] = [".claude/skills/hopper-worker"];
 
 type FileAction = "created" | "updated" | "up-to-date" | "removed" | "skipped";
 
+const ACTION_META: Record<FileAction, { icon: string; label: string }> = {
+  created: { icon: "+", label: "Created" },
+  updated: { icon: "~", label: "Updated" },
+  "up-to-date": { icon: "=", label: "Up to date" },
+  removed: { icon: "-", label: "Removed" },
+  skipped: { icon: "!", label: "Skipped" },
+};
+
 interface FileResult {
   path: string;
   action: FileAction;
@@ -134,11 +142,18 @@ export async function initCommand(
     }
   }
 
-  const created = results.filter((r) => r.action === "created").length;
-  const updated = results.filter((r) => r.action === "updated").length;
-  const upToDate = results.filter((r) => r.action === "up-to-date").length;
-  const removed = results.filter((r) => r.action === "removed").length;
-  const skipped = results.filter((r) => r.action === "skipped").length;
+  const counts = results.reduce(
+    (acc, r) => {
+      acc[r.action] = (acc[r.action] ?? 0) + 1;
+      return acc;
+    },
+    {} as Partial<Record<FileAction, number>>,
+  );
+  const created = counts.created ?? 0;
+  const updated = counts.updated ?? 0;
+  const upToDate = counts["up-to-date"] ?? 0;
+  const removed = counts.removed ?? 0;
+  const skipped = counts.skipped ?? 0;
 
   const parts: string[] = [];
   if (created > 0) parts.push(`${created} created`);
@@ -161,26 +176,7 @@ export async function initCommand(
     const scope = global ? "global (~/.claude)" : "local";
     console.log(`\nHopper v${VERSION} — skill files (${scope})\n`);
     for (const r of results) {
-      const icon =
-        r.action === "created"
-          ? "+"
-          : r.action === "updated"
-            ? "~"
-            : r.action === "removed"
-              ? "-"
-              : r.action === "skipped"
-                ? "!"
-                : "=";
-      const label =
-        r.action === "created"
-          ? "Created"
-          : r.action === "updated"
-            ? "Updated"
-            : r.action === "removed"
-              ? "Removed"
-              : r.action === "skipped"
-                ? "Skipped"
-                : "Up to date";
+      const { icon, label } = ACTION_META[r.action];
       console.log(`  ${icon} ${r.path} (${label})`);
       if (r.warning) {
         console.log(`    ${r.warning}`);

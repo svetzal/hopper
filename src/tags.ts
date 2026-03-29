@@ -26,3 +26,17 @@ export function matchesTags(itemTags: string[] | undefined, filter: string[]): b
   if (!itemTags || itemTags.length === 0) return false;
   return filter.some((tag) => itemTags.includes(tag));
 }
+
+export function normalizeTags(
+  raw: string[],
+): { ok: true; tags: string[] } | { ok: false; error: string } {
+  try {
+    return { ok: true, tags: raw.map(normalizeTag) };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+export function tagBadge(tags: string[] | undefined): string {
+  return tags?.length ? ` [${tags.join(", ")}]` : "";
+}
