@@ -5,6 +5,7 @@ import {
   cancel,
   claimNext,
   complete,
+  ensureDefaults,
   prependItem,
   removeTags,
   reprioritize,
@@ -783,6 +784,35 @@ describe("removeTags", () => {
 // ---------------------------------------------------------------------------
 // prependItem
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// ensureDefaults
+// ---------------------------------------------------------------------------
+
+describe("ensureDefaults", () => {
+  test("item with existing status is returned unchanged", () => {
+    const raw = {
+      id: "test-id",
+      title: "Test",
+      description: "desc",
+      status: "completed",
+      createdAt: "2025-01-01T00:00:00Z",
+    };
+    const result = ensureDefaults(raw);
+    expect(result.status).toBe("completed");
+  });
+
+  test("item missing status gets Status.QUEUED", () => {
+    const raw = {
+      id: "test-id",
+      title: "Test",
+      description: "desc",
+      createdAt: "2025-01-01T00:00:00Z",
+    };
+    const result = ensureDefaults(raw as Record<string, unknown>);
+    expect(result.status).toBe("queued");
+  });
+});
 
 describe("prependItem", () => {
   test("prepends item to empty array", () => {

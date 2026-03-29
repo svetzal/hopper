@@ -302,6 +302,21 @@ export function prependItem(items: Item[], item: Item): Item[] {
 }
 
 // ---------------------------------------------------------------------------
+// ensureDefaults
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply default field values to a raw JSON record loaded from storage.
+ * Handles legacy items that were saved without a status field.
+ */
+export function ensureDefaults(raw: Record<string, unknown>): Item {
+  if (!raw.status) {
+    raw.status = Status.QUEUED;
+  }
+  return raw as unknown as Item;
+}
+
+// ---------------------------------------------------------------------------
 // resolveItem
 // ---------------------------------------------------------------------------
 

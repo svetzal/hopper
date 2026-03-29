@@ -32,7 +32,7 @@ const FLAG_ALIASES: Record<string, string> = {
 
 const REPEATABLE_FLAGS = new Set(["after-item", "tag"]);
 
-function parseArgs(args: string[]): ParsedArgs {
+export function parseArgs(args: string[]): ParsedArgs {
   const flags: Record<string, string | boolean> = {};
   const arrayFlags: Record<string, string[]> = {};
   const positional: string[] = [];

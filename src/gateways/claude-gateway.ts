@@ -1,3 +1,7 @@
+// Note: ClaudeGateway wraps the `claude` CLI process and is not unit-tested
+// directly, as doing so requires the claude binary to be installed. Its core
+// logic (JSONL result extraction) is tested via extract-result.test.ts, and
+// integration behaviour is covered by worker-workflow tests.
 import { extractResult } from "../extract-result.ts";
 
 export interface ClaudeGateway {
