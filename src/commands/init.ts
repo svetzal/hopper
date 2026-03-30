@@ -44,7 +44,11 @@ interface InitResult {
 export function stampVersion(content: string): string {
   const closingIndex = content.indexOf("\n---", 1);
   if (closingIndex === -1) return content;
-  return `${content.slice(0, closingIndex)}\nhopper-version: ${VERSION}${content.slice(closingIndex)}`;
+  // Update metadata.version to match binary version
+  let frontmatter = content.slice(0, closingIndex);
+  frontmatter = frontmatter.replace(/(\n {2}version: )"[^"]*"/, `$1"${VERSION}"`);
+  // Stamp hopper-version for backwards compatibility
+  return `${frontmatter}\nhopper-version: ${VERSION}${content.slice(closingIndex)}`;
 }
 
 export function stripVersionInfo(content: string): string {
@@ -55,8 +59,11 @@ export function stripVersionInfo(content: string): string {
       content = content.slice(newlineIndex + 1);
     }
   }
-  // New format: hopper-version field in front-matter
-  return content.replace(/\nhopper-version: .+/g, "");
+  // Strip hopper-version field in front-matter
+  content = content.replace(/\nhopper-version: .+/g, "");
+  // Strip metadata.version value (replace with source placeholder)
+  content = content.replace(/(\n {2}version: )"[^"]*"/, '$1"0.0.0"');
+  return content;
 }
 
 export function parseInstalledVersion(content: string): string | null {
@@ -115,7 +122,7 @@ export async function initCommand(
       }
 
       const existingBody = stripVersionInfo(existing);
-      const newBody = file.content;
+      const newBody = stripVersionInfo(file.content);
 
       if (existingBody === newBody) {
         if (existing !== stamped) {

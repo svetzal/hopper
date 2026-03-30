@@ -86,10 +86,11 @@ To upgrade: `brew upgrade hopper`
 
 ## Release process
 
-The version number lives in two places that must stay in sync:
+The version number lives in three places that must stay in sync:
 
 - `package.json` — `"version"` field
 - `src/constants.ts` — `VERSION` constant (this is what `hopper --version` returns)
+- `skills/hopper-coordinator/SKILL.md` — `metadata.version` in frontmatter (the `init` command also stamps this at install time, so the installed skill always reflects the binary version)
 
 To cut a release:
 
