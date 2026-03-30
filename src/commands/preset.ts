@@ -1,6 +1,7 @@
 import type { ParsedArgs } from "../cli.ts";
 import { stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
+import { toErrorMessage } from "../error-utils.ts";
 import {
   addPreset,
   findPreset,
@@ -41,7 +42,7 @@ async function presetAddCommand(parsed: ParsedArgs): Promise<CommandResult> {
   try {
     name = validatePresetName(rawName);
   } catch (err) {
-    return { status: "error", message: (err as Error).message };
+    return { status: "error", message: toErrorMessage(err) };
   }
 
   const dir = stringFlag(parsed, "dir");
@@ -62,7 +63,7 @@ async function presetAddCommand(parsed: ParsedArgs): Promise<CommandResult> {
       force,
     );
   } catch (err) {
-    return { status: "error", message: (err as Error).message };
+    return { status: "error", message: toErrorMessage(err) };
   }
 
   const preset = await findPreset(name);

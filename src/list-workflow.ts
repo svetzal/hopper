@@ -1,4 +1,5 @@
 import { Status } from "./constants.ts";
+import { toErrorMessage } from "./error-utils.ts";
 import { formatDuration, relativeTime, relativeTimeFuture, shortId } from "./format.ts";
 import { comparePriority, parsePriority, priorityBadge } from "./priority.ts";
 import type { Item } from "./store.ts";
@@ -45,7 +46,7 @@ export function filterAndSortItems(
       const p = parsePriority(priorityFilter);
       items = items.filter((i) => (i.priority ?? "normal") === p);
     } catch (e) {
-      return { ok: false, error: (e as Error).message };
+      return { ok: false, error: toErrorMessage(e) };
     }
   }
 

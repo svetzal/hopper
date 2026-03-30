@@ -10,6 +10,7 @@ import type { ParsedArgs } from "../cli.ts";
 import { stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
 import { Status } from "../constants.ts";
+import { toErrorMessage } from "../error-utils.ts";
 import { shortId } from "../format.ts";
 import { findPreset } from "../presets.ts";
 import type { Priority } from "../priority.ts";
@@ -70,7 +71,7 @@ export async function addCommand(
     try {
       priority = parsePriority(priorityFlag);
     } catch (e) {
-      return { status: "error", message: (e as Error).message };
+      return { status: "error", message: toErrorMessage(e) };
     }
   }
 

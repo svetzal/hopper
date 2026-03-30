@@ -1,5 +1,6 @@
 import type { ParsedArgs } from "./cli.ts";
 import type { CommandResult } from "./command-result.ts";
+import { toErrorMessage } from "./error-utils.ts";
 
 export async function runCommand(
   fn: (parsed: ParsedArgs) => Promise<CommandResult>,
@@ -22,7 +23,7 @@ export async function runCommand(
       console.log(result.humanOutput);
     }
   } catch (err) {
-    console.error((err as Error).message);
+    console.error(toErrorMessage(err));
     process.exit(1);
   }
 }

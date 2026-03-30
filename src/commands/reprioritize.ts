@@ -1,5 +1,6 @@
 import type { ParsedArgs } from "../cli.ts";
 import type { CommandResult } from "../command-result.ts";
+import { toErrorMessage } from "../error-utils.ts";
 import { shortId } from "../format.ts";
 import type { Priority } from "../priority.ts";
 import { parsePriority } from "../priority.ts";
@@ -17,7 +18,7 @@ export async function reprioritizeCommand(parsed: ParsedArgs): Promise<CommandRe
   try {
     priority = parsePriority(levelArg);
   } catch (e) {
-    return { status: "error", message: (e as Error).message };
+    return { status: "error", message: toErrorMessage(e) };
   }
 
   const { item, oldPriority } = await reprioritizeItem(id, priority);

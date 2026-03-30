@@ -27,13 +27,15 @@ export function matchesTags(itemTags: string[] | undefined, filter: string[]): b
   return filter.some((tag) => itemTags.includes(tag));
 }
 
+import { toErrorMessage } from "./error-utils.ts";
+
 export function normalizeTags(
   raw: string[],
 ): { ok: true; tags: string[] } | { ok: false; error: string } {
   try {
     return { ok: true, tags: raw.map(normalizeTag) };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: toErrorMessage(e) };
   }
 }
 
