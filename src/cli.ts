@@ -13,6 +13,7 @@ import { showCommand } from "./commands/show.ts";
 import { tagCommand, untagCommand } from "./commands/tag.ts";
 import { workerCommand } from "./commands/worker.ts";
 import { VERSION } from "./constants.ts";
+import { createLlmGateway } from "./gateways/llm-gateway.ts";
 import { createTitleGenerator } from "./titler.ts";
 
 export interface ParsedArgs {
@@ -144,7 +145,9 @@ async function main(): Promise<void> {
 
   switch (parsed.command) {
     case "add": {
-      const titler = createTitleGenerator();
+      const apiKey = process.env.OPENAI_API_KEY ?? "";
+      const llm = apiKey ? createLlmGateway(apiKey) : undefined;
+      const titler = createTitleGenerator(llm);
       await runCommand((p) => addCommand(p, titler), parsed);
       break;
     }

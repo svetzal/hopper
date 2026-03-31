@@ -1,10 +1,10 @@
-import { mkdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 // Embed skill files at build time via Bun text imports
 // Source of truth lives in skills/ — .claude/skills/ is the installed copy
 import COORDINATOR_SKILL_MD from "../../skills/hopper-coordinator/SKILL.md" with { type: "text" };
 import { VERSION } from "../constants.ts";
+import { createInitGateway, type InitGateway } from "../gateways/init-gateway.ts";
 
 interface SkillFile {
   relativePath: string;
@@ -88,6 +88,7 @@ export async function initCommand(
   jsonOutput: boolean,
   global: boolean = false,
   force: boolean = false,
+  gateway: InitGateway = createInitGateway(),
 ): Promise<void> {
   const baseDir = global ? join(homedir(), ".claude") : process.cwd();
   const results: FileResult[] = [];
@@ -100,14 +101,13 @@ export async function initCommand(
 
     let action: FileAction;
     let warning: string | undefined;
-    const fileRef = Bun.file(fullPath);
 
-    if (!(await fileRef.exists())) {
-      await mkdir(dir, { recursive: true });
-      await Bun.write(fullPath, stamped);
+    if (!(await gateway.exists(fullPath))) {
+      await gateway.mkdirp(dir);
+      await gateway.writeFile(fullPath, stamped);
       action = "created";
     } else {
-      const existing = await fileRef.text();
+      const existing = await gateway.readText(fullPath);
 
       // Version guard: refuse to overwrite a newer installed skill
       const installedVersion = parseInstalledVersion(existing);
@@ -126,11 +126,11 @@ export async function initCommand(
 
       if (existingBody === newBody) {
         if (existing !== stamped) {
-          await Bun.write(fullPath, stamped);
+          await gateway.writeFile(fullPath, stamped);
         }
         action = "up-to-date";
       } else {
-        await Bun.write(fullPath, stamped);
+        await gateway.writeFile(fullPath, stamped);
         action = "updated";
       }
     }
@@ -142,9 +142,9 @@ export async function initCommand(
   for (const relDir of DEPRECATED_SKILL_DIRS) {
     const relPath = global ? relDir.replace(/^\.claude\//, "") : relDir;
     const fullPath = join(baseDir, relPath);
-    const marker = Bun.file(join(fullPath, "SKILL.md"));
-    if (await marker.exists()) {
-      await rm(fullPath, { recursive: true });
+    const markerPath = join(fullPath, "SKILL.md");
+    if (await gateway.exists(markerPath)) {
+      await gateway.rmrf(fullPath);
       results.push({ path: relPath, action: "removed" });
     }
   }

@@ -1,6 +1,4 @@
-import { mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { createPresetGateway, type PresetGateway } from "./gateways/preset-gateway.ts";
 
 export interface Preset {
   name: string;
@@ -12,17 +10,10 @@ export interface Preset {
   createdAt: string;
 }
 
-const DEFAULT_STORE_DIR = join(homedir(), ".hopper");
-const PRESETS_FILE = "presets.json";
+let gateway: PresetGateway = createPresetGateway();
 
-let storeDir = DEFAULT_STORE_DIR;
-
-export function setPresetsDir(dir: string): void {
-  storeDir = dir;
-}
-
-export function getPresetsPath(): string {
-  return join(storeDir, PRESETS_FILE);
+export function setPresetGateway(gw: PresetGateway): void {
+  gateway = gw;
 }
 
 const NAME_PATTERN = /^[a-z0-9_-]+$/;
@@ -45,20 +36,11 @@ export function validatePresetName(name: string): string {
 }
 
 export async function loadPresets(): Promise<Preset[]> {
-  try {
-    const file = Bun.file(getPresetsPath());
-    if (await file.exists()) {
-      return (await file.json()) as Preset[];
-    }
-  } catch {
-    // Corrupted or unreadable — start fresh
-  }
-  return [];
+  return gateway.load();
 }
 
 export async function savePresets(presets: Preset[]): Promise<void> {
-  await mkdir(storeDir, { recursive: true });
-  await Bun.write(getPresetsPath(), `${JSON.stringify(presets, null, 2)}\n`);
+  return gateway.save(presets);
 }
 
 export async function addPreset(preset: Preset, force = false): Promise<void> {

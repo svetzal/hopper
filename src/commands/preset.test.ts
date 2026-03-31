@@ -3,7 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ParsedArgs } from "../cli.ts";
-import { setPresetsDir } from "../presets.ts";
+import { createPresetGateway } from "../gateways/preset-gateway.ts";
+import { setPresetGateway } from "../presets.ts";
 import { presetCommand } from "./preset.ts";
 
 function makeParsed(
@@ -18,7 +19,7 @@ describe("presetCommand", () => {
 
   beforeEach(async () => {
     tempDir = await mkdtemp(join(tmpdir(), "hopper-preset-test-"));
-    setPresetsDir(tempDir);
+    setPresetGateway(createPresetGateway(tempDir));
   });
 
   afterEach(async () => {

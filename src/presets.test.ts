@@ -2,13 +2,14 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createPresetGateway } from "./gateways/preset-gateway.ts";
 import type { Preset } from "./presets.ts";
 import {
   addPreset,
   findPreset,
   loadPresets,
   removePreset,
-  setPresetsDir,
+  setPresetGateway,
   validatePresetName,
 } from "./presets.ts";
 
@@ -17,7 +18,7 @@ describe("presets", () => {
 
   beforeEach(async () => {
     tempDir = await mkdtemp(join(tmpdir(), "hopper-presets-test-"));
-    setPresetsDir(tempDir);
+    setPresetGateway(createPresetGateway(tempDir));
   });
 
   afterEach(async () => {
