@@ -1,44 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import type { ParsedArgs } from "../cli.ts";
-import type { Item } from "../store.ts";
-import { addItem, saveItems, setStoreDir } from "../store.ts";
+import { addItem, saveItems } from "../store.ts";
 import { cancelCommand } from "./cancel.ts";
-
-function makeParsed(
-  positional: string[] = [],
-  flags: Record<string, string | boolean> = {},
-): ParsedArgs {
-  return { command: "cancel", positional, flags, arrayFlags: {} };
-}
-
-function makeItem(overrides?: Partial<Item>): Item {
-  return {
-    id: crypto.randomUUID(),
-    title: "Test item",
-    description: "A test description",
-    status: "queued",
-    createdAt: new Date().toISOString(),
-    ...overrides,
-  };
-}
+import { makeItem, makeParsed, setupTempStoreDir } from "./test-helpers.ts";
 
 describe("cancelCommand", () => {
-  let tempDir: string;
+  const storeDir = setupTempStoreDir("hopper-cancel-test-");
 
-  beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "hopper-cancel-test-"));
-    setStoreDir(tempDir);
-  });
-
-  afterEach(async () => {
-    await rm(tempDir, { recursive: true });
-  });
+  beforeEach(storeDir.beforeEach);
+  afterEach(storeDir.afterEach);
 
   test("returns error when no id is provided", async () => {
-    const result = await cancelCommand(makeParsed([]));
+    const result = await cancelCommand(makeParsed("cancel", []));
     expect(result.status).toBe("error");
     if (result.status === "error") {
       expect(result.message).toBe("Usage: hopper cancel <item-id>");
@@ -49,7 +21,7 @@ describe("cancelCommand", () => {
     const item = makeItem();
     await addItem(item);
 
-    const result = await cancelCommand(makeParsed([item.id]));
+    const result = await cancelCommand(makeParsed("cancel", [item.id]));
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -64,7 +36,7 @@ describe("cancelCommand", () => {
     });
     await addItem(item);
 
-    const result = await cancelCommand(makeParsed([item.id]));
+    const result = await cancelCommand(makeParsed("cancel", [item.id]));
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -80,7 +52,7 @@ describe("cancelCommand", () => {
     });
     await saveItems([dep, blocked]);
 
-    const result = await cancelCommand(makeParsed([dep.id]));
+    const result = await cancelCommand(makeParsed("cancel", [dep.id]));
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -94,6 +66,6 @@ describe("cancelCommand", () => {
     const item = makeItem({ status: "in_progress" });
     await addItem(item);
 
-    await expect(cancelCommand(makeParsed([item.id]))).rejects.toThrow();
+    await expect(cancelCommand(makeParsed("cancel", [item.id]))).rejects.toThrow();
   });
 });

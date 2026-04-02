@@ -1,44 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import type { ParsedArgs } from "../cli.ts";
 import type { Item } from "../store.ts";
-import { addItem, setStoreDir } from "../store.ts";
+import { addItem } from "../store.ts";
 import { tagCommand, untagCommand } from "./tag.ts";
-
-function makeParsed(
-  positional: string[] = [],
-  flags: Record<string, string | boolean> = {},
-): ParsedArgs {
-  return { command: "tag", positional, flags, arrayFlags: {} };
-}
-
-function makeItem(overrides?: Partial<Item>): Item {
-  return {
-    id: crypto.randomUUID(),
-    title: "Test item",
-    description: "A test description",
-    status: "queued",
-    createdAt: new Date().toISOString(),
-    ...overrides,
-  };
-}
+import { makeItem, makeParsed, setupTempStoreDir } from "./test-helpers.ts";
 
 describe("tagCommand", () => {
-  let tempDir: string;
+  const storeDir = setupTempStoreDir("hopper-tag-test-");
 
-  beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "hopper-tag-test-"));
-    setStoreDir(tempDir);
-  });
-
-  afterEach(async () => {
-    await rm(tempDir, { recursive: true });
-  });
+  beforeEach(storeDir.beforeEach);
+  afterEach(storeDir.afterEach);
 
   test("returns error when no id is provided", async () => {
-    const result = await tagCommand(makeParsed([]));
+    const result = await tagCommand(makeParsed("tag", []));
 
     expect(result.status).toBe("error");
     if (result.status === "error") {
@@ -47,7 +20,7 @@ describe("tagCommand", () => {
   });
 
   test("returns error when no tags are provided", async () => {
-    const result = await tagCommand(makeParsed(["some-id"]));
+    const result = await tagCommand(makeParsed("tag", ["some-id"]));
 
     expect(result.status).toBe("error");
     if (result.status === "error") {
@@ -59,7 +32,7 @@ describe("tagCommand", () => {
     const item = makeItem();
     await addItem(item);
 
-    const result = await tagCommand(makeParsed([item.id, "feature", "backend"]));
+    const result = await tagCommand(makeParsed("tag", [item.id, "feature", "backend"]));
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -72,19 +45,13 @@ describe("tagCommand", () => {
 });
 
 describe("untagCommand", () => {
-  let tempDir: string;
+  const storeDir = setupTempStoreDir("hopper-untag-test-");
 
-  beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "hopper-untag-test-"));
-    setStoreDir(tempDir);
-  });
-
-  afterEach(async () => {
-    await rm(tempDir, { recursive: true });
-  });
+  beforeEach(storeDir.beforeEach);
+  afterEach(storeDir.afterEach);
 
   test("returns error when no id is provided", async () => {
-    const result = await untagCommand(makeParsed([]));
+    const result = await untagCommand(makeParsed("untag", []));
 
     expect(result.status).toBe("error");
     if (result.status === "error") {
@@ -93,7 +60,7 @@ describe("untagCommand", () => {
   });
 
   test("returns error when no tags are provided", async () => {
-    const result = await untagCommand(makeParsed(["some-id"]));
+    const result = await untagCommand(makeParsed("untag", ["some-id"]));
 
     expect(result.status).toBe("error");
     if (result.status === "error") {
@@ -105,7 +72,7 @@ describe("untagCommand", () => {
     const item = makeItem({ tags: ["feature", "backend"] });
     await addItem(item);
 
-    const result = await untagCommand(makeParsed([item.id, "backend"]));
+    const result = await untagCommand(makeParsed("untag", [item.id, "backend"]));
 
     expect(result.status).toBe("success");
     if (result.status === "success") {

@@ -1,44 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import type { ParsedArgs } from "../cli.ts";
 import type { Item } from "../store.ts";
-import { addItem, saveItems, setStoreDir } from "../store.ts";
+import { addItem, saveItems } from "../store.ts";
 import { listCommand } from "./list.ts";
-
-function makeParsed(
-  flags: Record<string, string | boolean> = {},
-  arrayFlags: Record<string, string[]> = {},
-): ParsedArgs {
-  return { command: "list", positional: [], flags, arrayFlags };
-}
-
-function makeItem(overrides?: Partial<Item>): Item {
-  return {
-    id: crypto.randomUUID(),
-    title: "Test item",
-    description: "A test description",
-    status: "queued",
-    createdAt: new Date().toISOString(),
-    ...overrides,
-  };
-}
+import { makeItem, makeParsed, setupTempStoreDir } from "./test-helpers.ts";
 
 describe("listCommand", () => {
-  let tempDir: string;
+  const storeDir = setupTempStoreDir("hopper-list-test-");
 
-  beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "hopper-list-test-"));
-    setStoreDir(tempDir);
-  });
-
-  afterEach(async () => {
-    await rm(tempDir, { recursive: true });
-  });
+  beforeEach(storeDir.beforeEach);
+  afterEach(storeDir.afterEach);
 
   test("returns success with empty queue message when no items", async () => {
-    const result = await listCommand(makeParsed());
+    const result = await listCommand(makeParsed("list"));
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -51,7 +24,7 @@ describe("listCommand", () => {
     await addItem(makeItem({ title: "Task one" }));
     await addItem(makeItem({ title: "Task two" }));
 
-    const result = await listCommand(makeParsed());
+    const result = await listCommand(makeParsed("list"));
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -64,7 +37,7 @@ describe("listCommand", () => {
     await addItem(makeItem({ status: "queued" }));
     await addItem(makeItem({ status: "completed", completedAt: new Date().toISOString() }));
 
-    const result = await listCommand(makeParsed({ completed: true }));
+    const result = await listCommand(makeParsed("list", [], { completed: true }));
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -78,7 +51,7 @@ describe("listCommand", () => {
     await addItem(makeItem({ status: "queued" }));
     await addItem(makeItem({ status: "completed", completedAt: new Date().toISOString() }));
 
-    const result = await listCommand(makeParsed({ all: true }));
+    const result = await listCommand(makeParsed("list", [], { all: true }));
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -90,7 +63,7 @@ describe("listCommand", () => {
   test("returns error for invalid priority filter", async () => {
     await addItem(makeItem());
 
-    const result = await listCommand(makeParsed({ priority: "invalid" }));
+    const result = await listCommand(makeParsed("list", [], { priority: "invalid" }));
 
     expect(result.status).toBe("error");
   });
@@ -99,7 +72,7 @@ describe("listCommand", () => {
     await addItem(makeItem({ tags: ["frontend"] }));
     await addItem(makeItem({ tags: ["backend"] }));
 
-    const result = await listCommand(makeParsed({}, { tag: ["frontend"] }));
+    const result = await listCommand(makeParsed("list", [], {}, { tag: ["frontend"] }));
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -115,7 +88,7 @@ describe("listCommand", () => {
       makeItem({ status: "cancelled", cancelledAt: new Date().toISOString() }),
     ]);
 
-    const result = await listCommand(makeParsed());
+    const result = await listCommand(makeParsed("list"));
 
     expect(result.status).toBe("success");
     if (result.status === "success") {

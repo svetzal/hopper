@@ -1,29 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import type { ParsedArgs } from "../cli.ts";
 import type { Item } from "../store.ts";
-import { addItem, claimNextItem, setStoreDir } from "../store.ts";
+import { addItem, claimNextItem } from "../store.ts";
 import { requeueCommand } from "./requeue.ts";
-
-function makeParsed(
-  positional: string[] = [],
-  flags: Record<string, string | boolean> = {},
-): ParsedArgs {
-  return { command: "requeue", positional, flags, arrayFlags: {} };
-}
-
-function makeItem(overrides?: Partial<Item>): Item {
-  return {
-    id: crypto.randomUUID(),
-    title: "Test item",
-    description: "A test description",
-    status: "queued",
-    createdAt: new Date().toISOString(),
-    ...overrides,
-  };
-}
+import { makeItem, makeParsed, setupTempStoreDir } from "./test-helpers.ts";
 
 async function addAndClaimId(): Promise<string> {
   await addItem(makeItem());
@@ -33,19 +12,13 @@ async function addAndClaimId(): Promise<string> {
 }
 
 describe("requeueCommand", () => {
-  let tempDir: string;
+  const storeDir = setupTempStoreDir("hopper-requeue-test-");
 
-  beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "hopper-requeue-test-"));
-    setStoreDir(tempDir);
-  });
-
-  afterEach(async () => {
-    await rm(tempDir, { recursive: true });
-  });
+  beforeEach(storeDir.beforeEach);
+  afterEach(storeDir.afterEach);
 
   test("returns error when no id is provided", async () => {
-    const result = await requeueCommand(makeParsed([]));
+    const result = await requeueCommand(makeParsed("requeue", []));
 
     expect(result.status).toBe("error");
     if (result.status === "error") {
@@ -54,7 +27,7 @@ describe("requeueCommand", () => {
   });
 
   test("returns error when --reason is missing", async () => {
-    const result = await requeueCommand(makeParsed(["some-id"]));
+    const result = await requeueCommand(makeParsed("requeue", ["some-id"]));
 
     expect(result.status).toBe("error");
     if (result.status === "error") {
@@ -63,7 +36,7 @@ describe("requeueCommand", () => {
   });
 
   test("returns error when --reason is boolean true", async () => {
-    const result = await requeueCommand(makeParsed(["some-id"], { reason: true }));
+    const result = await requeueCommand(makeParsed("requeue", ["some-id"], { reason: true }));
 
     expect(result.status).toBe("error");
     if (result.status === "error") {
@@ -74,7 +47,7 @@ describe("requeueCommand", () => {
   test("returns success with requeued item", async () => {
     const id = await addAndClaimId();
 
-    const result = await requeueCommand(makeParsed([id], { reason: "not ready" }));
+    const result = await requeueCommand(makeParsed("requeue", [id], { reason: "not ready" }));
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -88,7 +61,9 @@ describe("requeueCommand", () => {
   test("passes agent flag through", async () => {
     const id = await addAndClaimId();
 
-    const result = await requeueCommand(makeParsed([id], { reason: "blocked", agent: "my-bot" }));
+    const result = await requeueCommand(
+      makeParsed("requeue", [id], { reason: "blocked", agent: "my-bot" }),
+    );
 
     expect(result.status).toBe("success");
     if (result.status === "success") {

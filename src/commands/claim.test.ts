@@ -1,41 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import type { ParsedArgs } from "../cli.ts";
 import type { Item } from "../store.ts";
-import { addItem, setStoreDir } from "../store.ts";
+import { addItem } from "../store.ts";
 import { claimCommand } from "./claim.ts";
-
-function makeParsed(flags: Record<string, string | boolean> = {}): ParsedArgs {
-  return { command: "claim", positional: [], flags, arrayFlags: {} };
-}
-
-function makeItem(overrides?: Partial<Item>): Item {
-  return {
-    id: crypto.randomUUID(),
-    title: "Test item",
-    description: "A test description",
-    status: "queued",
-    createdAt: new Date().toISOString(),
-    ...overrides,
-  };
-}
+import { makeItem, makeParsed, setupTempStoreDir } from "./test-helpers.ts";
 
 describe("claimCommand", () => {
-  let tempDir: string;
+  const storeDir = setupTempStoreDir("hopper-claim-test-");
 
-  beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "hopper-claim-test-"));
-    setStoreDir(tempDir);
-  });
-
-  afterEach(async () => {
-    await rm(tempDir, { recursive: true });
-  });
+  beforeEach(storeDir.beforeEach);
+  afterEach(storeDir.afterEach);
 
   test("returns error when no queued items exist", async () => {
-    const result = await claimCommand(makeParsed());
+    const result = await claimCommand(makeParsed("claim"));
 
     expect(result.status).toBe("error");
     if (result.status === "error") {
@@ -47,7 +23,7 @@ describe("claimCommand", () => {
     const item = makeItem();
     await addItem(item);
 
-    const result = await claimCommand(makeParsed());
+    const result = await claimCommand(makeParsed("claim"));
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -62,7 +38,7 @@ describe("claimCommand", () => {
     const item = makeItem();
     await addItem(item);
 
-    const result = await claimCommand(makeParsed({ agent: "my-agent" }));
+    const result = await claimCommand(makeParsed("claim", [], { agent: "my-agent" }));
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -75,7 +51,7 @@ describe("claimCommand", () => {
     const item = makeItem();
     await addItem(item);
 
-    const result = await claimCommand(makeParsed({ agent: true }));
+    const result = await claimCommand(makeParsed("claim", [], { agent: true }));
 
     expect(result.status).toBe("success");
     if (result.status === "success") {

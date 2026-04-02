@@ -5,23 +5,10 @@ import type { GitGateway } from "../gateways/git-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import type { ClaimedItem } from "../store.ts";
 import type { WorkerConfig } from "../worker-workflow.ts";
+import { makeClaimedItem } from "./test-helpers.ts";
 import { runWorkerLoop, type WorkerLoopDeps } from "./worker.ts";
 
 const HOPPER_HOME = "/tmp/test-hopper";
-
-function makeItem(overrides?: Partial<ClaimedItem>): ClaimedItem {
-  return {
-    id: "aaaaaaaa-0000-0000-0000-000000000000",
-    title: "Test task",
-    description: "Do something",
-    status: "in_progress",
-    createdAt: new Date().toISOString(),
-    claimedAt: new Date().toISOString(),
-    claimedBy: "test-agent",
-    claimToken: "tok-1234",
-    ...overrides,
-  };
-}
 
 function makeGatewayDeps(): {
   git: GitGateway;
@@ -76,7 +63,7 @@ describe("runWorkerLoop", () => {
   });
 
   test("run-once with work available: claims one item, processes it, exits", async () => {
-    const item = makeItem();
+    const item = makeClaimedItem();
     const logs: string[] = [];
     const loopDeps: WorkerLoopDeps = {
       claimNext: mock(async () => item),
@@ -133,7 +120,7 @@ describe("runWorkerLoop", () => {
     let resolveProcessItem: (() => void) | undefined;
 
     const loopDeps: WorkerLoopDeps = {
-      claimNext: mock(async () => makeItem()),
+      claimNext: mock(async () => makeClaimedItem()),
       processItem: mock(
         async (_item: ClaimedItem) =>
           new Promise<void>((resolve) => {

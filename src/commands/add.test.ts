@@ -1,38 +1,20 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import type { ParsedArgs } from "../cli.ts";
-import { setStoreDir } from "../store.ts";
 import type { TitleGenerator } from "../titler.ts";
 import { addCommand } from "./add.ts";
-
-function makeParsed(
-  positional: string[] = [],
-  flags: Record<string, string | boolean> = {},
-  arrayFlags: Record<string, string[]> = {},
-): ParsedArgs {
-  return { command: "add", positional, flags, arrayFlags };
-}
+import { makeParsed, setupTempStoreDir } from "./test-helpers.ts";
 
 function makeTitler(title = "Generated Title"): TitleGenerator {
   return { generateTitle: mock(async (_desc: string) => title) };
 }
 
 describe("addCommand", () => {
-  let tempDir: string;
+  const storeDir = setupTempStoreDir("hopper-add-test-");
 
-  beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "hopper-add-test-"));
-    setStoreDir(tempDir);
-  });
-
-  afterEach(async () => {
-    await rm(tempDir, { recursive: true });
-  });
+  beforeEach(storeDir.beforeEach);
+  afterEach(storeDir.afterEach);
 
   test("returns error when no description is provided", async () => {
-    const result = await addCommand(makeParsed([]), makeTitler(), async () => "");
+    const result = await addCommand(makeParsed("add", []), makeTitler(), async () => "");
 
     expect(result.status).toBe("error");
     if (result.status === "error") {
@@ -41,7 +23,7 @@ describe("addCommand", () => {
   });
 
   test("returns success with added item", async () => {
-    const result = await addCommand(makeParsed(["Fix the login bug"]), makeTitler());
+    const result = await addCommand(makeParsed("add", ["Fix the login bug"]), makeTitler());
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -50,7 +32,10 @@ describe("addCommand", () => {
   });
 
   test("uses generated title in humanOutput", async () => {
-    const result = await addCommand(makeParsed(["Fix the login bug"]), makeTitler("Fix Login Bug"));
+    const result = await addCommand(
+      makeParsed("add", ["Fix the login bug"]),
+      makeTitler("Fix Login Bug"),
+    );
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -59,20 +44,26 @@ describe("addCommand", () => {
   });
 
   test("returns error for invalid priority", async () => {
-    const result = await addCommand(makeParsed(["A task"], { priority: "critical" }), makeTitler());
+    const result = await addCommand(
+      makeParsed("add", ["A task"], { priority: "critical" }),
+      makeTitler(),
+    );
 
     expect(result.status).toBe("error");
   });
 
   test("returns error when --dir is set without --branch or --command", async () => {
-    const result = await addCommand(makeParsed(["A task"], { dir: "/some/path" }), makeTitler());
+    const result = await addCommand(
+      makeParsed("add", ["A task"], { dir: "/some/path" }),
+      makeTitler(),
+    );
 
     expect(result.status).toBe("error");
   });
 
   test("returns success with priority badge in humanOutput", async () => {
     const result = await addCommand(
-      makeParsed(["A task"], { priority: "high" }),
+      makeParsed("add", ["A task"], { priority: "high" }),
       makeTitler("High Task"),
     );
 
@@ -84,7 +75,7 @@ describe("addCommand", () => {
 
   test("includes tags in humanOutput when provided", async () => {
     const result = await addCommand(
-      makeParsed(["A task"], {}, { tag: ["frontend"] }),
+      makeParsed("add", ["A task"], {}, { tag: ["frontend"] }),
       makeTitler("Frontend Task"),
     );
 
@@ -96,7 +87,7 @@ describe("addCommand", () => {
 
   test("returns error for invalid --every value", async () => {
     const result = await addCommand(
-      makeParsed(["A task"], { every: "invalid-spec" }),
+      makeParsed("add", ["A task"], { every: "invalid-spec" }),
       makeTitler(),
     );
 

@@ -3,9 +3,10 @@ import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
-import type { ClaimedItem, Item } from "../store.ts";
+import type { Item } from "../store.ts";
 // Mock the store module so processItem doesn't touch the real items.json
 import * as store from "../store.ts";
+import { makeClaimedItem } from "./test-helpers.ts";
 import { processItem } from "./worker.ts";
 
 mock.module("../store.ts", () => ({
@@ -17,20 +18,6 @@ mock.module("../store.ts", () => ({
 }));
 const { completeItem } = await import("../store.ts");
 const completeItemMock = completeItem as ReturnType<typeof mock>;
-
-function makeItem(overrides?: Partial<ClaimedItem>): ClaimedItem {
-  return {
-    id: "aaaaaaaa-0000-0000-0000-000000000000",
-    title: "Test task",
-    description: "Do something",
-    status: "in_progress",
-    createdAt: new Date().toISOString(),
-    claimedAt: new Date().toISOString(),
-    claimedBy: "test-agent",
-    claimToken: "tok-1234",
-    ...overrides,
-  };
-}
 
 function makeMockGit(overrides?: Partial<GitGateway>): GitGateway {
   return {
@@ -80,7 +67,7 @@ describe("processItem", () => {
   });
 
   test("completes a simple item (no worktree) successfully", async () => {
-    const item = makeItem();
+    const item = makeClaimedItem();
     const git = makeMockGit();
     const claude = makeMockClaude(0, "All done.");
     const fs = makeMockFs();
@@ -95,7 +82,7 @@ describe("processItem", () => {
   });
 
   test("does not complete when Claude exits non-zero", async () => {
-    const item = makeItem();
+    const item = makeClaimedItem();
     const claude = makeMockClaude(1, "Failed.");
     const fs = makeMockFs();
     const git = makeMockGit();
@@ -106,7 +93,7 @@ describe("processItem", () => {
   });
 
   test("sets up worktree when item has workingDir and branch", async () => {
-    const item = makeItem({ workingDir: "/repo", branch: "main" });
+    const item = makeClaimedItem({ workingDir: "/repo", branch: "main" });
     const git = makeMockGit();
     const claude = makeMockClaude();
     const fs = makeMockFs();
@@ -119,7 +106,7 @@ describe("processItem", () => {
   });
 
   test("commits directly when worktree is dirty after Claude session", async () => {
-    const item = makeItem({ workingDir: "/repo", branch: "main" });
+    const item = makeClaimedItem({ workingDir: "/repo", branch: "main" });
     const git = makeMockGit();
     (git.isWorktreeDirty as ReturnType<typeof mock>).mockImplementation(async () => true);
     const claude = makeMockClaude(0, "Fixed the bug.");
@@ -137,12 +124,12 @@ describe("processItem", () => {
   });
 
   test("two concurrent processItem calls don't interfere", async () => {
-    const item1 = makeItem({
+    const item1 = makeClaimedItem({
       id: "11111111-0000-0000-0000-000000000000",
       title: "Task 1",
       claimToken: "tok-1",
     });
-    const item2 = makeItem({
+    const item2 = makeClaimedItem({
       id: "22222222-0000-0000-0000-000000000000",
       title: "Task 2",
       claimToken: "tok-2",
@@ -181,7 +168,7 @@ describe("processItem", () => {
   });
 
   test("uses prefixed logging when concurrency > 1", async () => {
-    const item = makeItem({ id: "abcdef12-0000-0000-0000-000000000000" });
+    const item = makeClaimedItem({ id: "abcdef12-0000-0000-0000-000000000000" });
     const git = makeMockGit();
     const claude = makeMockClaude();
     const fs = makeMockFs();
@@ -211,7 +198,7 @@ describe("processItem", () => {
   });
 
   test("does not prefix logs when concurrency is 1", async () => {
-    const item = makeItem({ id: "abcdef12-0000-0000-0000-000000000000" });
+    const item = makeClaimedItem({ id: "abcdef12-0000-0000-0000-000000000000" });
     const git = makeMockGit();
     const claude = makeMockClaude();
     const fs = makeMockFs();
@@ -237,7 +224,7 @@ describe("processItem", () => {
   });
 
   test("runs shell command instead of Claude when item has command field", async () => {
-    const item = makeItem({ command: "echo hello" });
+    const item = makeClaimedItem({ command: "echo hello" });
     const git = makeMockGit();
     const claude = makeMockClaude();
     const shell = makeMockShell(0, "hello");
@@ -251,7 +238,7 @@ describe("processItem", () => {
   });
 
   test("does not complete when shell command exits non-zero", async () => {
-    const item = makeItem({ command: "exit 1" });
+    const item = makeClaimedItem({ command: "exit 1" });
     const git = makeMockGit();
     const claude = makeMockClaude();
     const shell = makeMockShell(1, "error output");
@@ -265,7 +252,7 @@ describe("processItem", () => {
   });
 
   test("shell command with worktree sets up and tears down worktree", async () => {
-    const item = makeItem({ command: "make build", workingDir: "/repo", branch: "main" });
+    const item = makeClaimedItem({ command: "make build", workingDir: "/repo", branch: "main" });
     const git = makeMockGit();
     const claude = makeMockClaude();
     const shell = makeMockShell(0, "build complete");
@@ -281,7 +268,7 @@ describe("processItem", () => {
   });
 
   test("shell command with only workingDir (no branch) runs in that directory", async () => {
-    const item = makeItem({ command: "ls", workingDir: "/some/dir" });
+    const item = makeClaimedItem({ command: "ls", workingDir: "/some/dir" });
     const git = makeMockGit();
     const claude = makeMockClaude();
     const shell = makeMockShell(0, "file1 file2");
@@ -297,7 +284,7 @@ describe("processItem", () => {
   });
 
   test("branch setup tracks remote when local absent and remote exists", async () => {
-    const item = makeItem({ workingDir: "/repo", branch: "main" });
+    const item = makeClaimedItem({ workingDir: "/repo", branch: "main" });
     const git = makeMockGit({
       branchExists: mock(async () => false),
       remoteBranchExists: mock(async () => true),
@@ -312,7 +299,7 @@ describe("processItem", () => {
   });
 
   test("branch setup creates from HEAD when neither local nor remote exists", async () => {
-    const item = makeItem({ workingDir: "/repo", branch: "main" });
+    const item = makeClaimedItem({ workingDir: "/repo", branch: "main" });
     const git = makeMockGit({
       branchExists: mock(async () => false),
       remoteBranchExists: mock(async () => false),
@@ -327,7 +314,7 @@ describe("processItem", () => {
   });
 
   test("branch setup uses existing branch when it exists locally", async () => {
-    const item = makeItem({ workingDir: "/repo", branch: "main" });
+    const item = makeClaimedItem({ workingDir: "/repo", branch: "main" });
     const git = makeMockGit({
       branchExists: mock(async () => true),
     });
@@ -341,7 +328,7 @@ describe("processItem", () => {
   });
 
   test("merge checks out target branch when not currently checked out, then restores original", async () => {
-    const item = makeItem({ workingDir: "/repo", branch: "main" });
+    const item = makeClaimedItem({ workingDir: "/repo", branch: "main" });
     const checkoutCalls: string[] = [];
     const git = makeMockGit({
       getCurrentBranch: mock(async () => "develop"),
@@ -359,7 +346,7 @@ describe("processItem", () => {
   });
 
   test("merge aborts and preserves work branch on conflict", async () => {
-    const item = makeItem({ workingDir: "/repo", branch: "main" });
+    const item = makeClaimedItem({ workingDir: "/repo", branch: "main" });
     const git = makeMockGit({
       mergeFastForward: mock(async () => 1),
       mergeCommit: mock(async () => 1),

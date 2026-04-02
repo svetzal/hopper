@@ -1,29 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import type { ParsedArgs } from "../cli.ts";
 import type { Item } from "../store.ts";
-import { addItem, claimNextItem, setStoreDir } from "../store.ts";
+import { addItem, claimNextItem } from "../store.ts";
 import { completeCommand } from "./complete.ts";
-
-function makeParsed(
-  positional: string[] = [],
-  flags: Record<string, string | boolean> = {},
-): ParsedArgs {
-  return { command: "complete", positional, flags, arrayFlags: {} };
-}
-
-function makeItem(overrides?: Partial<Item>): Item {
-  return {
-    id: crypto.randomUUID(),
-    title: "Test item",
-    description: "A test description",
-    status: "queued",
-    createdAt: new Date().toISOString(),
-    ...overrides,
-  };
-}
+import { makeItem, makeParsed, setupTempStoreDir } from "./test-helpers.ts";
 
 async function addAndClaim(overrides?: Partial<Item>): Promise<string> {
   await addItem(makeItem(overrides));
@@ -33,19 +12,13 @@ async function addAndClaim(overrides?: Partial<Item>): Promise<string> {
 }
 
 describe("completeCommand", () => {
-  let tempDir: string;
+  const storeDir = setupTempStoreDir("hopper-complete-test-");
 
-  beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "hopper-complete-test-"));
-    setStoreDir(tempDir);
-  });
-
-  afterEach(async () => {
-    await rm(tempDir, { recursive: true });
-  });
+  beforeEach(storeDir.beforeEach);
+  afterEach(storeDir.afterEach);
 
   test("returns error when no token is provided", async () => {
-    const result = await completeCommand(makeParsed([]));
+    const result = await completeCommand(makeParsed("complete", []));
 
     expect(result.status).toBe("error");
     if (result.status === "error") {
@@ -56,7 +29,7 @@ describe("completeCommand", () => {
   test("returns success with completed item in humanOutput", async () => {
     const token = await addAndClaim();
 
-    const result = await completeCommand(makeParsed([token]));
+    const result = await completeCommand(makeParsed("complete", [token]));
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -67,7 +40,7 @@ describe("completeCommand", () => {
   test("includes recurred item in humanOutput when item recurs", async () => {
     const token = await addAndClaim({ recurrence: { interval: "1d", intervalMs: 86400000 } });
 
-    const result = await completeCommand(makeParsed([token]));
+    const result = await completeCommand(makeParsed("complete", [token]));
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -81,7 +54,7 @@ describe("completeCommand", () => {
     const token = await addAndClaim();
 
     const result = await completeCommand(
-      makeParsed([token], { agent: "bot", result: "All done." }),
+      makeParsed("complete", [token], { agent: "bot", result: "All done." }),
     );
 
     expect(result.status).toBe("success");
@@ -93,6 +66,6 @@ describe("completeCommand", () => {
   });
 
   test("propagates error from store when token is invalid", async () => {
-    await expect(completeCommand(makeParsed(["invalid-token"]))).rejects.toThrow();
+    await expect(completeCommand(makeParsed("complete", ["invalid-token"]))).rejects.toThrow();
   });
 });
