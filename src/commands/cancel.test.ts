@@ -62,10 +62,14 @@ describe("cancelCommand", () => {
     }
   });
 
-  test("propagates error from store when item cannot be cancelled", async () => {
+  test("returns error from store when item cannot be cancelled", async () => {
     const item = makeItem({ status: "in_progress" });
     await addItem(item);
 
-    await expect(cancelCommand(makeParsed("cancel", [item.id]))).rejects.toThrow();
+    const result = await cancelCommand(makeParsed("cancel", [item.id]));
+    expect(result.status).toBe("error");
+    if (result.status === "error") {
+      expect(result.message).toBeTruthy();
+    }
   });
 });

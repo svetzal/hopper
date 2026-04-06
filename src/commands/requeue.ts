@@ -1,6 +1,7 @@
 import type { ParsedArgs } from "../cli.ts";
 import { stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
+import { toErrorMessage } from "../error-utils.ts";
 import { requeueItem } from "../store.ts";
 
 export async function requeueCommand(parsed: ParsedArgs): Promise<CommandResult> {
@@ -16,7 +17,12 @@ export async function requeueCommand(parsed: ParsedArgs): Promise<CommandResult>
 
   const agent = stringFlag(parsed, "agent");
 
-  const item = await requeueItem(id, reason, agent);
+  let item: Awaited<ReturnType<typeof requeueItem>>;
+  try {
+    item = await requeueItem(id, reason, agent);
+  } catch (e) {
+    return { status: "error", message: toErrorMessage(e) };
+  }
 
   return {
     status: "success",

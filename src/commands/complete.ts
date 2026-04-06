@@ -1,6 +1,7 @@
 import type { ParsedArgs } from "../cli.ts";
 import { stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
+import { toErrorMessage } from "../error-utils.ts";
 import { formatDuration } from "../format.ts";
 import { completeItem } from "../store.ts";
 
@@ -13,7 +14,13 @@ export async function completeCommand(parsed: ParsedArgs): Promise<CommandResult
   const agent = stringFlag(parsed, "agent");
   const result = stringFlag(parsed, "result");
 
-  const { completed: item, recurred } = await completeItem(token, agent, result);
+  let item: Awaited<ReturnType<typeof completeItem>>["completed"];
+  let recurred: Awaited<ReturnType<typeof completeItem>>["recurred"];
+  try {
+    ({ completed: item, recurred } = await completeItem(token, agent, result));
+  } catch (e) {
+    return { status: "error", message: toErrorMessage(e) };
+  }
 
   const duration =
     item.claimedAt && item.completedAt

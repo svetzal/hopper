@@ -46,7 +46,11 @@ describe("showCommand", () => {
     }
   });
 
-  test("propagates error when id not found", async () => {
-    await expect(showCommand(makeParsed("show", ["nonexistent"]))).rejects.toThrow();
+  test("returns error when id not found", async () => {
+    const result = await showCommand(makeParsed("show", ["nonexistent"]));
+    expect(result.status).toBe("error");
+    if (result.status === "error") {
+      expect(result.message).toBeTruthy();
+    }
   });
 });

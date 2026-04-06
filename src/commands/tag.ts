@@ -1,5 +1,6 @@
 import type { ParsedArgs } from "../cli.ts";
 import type { CommandResult } from "../command-result.ts";
+import { toErrorMessage } from "../error-utils.ts";
 import { shortId } from "../format.ts";
 import { removeItemTags, updateItemTags } from "../store.ts";
 import { normalizeTags } from "../tags.ts";
@@ -16,7 +17,12 @@ export async function tagCommand(parsed: ParsedArgs): Promise<CommandResult> {
   if (!tagResult.ok) return { status: "error", message: tagResult.error };
   const tags = tagResult.tags;
 
-  const item = await updateItemTags(id, tags);
+  let item: Awaited<ReturnType<typeof updateItemTags>>;
+  try {
+    item = await updateItemTags(id, tags);
+  } catch (e) {
+    return { status: "error", message: toErrorMessage(e) };
+  }
 
   return {
     status: "success",
@@ -37,7 +43,12 @@ export async function untagCommand(parsed: ParsedArgs): Promise<CommandResult> {
   if (!tagResult.ok) return { status: "error", message: tagResult.error };
   const tags = tagResult.tags;
 
-  const item = await removeItemTags(id, tags);
+  let item: Awaited<ReturnType<typeof removeItemTags>>;
+  try {
+    item = await removeItemTags(id, tags);
+  } catch (e) {
+    return { status: "error", message: toErrorMessage(e) };
+  }
 
   return {
     status: "success",

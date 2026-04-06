@@ -21,7 +21,13 @@ export async function reprioritizeCommand(parsed: ParsedArgs): Promise<CommandRe
     return { status: "error", message: toErrorMessage(e) };
   }
 
-  const { item, oldPriority } = await reprioritizeItem(id, priority);
+  let item: Awaited<ReturnType<typeof reprioritizeItem>>["item"];
+  let oldPriority: Awaited<ReturnType<typeof reprioritizeItem>>["oldPriority"];
+  try {
+    ({ item, oldPriority } = await reprioritizeItem(id, priority));
+  } catch (e) {
+    return { status: "error", message: toErrorMessage(e) };
+  }
 
   return {
     status: "success",

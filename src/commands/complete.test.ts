@@ -65,7 +65,11 @@ describe("completeCommand", () => {
     }
   });
 
-  test("propagates error from store when token is invalid", async () => {
-    await expect(completeCommand(makeParsed("complete", ["invalid-token"]))).rejects.toThrow();
+  test("returns error from store when token is invalid", async () => {
+    const result = await completeCommand(makeParsed("complete", ["invalid-token"]));
+    expect(result.status).toBe("error");
+    if (result.status === "error") {
+      expect(result.message).toBeTruthy();
+    }
   });
 });
