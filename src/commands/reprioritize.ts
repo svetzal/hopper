@@ -5,6 +5,7 @@ import { shortId } from "../format.ts";
 import type { Priority } from "../priority.ts";
 import { parsePriority } from "../priority.ts";
 import { reprioritizeItem } from "../store.ts";
+import { withStoreError } from "./with-store-error.ts";
 
 export async function reprioritizeCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const id = parsed.positional[0];
@@ -21,17 +22,12 @@ export async function reprioritizeCommand(parsed: ParsedArgs): Promise<CommandRe
     return { status: "error", message: toErrorMessage(e) };
   }
 
-  let item: Awaited<ReturnType<typeof reprioritizeItem>>["item"];
-  let oldPriority: Awaited<ReturnType<typeof reprioritizeItem>>["oldPriority"];
-  try {
-    ({ item, oldPriority } = await reprioritizeItem(id, priority));
-  } catch (e) {
-    return { status: "error", message: toErrorMessage(e) };
-  }
-
-  return {
-    status: "success",
-    data: item,
-    humanOutput: `Reprioritized ${shortId(item.id)}: ${oldPriority} \u2192 ${priority}`,
-  };
+  return withStoreError(async () => {
+    const { item, oldPriority } = await reprioritizeItem(id, priority);
+    return {
+      status: "success",
+      data: item,
+      humanOutput: `Reprioritized ${shortId(item.id)}: ${oldPriority} \u2192 ${priority}`,
+    };
+  });
 }

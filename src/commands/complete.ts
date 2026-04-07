@@ -1,9 +1,9 @@
 import type { ParsedArgs } from "../cli.ts";
 import { stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
-import { toErrorMessage } from "../error-utils.ts";
 import { formatDuration } from "../format.ts";
 import { completeItem } from "../store.ts";
+import { withStoreError } from "./with-store-error.ts";
 
 export async function completeCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const token = parsed.positional[0];
@@ -14,29 +14,25 @@ export async function completeCommand(parsed: ParsedArgs): Promise<CommandResult
   const agent = stringFlag(parsed, "agent");
   const result = stringFlag(parsed, "result");
 
-  let item: Awaited<ReturnType<typeof completeItem>>["completed"];
-  let recurred: Awaited<ReturnType<typeof completeItem>>["recurred"];
-  try {
-    ({ completed: item, recurred } = await completeItem(token, agent, result));
-  } catch (e) {
-    return { status: "error", message: toErrorMessage(e) };
-  }
+  return withStoreError(async () => {
+    const { completed: item, recurred } = await completeItem(token, agent, result);
 
-  const duration =
-    item.claimedAt && item.completedAt
-      ? formatDuration(item.claimedAt, item.completedAt)
-      : "unknown";
+    const duration =
+      item.claimedAt && item.completedAt
+        ? formatDuration(item.claimedAt, item.completedAt)
+        : "unknown";
 
-  const lines = [`Completed: ${item.title} (${duration})`];
-  if (recurred) {
-    lines.push(
-      `Re-queued: ${item.title} (next run: ${recurred.scheduledAt ? new Date(recurred.scheduledAt).toLocaleString() : "unknown"})`,
-    );
-  }
+    const lines = [`Completed: ${item.title} (${duration})`];
+    if (recurred) {
+      lines.push(
+        `Re-queued: ${item.title} (next run: ${recurred.scheduledAt ? new Date(recurred.scheduledAt).toLocaleString() : "unknown"})`,
+      );
+    }
 
-  return {
-    status: "success",
-    data: { completed: item, ...(recurred ? { recurred } : {}) },
-    humanOutput: lines.join("\n"),
-  };
+    return {
+      status: "success",
+      data: { completed: item, ...(recurred ? { recurred } : {}) },
+      humanOutput: lines.join("\n"),
+    };
+  });
 }

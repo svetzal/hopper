@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Item } from "../store.ts";
 import { ensureDefaults } from "../store-workflow.ts";
+import { loadJsonFile } from "./json-file.ts";
 
 export interface StoreGateway {
   load(): Promise<Item[]>;
@@ -15,16 +16,9 @@ export function createStoreGateway(storeDir?: string): StoreGateway {
 
   return {
     async load(): Promise<Item[]> {
-      try {
-        const file = Bun.file(filePath);
-        if (await file.exists()) {
-          const raw: unknown[] = await file.json();
-          return raw.map((entry) => ensureDefaults(entry as Record<string, unknown>));
-        }
-      } catch {
-        // Corrupted or unreadable — start fresh
-      }
-      return [];
+      return loadJsonFile<Item>(filePath, (raw) =>
+        raw.map((entry) => ensureDefaults(entry as Record<string, unknown>)),
+      );
     },
     async save(items: Item[]): Promise<void> {
       await mkdir(dir, { recursive: true });

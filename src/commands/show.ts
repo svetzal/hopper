@@ -1,8 +1,8 @@
 import type { ParsedArgs } from "../cli.ts";
 import type { CommandResult } from "../command-result.ts";
-import { toErrorMessage } from "../error-utils.ts";
 import { formatItemDetail } from "../format.ts";
 import { findItem } from "../store.ts";
+import { withStoreError } from "./with-store-error.ts";
 
 export async function showCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const id = parsed.positional[0];
@@ -10,14 +10,12 @@ export async function showCommand(parsed: ParsedArgs): Promise<CommandResult> {
     return { status: "error", message: "Usage: hopper show <id>" };
   }
 
-  try {
+  return withStoreError(async () => {
     const item = await findItem(id);
     return {
       status: "success",
       data: item,
       humanOutput: formatItemDetail(item),
     };
-  } catch (e) {
-    return { status: "error", message: toErrorMessage(e) };
-  }
+  });
 }
