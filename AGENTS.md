@@ -95,13 +95,22 @@ The version number lives in three places that must stay in sync:
 - `src/constants.ts` — `VERSION` constant (this is what `hopper --version` returns)
 - `skills/hopper-coordinator/SKILL.md` — `metadata.version` in frontmatter (the `init` command also stamps this at install time, so the installed skill always reflects the binary version)
 
-To cut a release:
+To create a new release:
 
-1. Update `CHANGELOG.md` — add a new `## [x.y.z] - YYYY-MM-DD` section under `[Unreleased]`
-2. Update the version in both `package.json` and `src/constants.ts`
-3. Commit all changes with message: `Release vX.Y.Z`
-4. Tag the commit: `git tag vX.Y.Z`
-5. Push commit and tag: `git push && git push --tags`
+1. Pre-flight — ensure all quality gates pass: `bun test && bun run lint`
+2. Update `CHANGELOG.md` — move `[Unreleased]` items to a new `## [x.y.z] - YYYY-MM-DD` section
+3. Bump the version in `package.json`, `src/constants.ts`, and `skills/hopper-coordinator/SKILL.md`
+4. Review skill files in `skills/` — ensure content is current for the release
+5. Commit all changes with message: `Release vX.Y.Z`
+6. Tag the commit: `git tag vX.Y.Z`
+7. Push: `git push origin main --tags`
+8. Install locally without waiting for Homebrew: `bun run build && cp build/hopper /usr/local/bin/hopper`
+
+CI does the rest automatically on tag push:
+- Runs tests and type-check
+- Cross-compiles binaries (macOS arm64/x64, Linux x64, Windows x64)
+- Creates a GitHub Release with tarballs and release notes
+- Updates the Homebrew tap (`svetzal/homebrew-tap`) formula
 
 Use semver: patch for bug fixes, minor for new features, major for breaking changes.
 
