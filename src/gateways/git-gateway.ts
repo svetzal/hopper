@@ -2,6 +2,20 @@ export type MergeOutcome =
   | { type: "fast-forward" | "merge-commit"; success: true; message: string }
   | { type: "conflict" | "skipped"; success: false; message: string };
 
+/**
+ * Resolve the full path to the git executable.
+ *
+ * Compiled Bun binaries may fail to locate bare command names via posix_spawn,
+ * so we resolve the path explicitly using Bun.which() before every spawn call.
+ */
+function resolveGit(): string {
+  const resolved = Bun.which("git");
+  if (!resolved) {
+    throw new Error("git executable not found on PATH. Ensure git is installed and available.");
+  }
+  return resolved;
+}
+
 export interface GitGateway {
   branchExists(repoDir: string, branch: string): Promise<boolean>;
   remoteBranchExists(repoDir: string, branch: string): Promise<boolean>;
@@ -26,7 +40,7 @@ export interface GitGateway {
 }
 
 async function branchExists(repoDir: string, branch: string): Promise<boolean> {
-  const proc = Bun.spawn(["git", "rev-parse", "--verify", branch], {
+  const proc = Bun.spawn([resolveGit(), "rev-parse", "--verify", branch], {
     cwd: repoDir,
     stdout: "ignore",
     stderr: "ignore",
@@ -35,7 +49,7 @@ async function branchExists(repoDir: string, branch: string): Promise<boolean> {
 }
 
 async function remoteBranchExists(repoDir: string, branch: string): Promise<boolean> {
-  const proc = Bun.spawn(["git", "ls-remote", "--exit-code", "--heads", "origin", branch], {
+  const proc = Bun.spawn([resolveGit(), "ls-remote", "--exit-code", "--heads", "origin", branch], {
     cwd: repoDir,
     stdout: "ignore",
     stderr: "ignore",
@@ -48,7 +62,7 @@ async function createTrackingBranch(
   branch: string,
   remoteRef: string,
 ): Promise<void> {
-  const proc = Bun.spawn(["git", "branch", "--track", branch, remoteRef], {
+  const proc = Bun.spawn([resolveGit(), "branch", "--track", branch, remoteRef], {
     cwd: repoDir,
     stdout: "ignore",
     stderr: "pipe",
@@ -62,7 +76,7 @@ async function createTrackingBranch(
 }
 
 async function createBranch(repoDir: string, branch: string): Promise<void> {
-  const proc = Bun.spawn(["git", "branch", branch], {
+  const proc = Bun.spawn([resolveGit(), "branch", branch], {
     cwd: repoDir,
     stdout: "ignore",
     stderr: "pipe",
@@ -79,11 +93,14 @@ async function createWorktree(
   workBranch: string,
   baseBranch: string,
 ): Promise<void> {
-  const proc = Bun.spawn(["git", "worktree", "add", "-b", workBranch, worktreePath, baseBranch], {
-    cwd: repoDir,
-    stdout: "ignore",
-    stderr: "pipe",
-  });
+  const proc = Bun.spawn(
+    [resolveGit(), "worktree", "add", "-b", workBranch, worktreePath, baseBranch],
+    {
+      cwd: repoDir,
+      stdout: "ignore",
+      stderr: "pipe",
+    },
+  );
   const stderr = await new Response(proc.stderr).text();
   if ((await proc.exited) !== 0) {
     throw new Error(`git worktree add failed: ${stderr.trim()}`);
@@ -91,7 +108,7 @@ async function createWorktree(
 }
 
 async function worktreeRemove(repoDir: string, worktreePath: string): Promise<void> {
-  const proc = Bun.spawn(["git", "worktree", "remove", worktreePath, "--force"], {
+  const proc = Bun.spawn([resolveGit(), "worktree", "remove", worktreePath, "--force"], {
     cwd: repoDir,
     stdout: "ignore",
     stderr: "ignore",
@@ -100,7 +117,7 @@ async function worktreeRemove(repoDir: string, worktreePath: string): Promise<vo
 }
 
 async function isWorktreeDirty(worktreePath: string): Promise<boolean> {
-  const proc = Bun.spawn(["git", "status", "--porcelain"], {
+  const proc = Bun.spawn([resolveGit(), "status", "--porcelain"], {
     cwd: worktreePath,
     stdout: "pipe",
     stderr: "ignore",
@@ -111,7 +128,7 @@ async function isWorktreeDirty(worktreePath: string): Promise<boolean> {
 }
 
 async function commitAll(worktreePath: string, message: string): Promise<void> {
-  const addProc = Bun.spawn(["git", "add", "-A"], {
+  const addProc = Bun.spawn([resolveGit(), "add", "-A"], {
     cwd: worktreePath,
     stdout: "ignore",
     stderr: "pipe",
@@ -121,7 +138,7 @@ async function commitAll(worktreePath: string, message: string): Promise<void> {
     throw new Error(`git add -A failed: ${addStderr.trim()}`);
   }
 
-  const commitProc = Bun.spawn(["git", "commit", "-m", message], {
+  const commitProc = Bun.spawn([resolveGit(), "commit", "-m", message], {
     cwd: worktreePath,
     stdout: "ignore",
     stderr: "pipe",
@@ -133,7 +150,7 @@ async function commitAll(worktreePath: string, message: string): Promise<void> {
 }
 
 async function getCurrentBranch(repoDir: string): Promise<string> {
-  const proc = Bun.spawn(["git", "rev-parse", "--abbrev-ref", "HEAD"], {
+  const proc = Bun.spawn([resolveGit(), "rev-parse", "--abbrev-ref", "HEAD"], {
     cwd: repoDir,
     stdout: "pipe",
     stderr: "ignore",
@@ -144,7 +161,7 @@ async function getCurrentBranch(repoDir: string): Promise<string> {
 }
 
 async function checkout(repoDir: string, branch: string): Promise<void> {
-  const proc = Bun.spawn(["git", "checkout", branch], {
+  const proc = Bun.spawn([resolveGit(), "checkout", branch], {
     cwd: repoDir,
     stdout: "ignore",
     stderr: "pipe",
@@ -156,7 +173,7 @@ async function checkout(repoDir: string, branch: string): Promise<void> {
 }
 
 async function mergeFastForward(repoDir: string, branch: string): Promise<number> {
-  const proc = Bun.spawn(["git", "merge", "--ff-only", branch], {
+  const proc = Bun.spawn([resolveGit(), "merge", "--ff-only", branch], {
     cwd: repoDir,
     stdout: "ignore",
     stderr: "ignore",
@@ -165,7 +182,7 @@ async function mergeFastForward(repoDir: string, branch: string): Promise<number
 }
 
 async function mergeCommit(repoDir: string, branch: string): Promise<number> {
-  const proc = Bun.spawn(["git", "merge", "--no-ff", branch], {
+  const proc = Bun.spawn([resolveGit(), "merge", "--no-ff", branch], {
     cwd: repoDir,
     stdout: "ignore",
     stderr: "ignore",
@@ -174,7 +191,7 @@ async function mergeCommit(repoDir: string, branch: string): Promise<number> {
 }
 
 async function mergeAbort(repoDir: string): Promise<void> {
-  const proc = Bun.spawn(["git", "merge", "--abort"], {
+  const proc = Bun.spawn([resolveGit(), "merge", "--abort"], {
     cwd: repoDir,
     stdout: "ignore",
     stderr: "ignore",
@@ -183,7 +200,7 @@ async function mergeAbort(repoDir: string): Promise<void> {
 }
 
 async function deleteBranch(repoDir: string, branch: string): Promise<void> {
-  const proc = Bun.spawn(["git", "branch", "-d", branch], {
+  const proc = Bun.spawn([resolveGit(), "branch", "-d", branch], {
     cwd: repoDir,
     stdout: "ignore",
     stderr: "ignore",
@@ -195,7 +212,7 @@ async function push(
   repoDir: string,
   branch: string,
 ): Promise<{ success: boolean; message: string }> {
-  const proc = Bun.spawn(["git", "push", "origin", branch], {
+  const proc = Bun.spawn([resolveGit(), "push", "origin", branch], {
     cwd: repoDir,
     stdout: "ignore",
     stderr: "pipe",

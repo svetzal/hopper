@@ -4,6 +4,16 @@
 // integration behaviour is covered by worker-workflow tests.
 import { extractResult } from "../extract-result.ts";
 
+function resolveClaudeBin(): string {
+  const resolved = Bun.which("claude");
+  if (!resolved) {
+    throw new Error(
+      "claude executable not found on PATH. Ensure Claude Code is installed and available.",
+    );
+  }
+  return resolved;
+}
+
 export interface ClaudeGateway {
   runSession(
     prompt: string,
@@ -21,7 +31,7 @@ async function runSession(
 ): Promise<{ exitCode: number; result: string }> {
   const proc = Bun.spawn(
     [
-      "claude",
+      resolveClaudeBin(),
       "--print",
       "--verbose",
       "--dangerously-skip-permissions",

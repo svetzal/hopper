@@ -84,4 +84,17 @@ describe("GitGateway", () => {
     const dirty = await gateway.isWorktreeDirty(repoDir);
     expect(dirty).toBe(false);
   });
+
+  test("createWorktree creates a worktree and worktreeRemove cleans it up", async () => {
+    const repoDir = await setup();
+    const worktreePath = join(repoDir, "..", "test-worktree");
+    await gateway.createWorktree(repoDir, worktreePath, "work-branch", "main");
+
+    // The worktree directory should exist and be on the work branch
+    const branch = await gateway.getCurrentBranch(worktreePath);
+    expect(branch).toBe("work-branch");
+
+    // Clean up
+    await gateway.worktreeRemove(repoDir, worktreePath);
+  });
 });
