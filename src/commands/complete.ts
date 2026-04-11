@@ -1,21 +1,19 @@
 import type { ParsedArgs } from "../cli.ts";
-import { stringFlag } from "../command-flags.ts";
+import { requirePositional, stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
 import { formatDuration } from "../format.ts";
 import { completeItem } from "../store.ts";
 import { withStoreError } from "./with-store-error.ts";
 
 export async function completeCommand(parsed: ParsedArgs): Promise<CommandResult> {
-  const token = parsed.positional[0];
-  if (!token) {
-    return { status: "error", message: "Usage: hopper complete <token>" };
-  }
+  const tokenArg = requirePositional(parsed, 0, "Usage: hopper complete <token>");
+  if (!tokenArg.ok) return tokenArg.result;
 
   const agent = stringFlag(parsed, "agent");
   const result = stringFlag(parsed, "result");
 
   return withStoreError(async () => {
-    const { completed: item, recurred } = await completeItem(token, agent, result);
+    const { completed: item, recurred } = await completeItem(tokenArg.value, agent, result);
 
     const duration =
       item.claimedAt && item.completedAt

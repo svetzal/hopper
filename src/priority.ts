@@ -19,6 +19,16 @@ export function parsePriority(value: string): Priority {
   return normalized;
 }
 
+export function safeParsePriority(
+  value: string,
+): { ok: true; priority: Priority } | { ok: false; message: string } {
+  const normalized = PRIORITY_MAP[value.toLowerCase()];
+  if (!normalized) {
+    return { ok: false, message: `Invalid priority '${value}'. Use high, normal, or low.` };
+  }
+  return { ok: true, priority: normalized };
+}
+
 export function priorityBadge(priority: Priority | undefined): string {
   if (priority === "high") return " [\u{1F534} high]";
   if (priority === "low") return " [\u{1F535} low]";

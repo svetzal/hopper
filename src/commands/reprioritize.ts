@@ -1,33 +1,30 @@
 import type { ParsedArgs } from "../cli.ts";
+import { requirePositional } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
-import { toErrorMessage } from "../error-utils.ts";
 import { shortId } from "../format.ts";
-import type { Priority } from "../priority.ts";
-import { parsePriority } from "../priority.ts";
+import { safeParsePriority } from "../priority.ts";
 import { reprioritizeItem } from "../store.ts";
 import { withStoreError } from "./with-store-error.ts";
 
 export async function reprioritizeCommand(parsed: ParsedArgs): Promise<CommandResult> {
-  const id = parsed.positional[0];
-  const levelArg = parsed.positional[1];
+  const USAGE = "Usage: hopper reprioritize <id> <high|normal|low>";
+  const idArg = requirePositional(parsed, 0, USAGE);
+  if (!idArg.ok) return idArg.result;
 
-  if (!id || !levelArg) {
-    return { status: "error", message: "Usage: hopper reprioritize <id> <high|normal|low>" };
-  }
+  const levelArg = requirePositional(parsed, 1, USAGE);
+  if (!levelArg.ok) return levelArg.result;
 
-  let priority: Priority;
-  try {
-    priority = parsePriority(levelArg);
-  } catch (e) {
-    return { status: "error", message: toErrorMessage(e) };
+  const priorityResult = safeParsePriority(levelArg.value);
+  if (!priorityResult.ok) {
+    return { status: "error", message: priorityResult.message };
   }
 
   return withStoreError(async () => {
-    const { item, oldPriority } = await reprioritizeItem(id, priority);
+    const { item, oldPriority } = await reprioritizeItem(idArg.value, priorityResult.priority);
     return {
       status: "success",
       data: item,
-      humanOutput: `Reprioritized ${shortId(item.id)}: ${oldPriority} \u2192 ${priority}`,
+      humanOutput: `Reprioritized ${shortId(item.id)}: ${oldPriority} \u2192 ${priorityResult.priority}`,
     };
   });
 }

@@ -1,5 +1,5 @@
 import type { ParsedArgs } from "../cli.ts";
-import { stringFlag } from "../command-flags.ts";
+import { requirePositional, stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
 import { toErrorMessage } from "../error-utils.ts";
 import {
@@ -115,10 +115,9 @@ async function presetListCommand(_parsed: ParsedArgs): Promise<CommandResult> {
 }
 
 async function presetRemoveCommand(parsed: ParsedArgs): Promise<CommandResult> {
-  const name = parsed.positional[1];
-  if (!name) {
-    return { status: "error", message: "Usage: hopper preset remove <name>" };
-  }
+  const nameArg = requirePositional(parsed, 1, "Usage: hopper preset remove <name>");
+  if (!nameArg.ok) return nameArg.result;
+  const name = nameArg.value;
 
   await removePreset(name);
 
@@ -130,10 +129,9 @@ async function presetRemoveCommand(parsed: ParsedArgs): Promise<CommandResult> {
 }
 
 async function presetShowCommand(parsed: ParsedArgs): Promise<CommandResult> {
-  const name = parsed.positional[1];
-  if (!name) {
-    return { status: "error", message: "Usage: hopper preset show <name>" };
-  }
+  const nameArg = requirePositional(parsed, 1, "Usage: hopper preset show <name>");
+  if (!nameArg.ok) return nameArg.result;
+  const name = nameArg.value;
 
   const preset = await findPreset(name);
   if (!preset) {

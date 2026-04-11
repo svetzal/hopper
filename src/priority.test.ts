@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { comparePriority, parsePriority, priorityBadge } from "./priority.ts";
+import { comparePriority, parsePriority, priorityBadge, safeParsePriority } from "./priority.ts";
 
 describe("parsePriority", () => {
   test("parses full names", () => {
@@ -28,6 +28,36 @@ describe("parsePriority", () => {
     );
     expect(() => parsePriority("")).toThrow("Invalid priority");
     expect(() => parsePriority("x")).toThrow("Invalid priority");
+  });
+});
+
+describe("safeParsePriority", () => {
+  test("returns ok with priority for valid values", () => {
+    expect(safeParsePriority("high")).toEqual({ ok: true, priority: "high" });
+    expect(safeParsePriority("normal")).toEqual({ ok: true, priority: "normal" });
+    expect(safeParsePriority("low")).toEqual({ ok: true, priority: "low" });
+  });
+
+  test("returns ok with priority for shorthand values", () => {
+    expect(safeParsePriority("h")).toEqual({ ok: true, priority: "high" });
+    expect(safeParsePriority("hi")).toEqual({ ok: true, priority: "high" });
+    expect(safeParsePriority("n")).toEqual({ ok: true, priority: "normal" });
+    expect(safeParsePriority("l")).toEqual({ ok: true, priority: "low" });
+    expect(safeParsePriority("lo")).toEqual({ ok: true, priority: "low" });
+  });
+
+  test("is case-insensitive", () => {
+    expect(safeParsePriority("HIGH")).toEqual({ ok: true, priority: "high" });
+    expect(safeParsePriority("Low")).toEqual({ ok: true, priority: "low" });
+  });
+
+  test("returns ok: false with message for invalid values", () => {
+    expect(safeParsePriority("urgent")).toEqual({
+      ok: false,
+      message: "Invalid priority 'urgent'. Use high, normal, or low.",
+    });
+    expect(safeParsePriority("x")).toMatchObject({ ok: false });
+    expect(safeParsePriority("")).toMatchObject({ ok: false });
   });
 });
 

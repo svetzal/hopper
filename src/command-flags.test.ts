@@ -1,12 +1,41 @@
 import { describe, expect, test } from "bun:test";
 import type { ParsedArgs } from "./cli.ts";
-import { booleanFlag, stringFlag } from "./command-flags.ts";
+import { booleanFlag, requirePositional, stringFlag } from "./command-flags.ts";
 
-function makeParsed(flags: Record<string, string | boolean>): ParsedArgs {
-  return { command: "test", positional: [], flags, arrayFlags: {} };
+function makeParsed(
+  flags: Record<string, string | boolean>,
+  positional: string[] = [],
+): ParsedArgs {
+  return { command: "test", positional, flags, arrayFlags: {} };
 }
 
 describe("command-flags", () => {
+  describe("requirePositional", () => {
+    test("returns ok with value when positional exists", () => {
+      const parsed = makeParsed({}, ["abc123"]);
+      expect(requirePositional(parsed, 0, "Usage: hopper show <id>")).toEqual({
+        ok: true,
+        value: "abc123",
+      });
+    });
+
+    test("returns ok: false with error result when positional is missing", () => {
+      const parsed = makeParsed({}, []);
+      expect(requirePositional(parsed, 0, "Usage: hopper show <id>")).toEqual({
+        ok: false,
+        result: { status: "error", message: "Usage: hopper show <id>" },
+      });
+    });
+
+    test("returns the correct positional at the given index", () => {
+      const parsed = makeParsed({}, ["first", "second"]);
+      expect(requirePositional(parsed, 1, "Usage: hopper reprioritize <id> <level>")).toEqual({
+        ok: true,
+        value: "second",
+      });
+    });
+  });
+
   describe("stringFlag", () => {
     test("returns string value when flag is a string", () => {
       const parsed = makeParsed({ agent: "my-agent" });

@@ -1,16 +1,15 @@
 import type { ParsedArgs } from "../cli.ts";
+import { requirePositional } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
 import { cancelItem } from "../store.ts";
 import { withStoreError } from "./with-store-error.ts";
 
 export async function cancelCommand(parsed: ParsedArgs): Promise<CommandResult> {
-  const id = parsed.positional[0];
-  if (!id) {
-    return { status: "error", message: "Usage: hopper cancel <item-id>" };
-  }
+  const idArg = requirePositional(parsed, 0, "Usage: hopper cancel <item-id>");
+  if (!idArg.ok) return idArg.result;
 
   return withStoreError(async () => {
-    const { item, blockedDependentCount } = await cancelItem(id);
+    const { item, blockedDependentCount } = await cancelItem(idArg.value);
 
     const warnings: string[] = [];
     if (blockedDependentCount > 0) {

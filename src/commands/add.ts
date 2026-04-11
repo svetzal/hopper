@@ -10,11 +10,10 @@ import type { ParsedArgs } from "../cli.ts";
 import { stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
 import { Status } from "../constants.ts";
-import { toErrorMessage } from "../error-utils.ts";
 import { shortId } from "../format.ts";
 import { findPreset } from "../presets.ts";
 import type { Priority } from "../priority.ts";
-import { parsePriority, priorityBadge } from "../priority.ts";
+import { priorityBadge, safeParsePriority } from "../priority.ts";
 import { addItem, loadItems } from "../store.ts";
 import { mergeTags, normalizeTags, tagBadge } from "../tags.ts";
 import type { TitleGenerator } from "../titler.ts";
@@ -68,11 +67,11 @@ export async function addCommand(
   let priority: Priority | undefined;
   const priorityFlag = stringFlag(parsed, "priority");
   if (priorityFlag) {
-    try {
-      priority = parsePriority(priorityFlag);
-    } catch (e) {
-      return { status: "error", message: toErrorMessage(e) };
+    const priorityResult = safeParsePriority(priorityFlag);
+    if (!priorityResult.ok) {
+      return { status: "error", message: priorityResult.message };
     }
+    priority = priorityResult.priority;
   }
 
   // 8. Validate --times spec
