@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-04-11
+
+### Fixed
+
+- Fix git spawn ENOENT error in worker when invoking git subprocesses
+
 ## [1.5.0] - 2026-04-11
 
 ### Added
@@ -224,7 +230,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Release workflow: use macos-14 for x64 builds
 
-[Unreleased]: https://github.com/svetzal/hopper/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/svetzal/hopper/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/svetzal/hopper/compare/v1.5.0...v1.5.1
 [1.1.0]: https://github.com/svetzal/hopper/compare/v1.0.2...v1.1.0
 [1.0.0]: https://github.com/svetzal/hopper/compare/v0.5.0...v1.0.0
 [0.5.0]: https://github.com/svetzal/hopper/compare/v0.4.3...v0.5.0
