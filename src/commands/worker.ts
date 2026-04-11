@@ -178,6 +178,13 @@ async function mergeAndPush(
     if (!pushResult.success) {
       mergeNote += `\nPush: ${pushResult.message}`;
     }
+    const tagResult = await git.pushTags(repoDir);
+    if (tagResult.success) {
+      log(tagResult.message);
+    } else {
+      log(`Warning: ${tagResult.message}`);
+      mergeNote += `\nTags: ${tagResult.message}`;
+    }
   } else {
     log(`Action required: manually merge branch ${workBranch}.`);
   }

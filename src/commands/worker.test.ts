@@ -36,6 +36,7 @@ function makeMockGit(overrides?: Partial<GitGateway>): GitGateway {
     mergeAbort: mock(async () => {}),
     deleteBranch: mock(async () => {}),
     push: mock(async () => ({ success: true, message: "Pushed main to origin." })),
+    pushTags: mock(async () => ({ success: true, message: "Pushed tags to origin." })),
     ...overrides,
   };
 }
@@ -343,6 +344,58 @@ describe("processItem", () => {
 
     expect(git.mergeFastForward).toHaveBeenCalledTimes(1);
     expect(checkoutCalls).toEqual(["main", "develop"]);
+  });
+
+  test("pushes tags after successful merge and push", async () => {
+    const item = makeClaimedItem({ workingDir: "/repo", branch: "main" });
+    const git = makeMockGit();
+    const claude = makeMockClaude();
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+
+    expect(git.pushTags).toHaveBeenCalledTimes(1);
+    expect(git.pushTags).toHaveBeenCalledWith("/repo");
+  });
+
+  test("warns but does not fail when tag push fails", async () => {
+    const item = makeClaimedItem({ workingDir: "/repo", branch: "main" });
+    const git = makeMockGit({
+      pushTags: mock(async () => ({ success: false, message: "Tag push failed: error" })),
+    });
+    const claude = makeMockClaude();
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+
+    // Item should still complete despite tag push failure
+    expect(completeItemMock).toHaveBeenCalled();
+    expect(git.pushTags).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not push tags when merge fails (conflict)", async () => {
+    const item = makeClaimedItem({ workingDir: "/repo", branch: "main" });
+    const git = makeMockGit({
+      mergeFastForward: mock(async () => 1),
+      mergeCommit: mock(async () => 1),
+    });
+    const claude = makeMockClaude();
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+
+    expect(git.pushTags).not.toHaveBeenCalled();
+  });
+
+  test("does not push tags for items without worktree", async () => {
+    const item = makeClaimedItem();
+    const git = makeMockGit();
+    const claude = makeMockClaude();
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+
+    expect(git.pushTags).not.toHaveBeenCalled();
   });
 
   test("merge aborts and preserves work branch on conflict", async () => {

@@ -37,6 +37,7 @@ export interface GitGateway {
   mergeAbort(repoDir: string): Promise<void>;
   deleteBranch(repoDir: string, branch: string): Promise<void>;
   push(repoDir: string, branch: string): Promise<{ success: boolean; message: string }>;
+  pushTags(repoDir: string): Promise<{ success: boolean; message: string }>;
 }
 
 async function branchExists(repoDir: string, branch: string): Promise<boolean> {
@@ -224,6 +225,19 @@ async function push(
   return { success: true, message: `Pushed ${branch} to origin.` };
 }
 
+async function pushTags(repoDir: string): Promise<{ success: boolean; message: string }> {
+  const proc = Bun.spawn([resolveGit(), "push", "origin", "--tags"], {
+    cwd: repoDir,
+    stdout: "ignore",
+    stderr: "pipe",
+  });
+  const stderr = await new Response(proc.stderr).text();
+  if ((await proc.exited) !== 0) {
+    return { success: false, message: `Tag push failed: ${stderr.trim()}` };
+  }
+  return { success: true, message: "Pushed tags to origin." };
+}
+
 export function createGitGateway(): GitGateway {
   return {
     branchExists,
@@ -241,5 +255,6 @@ export function createGitGateway(): GitGateway {
     mergeAbort,
     deleteBranch,
     push,
+    pushTags,
   };
 }
