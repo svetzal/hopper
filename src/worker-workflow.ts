@@ -143,7 +143,7 @@ export function resolveWorkerConfig(flags: Record<string, string | boolean>): Wo
     agentName: typeof flags.agent === "string" ? flags.agent : "claude-worker",
     pollInterval: typeof flags.interval === "string" ? parseInt(flags.interval, 10) : 60,
     runOnce: flags.once === true,
-    concurrency: typeof flags.concurrency === "string" ? parseInt(flags.concurrency, 10) : 1,
+    concurrency: typeof flags.concurrency === "string" ? parseInt(flags.concurrency, 10) : 4,
   };
 }
 

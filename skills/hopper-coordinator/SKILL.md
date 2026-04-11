@@ -2,7 +2,7 @@
 name: hopper-coordinator
 description: Dispatch concrete, ready-to-execute work to background Claude Code agents via the hopper queue. Use this skill when the user wants to queue up substantive coding tasks for unattended processing in specific projects on their machine — not for planning, to-do tracking, or lightweight tasks.
 metadata:
-  version: "1.4.1"
+  version: "1.5.0"
   author: Stacey Vetzal
 ---
 
@@ -212,40 +212,35 @@ Command-line flags and positional descriptions override preset values. Preset na
 
 All commands support `--json` for structured output. Use this when you need to parse results programmatically or chain commands together.
 
-## Conflict-Aware Sequencing
+## Automatic Directory Serialization
 
-Workers can process multiple queued items concurrently. Items targeting the same project and branch — or even different branches in the same repo — can cause git conflicts, merge failures, or lost work if they execute simultaneously. This is the most common source of hopper failures.
+Workers process multiple items concurrently (default concurrency: 4). The claim system **automatically serializes items that target the same or overlapping directories** — you do not need to chain them manually for conflict prevention.
 
-**Before adding items to the queue, pause and ask yourself: "Could any of these items conflict if a worker picks them up at the same time?"**
+When a worker claims an item, all other queued items whose `workingDir` overlaps with the claimed item's directory are skipped until that item completes. Overlap detection includes:
 
-Two items conflict when any of these are true:
-- They target the **same project directory and branch** (virtually guaranteed to conflict)
-- They target the **same project directory on different branches** that touch overlapping files (worktree operations can still interfere)
-- They modify **shared configuration files** (package.json, tsconfig, CI configs) even from different feature areas
+- **Exact match** — `/repo/project` and `/repo/project` serialize
+- **Parent/child containment** — `/repo` and `/repo/project` serialize (work in a parent directory could affect a child, and vice versa)
+- **No false positives** — `/repo/project1` and `/repo/project2` run in parallel (sibling directories are independent)
 
-When you identify items that could conflict, **chain them with `--after-item`** so they execute consecutively rather than concurrently. This isn't about logical dependency — item B doesn't need item A's output. It's about preventing simultaneous execution from causing merge conflicts or race conditions.
+This means items targeting **different projects** run in parallel automatically, while items targeting the **same project** (regardless of branch) run one at a time.
 
-This applies even when the items are conceptually independent. Two unrelated bug fixes on the same branch are logically independent but operationally conflicting — they must run one after another.
+### When you still need `--after-item`
 
-### How to think about it
+Use `--after-item` for:
 
-When queuing a single item, no sequencing is needed. When queuing multiple items, sort them into groups by project directory:
+- **Logical dependencies** — item B needs item A's output (e.g., a migration must exist before the endpoint that uses it)
+- **Explicit ordering** — you want items in the same directory to run in a specific sequence, not just one-at-a-time in priority/FIFO order
 
-- **Different projects** — safe to run concurrently, no chaining needed
-- **Same project, different branches, non-overlapping work** — usually safe, but consider chaining if both touch shared files
-- **Same project and branch** — always chain with `--after-item`
-
-When chaining, add the first item normally, capture its ID from the output, then pass it as `--after-item <id>` on the next item. For a chain of 3+, each item depends on the previous one.
+You no longer need `--after-item` purely to prevent concurrent execution conflicts in the same directory — that is handled automatically.
 
 ## Workflow
 
 1. **Validate** — Confirm the work is concrete, specific, and ready for autonomous execution
 2. **Organize** — Decide on priority, tags, scheduling, and dependencies
-3. **Check for conflicts** — Before adding anything, review the full set of items you plan to queue. Group by project directory and branch. Identify which items need `--after-item` chaining to prevent concurrent execution conflicts
-4. **Add items** — Queue each piece of work with a clear description, project directory, and branch. Chain conflicting items with `--after-item`
-5. **Monitor** — Check `hopper list` to see what's been claimed, what's blocked, and what's still queued
-6. **Adjust** — Reprioritize, tag, cancel, or requeue items as the situation evolves
-7. **Review** — Check completed items with `hopper show <id>` to see the agent's results
+3. **Add items** — Queue each piece of work with a clear description, project directory, and branch. Use `--after-item` only for logical dependencies or explicit ordering
+4. **Monitor** — Check `hopper list` to see what's been claimed, what's blocked, and what's still queued
+5. **Adjust** — Reprioritize, tag, cancel, or requeue items as the situation evolves
+6. **Review** — Check completed items with `hopper show <id>` to see the agent's results
 
 ## Examples
 
@@ -271,29 +266,25 @@ hopper add "Fix the race condition in the WebSocket reconnection logic. Add a re
   --tag backend --tag bugfix
 ```
 
-### Conflict-safe sequencing (same project/branch)
+### Same-directory work (automatic serialization)
 
 ```bash
-# These two items target the same project and branch — they MUST be chained
-# even though they're conceptually independent work
+# These two items target the same project — no chaining needed!
+# The claim system automatically runs them one at a time.
 
-# First item queues normally
 hopper add "Add input validation to the signup form. Validate email format and password strength. Add unit tests. Run the test suite and linter — both must pass." \
   --dir ~/Work/Projects/webapp \
   --branch feat/form-improvements
-# Output: Created item a1b2c3d4-...
 
-# Second item chains off the first to prevent concurrent execution
 hopper add "Add loading spinners to all form submit buttons. Run the test suite and linter — both must pass." \
   --dir ~/Work/Projects/webapp \
-  --branch feat/form-improvements \
-  --after-item a1b2c3d4
+  --branch feat/form-improvements
 ```
 
 ### Logical dependency chain
 
 ```bash
-# Here the sequencing is both conflict-prevention AND logical —
+# Use --after-item when order matters logically —
 # the API endpoint needs the migration to exist first
 
 hopper add "Add the orders table migration. Run existing tests and type checker to confirm nothing breaks." \
@@ -346,25 +337,23 @@ hopper preset add maintain-hopper "Nightly dependency maintenance for hopper" \
   --dir ~/Work/Projects/Mojility/hopper
 hopper add --preset maintain-hopper --every 1d --tag maintenance
 
-# Chain multiple projects so they don't compete for resources
+# Multiple projects run in parallel automatically (different dirs)
 hopper add "Maintain hone-cli" \
   --command "hone maintain typescript-bun-cli-craftsperson /Users/svetzal/Work/Projects/Mojility/hone-cli" \
   --dir ~/Work/Projects/Mojility/hone-cli \
   --tag maintenance
-# Output: Created item a1b2c3d4-...
 
 hopper add "Maintain hopper" \
   --command "hone maintain typescript-bun-cli-craftsperson /Users/svetzal/Work/Projects/Mojility/hopper" \
   --dir ~/Work/Projects/Mojility/hopper \
-  --tag maintenance \
-  --after-item a1b2c3d4
+  --tag maintenance
 ```
 
 **Tips for hone items:**
 - Use `--dir` so audit logs record which project the command targeted, but `--branch` is
   usually unnecessary — hone manages its own git operations internally
-- Chain items targeting the same machine with `--after-item` when running under
-  `hopper worker --concurrency` to avoid resource contention
+- Items targeting different directories run in parallel automatically — no chaining needed
+- Items targeting the same directory are serialized automatically — no chaining needed
 - Tag maintenance items consistently (e.g. `--tag maintenance`) for easy filtering
   with `hopper list --tag maintenance`
 

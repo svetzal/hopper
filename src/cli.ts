@@ -113,7 +113,7 @@ Usage:
   hopper worker --once               Process one item then exit
   hopper worker --agent <name>       Set agent name (default: claude-worker)
   hopper worker --interval <sec>     Poll interval in seconds (default: 60)
-  hopper worker --concurrency <n>    Run up to N items in parallel (default: 1)
+  hopper worker --concurrency <n>    Run up to N items in parallel (default: 4)
 
 Options:
   --after     Schedule item for later (e.g. 1h, 30m, tomorrow 9am)

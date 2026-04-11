@@ -215,7 +215,7 @@ describe("worker-workflow", () => {
         agentName: "claude-worker",
         pollInterval: 60,
         runOnce: false,
-        concurrency: 1,
+        concurrency: 4,
       });
     });
 

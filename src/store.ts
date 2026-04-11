@@ -81,7 +81,7 @@ export async function addItem(item: Item): Promise<void> {
 
 export async function claimNextItem(agent?: string): Promise<ClaimedItem | undefined> {
   const items = await loadItems();
-  const result = claimNext(items, agent, new Date(), crypto.randomUUID());
+  const result = claimNext(items, agent, new Date(), crypto.randomUUID(), process.cwd());
   if (result.claimed) {
     await saveItems(result.items);
   }

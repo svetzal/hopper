@@ -5,7 +5,9 @@ import {
   cancel,
   claimNext,
   complete,
+  dirsOverlap,
   ensureDefaults,
+  normalizeDir,
   prependItem,
   removeTags,
   reprioritize,
@@ -192,6 +194,199 @@ describe("claimNext", () => {
 
     expect(item.status).toBe(originalStatus);
     expect(items).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normalizeDir / dirsOverlap
+// ---------------------------------------------------------------------------
+
+describe("normalizeDir", () => {
+  test("strips trailing slashes", () => {
+    expect(normalizeDir("/a/b/")).toBe("/a/b");
+  });
+
+  test("strips multiple trailing slashes", () => {
+    expect(normalizeDir("/a/b///")).toBe("/a/b");
+  });
+
+  test("returns path unchanged when no trailing slash", () => {
+    expect(normalizeDir("/a/b")).toBe("/a/b");
+  });
+});
+
+describe("dirsOverlap", () => {
+  test("same path overlaps", () => {
+    expect(dirsOverlap("/a/b", "/a/b")).toBe(true);
+  });
+
+  test("parent contains child", () => {
+    expect(dirsOverlap("/a", "/a/b")).toBe(true);
+  });
+
+  test("child contained by parent", () => {
+    expect(dirsOverlap("/a/b", "/a")).toBe(true);
+  });
+
+  test("siblings do not overlap", () => {
+    expect(dirsOverlap("/a/b1", "/a/b2")).toBe(false);
+  });
+
+  test("no false positive on shared prefix without / boundary", () => {
+    expect(dirsOverlap("/a/bc", "/a/b")).toBe(false);
+  });
+
+  test("trailing slash normalized before comparison", () => {
+    expect(dirsOverlap("/a/b/", "/a/b")).toBe(true);
+  });
+
+  test("deeply nested containment", () => {
+    expect(dirsOverlap("/a/b/c/d", "/a/b")).toBe(true);
+  });
+
+  test("unrelated paths do not overlap", () => {
+    expect(dirsOverlap("/x/y", "/a/b")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// claimNext — directory-aware filtering
+// ---------------------------------------------------------------------------
+
+describe("claimNext — directory-aware", () => {
+  test("skips queued item whose workingDir matches an in-progress item", () => {
+    const inProgress = makeItem({
+      status: "in_progress",
+      workingDir: "/repo/project",
+      claimedAt: FIXED_NOW.toISOString(),
+    });
+    const queued = makeItem({ workingDir: "/repo/project" });
+    const result = claimNext([inProgress, queued], undefined, FIXED_NOW, FIXED_UUID);
+
+    expect(result.claimed).toBeUndefined();
+  });
+
+  test("claims item with different workingDir when another dir is busy", () => {
+    const inProgress = makeItem({
+      status: "in_progress",
+      workingDir: "/repo/project-a",
+      claimedAt: FIXED_NOW.toISOString(),
+    });
+    const queued = makeItem({ title: "Different dir", workingDir: "/repo/project-b" });
+    const result = claimNext([inProgress, queued], undefined, FIXED_NOW, FIXED_UUID);
+
+    expect(result.claimed?.title).toBe("Different dir");
+  });
+
+  test("uses cwd as effective dir for items without workingDir", () => {
+    const inProgress = makeItem({
+      status: "in_progress",
+      claimedAt: FIXED_NOW.toISOString(),
+      // no workingDir — will use cwd
+    });
+    const queued = makeItem({ title: "Also no dir" });
+    const result = claimNext([inProgress, queued], undefined, FIXED_NOW, FIXED_UUID, "/my/cwd");
+
+    // Both use cwd=/my/cwd as effective dir → queued item is skipped
+    expect(result.claimed).toBeUndefined();
+  });
+
+  test("containment: skips item at child dir when parent is busy", () => {
+    const inProgress = makeItem({
+      status: "in_progress",
+      workingDir: "/projects",
+      claimedAt: FIXED_NOW.toISOString(),
+    });
+    const queued = makeItem({ workingDir: "/projects/repo" });
+    const result = claimNext([inProgress, queued], undefined, FIXED_NOW, FIXED_UUID);
+
+    expect(result.claimed).toBeUndefined();
+  });
+
+  test("containment: skips item at parent dir when child is busy", () => {
+    const inProgress = makeItem({
+      status: "in_progress",
+      workingDir: "/projects/repo",
+      claimedAt: FIXED_NOW.toISOString(),
+    });
+    const queued = makeItem({ workingDir: "/projects" });
+    const result = claimNext([inProgress, queued], undefined, FIXED_NOW, FIXED_UUID);
+
+    expect(result.claimed).toBeUndefined();
+  });
+
+  test("no false positive: sibling dirs do not block each other", () => {
+    const inProgress = makeItem({
+      status: "in_progress",
+      workingDir: "/projects/repo1",
+      claimedAt: FIXED_NOW.toISOString(),
+    });
+    const queued = makeItem({ title: "Sibling", workingDir: "/projects/repo2" });
+    const result = claimNext([inProgress, queued], undefined, FIXED_NOW, FIXED_UUID);
+
+    expect(result.claimed?.title).toBe("Sibling");
+  });
+
+  test("trailing slash normalized: /a/b/ treated same as /a/b", () => {
+    const inProgress = makeItem({
+      status: "in_progress",
+      workingDir: "/repo/project/",
+      claimedAt: FIXED_NOW.toISOString(),
+    });
+    const queued = makeItem({ workingDir: "/repo/project" });
+    const result = claimNext([inProgress, queued], undefined, FIXED_NOW, FIXED_UUID);
+
+    expect(result.claimed).toBeUndefined();
+  });
+
+  test("multiple busy dirs: only overlapping candidates skipped", () => {
+    const busyA = makeItem({
+      status: "in_progress",
+      workingDir: "/repo/a",
+      claimedAt: FIXED_NOW.toISOString(),
+    });
+    const busyB = makeItem({
+      status: "in_progress",
+      workingDir: "/repo/b",
+      claimedAt: FIXED_NOW.toISOString(),
+    });
+    const queuedA = makeItem({ title: "Blocked by A", workingDir: "/repo/a" });
+    const queuedB = makeItem({ title: "Blocked by B", workingDir: "/repo/b" });
+    const queuedC = makeItem({ title: "Free", workingDir: "/repo/c" });
+    const result = claimNext(
+      [busyA, busyB, queuedA, queuedB, queuedC],
+      undefined,
+      FIXED_NOW,
+      FIXED_UUID,
+    );
+
+    expect(result.claimed?.title).toBe("Free");
+  });
+
+  test("no cwd provided: items without workingDir are freely claimable", () => {
+    const inProgress = makeItem({
+      status: "in_progress",
+      workingDir: "/repo/project",
+      claimedAt: FIXED_NOW.toISOString(),
+    });
+    const queued = makeItem({ title: "No dir" });
+    // No cwd argument — no-dir items are ungrouped
+    const result = claimNext([inProgress, queued], undefined, FIXED_NOW, FIXED_UUID);
+
+    expect(result.claimed?.title).toBe("No dir");
+  });
+
+  test("same workingDir different branch still serialized", () => {
+    const inProgress = makeItem({
+      status: "in_progress",
+      workingDir: "/repo/project",
+      branch: "feat/a",
+      claimedAt: FIXED_NOW.toISOString(),
+    });
+    const queued = makeItem({ workingDir: "/repo/project", branch: "feat/b" });
+    const result = claimNext([inProgress, queued], undefined, FIXED_NOW, FIXED_UUID);
+
+    expect(result.claimed).toBeUndefined();
   });
 });
 

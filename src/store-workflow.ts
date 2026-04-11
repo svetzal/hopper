@@ -3,11 +3,38 @@ import { comparePriority } from "./priority.ts";
 import type { ClaimedItem, Item } from "./store.ts";
 
 // ---------------------------------------------------------------------------
-// Internal helper
+// Internal helpers
 // ---------------------------------------------------------------------------
 
 function replaceItem(items: Item[], id: string, replacement: Item): Item[] {
   return items.map((i) => (i.id === id ? replacement : i));
+}
+
+// ---------------------------------------------------------------------------
+// Directory overlap detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Strip trailing slashes from a directory path for consistent comparison.
+ */
+export function normalizeDir(dir: string): string {
+  return dir.replace(/\/+$/, "");
+}
+
+/**
+ * Check whether two directory paths overlap — meaning they are the same
+ * directory, or one is an ancestor of the other.
+ *
+ * Uses a `/` boundary to avoid false positives:
+ *   dirsOverlap("/a/b", "/a/bc") → false
+ *   dirsOverlap("/a/b", "/a/b/c") → true
+ *   dirsOverlap("/a/b", "/a/b")   → true
+ */
+export function dirsOverlap(a: string, b: string): boolean {
+  const normA = normalizeDir(a);
+  const normB = normalizeDir(b);
+  if (normA === normB) return true;
+  return normA.startsWith(`${normB}/`) || normB.startsWith(`${normA}/`);
 }
 
 // ---------------------------------------------------------------------------
@@ -22,6 +49,14 @@ export interface ClaimNextResult {
 /**
  * Select and claim the next workable item.
  * Accepts injected `now` and `newUUID` to keep this side-effect-free.
+ *
+ * Directory-aware: items whose effective working directory overlaps with
+ * an already in-progress item's directory are skipped. This prevents
+ * concurrent work in the same (or nested) project directories.
+ *
+ * @param cwd  Effective CWD for items without an explicit workingDir.
+ *             When omitted, no-dir items are treated as ungrouped.
+ *
  * Returns a new items array — the input is never mutated.
  */
 export function claimNext(
@@ -29,13 +64,30 @@ export function claimNext(
   agent: string | undefined,
   now: Date,
   newUUID: string,
+  cwd?: string,
 ): ClaimNextResult {
+  // Compute busy directories from in-progress items
+  const busyDirs = items
+    .filter((i) => i.status === Status.IN_PROGRESS)
+    .map((i) => i.workingDir ?? cwd)
+    .filter((d): d is string => d !== undefined);
+
   const claimable = items
     .filter((i) => {
-      if (i.status === Status.QUEUED) return true;
-      if (i.status === Status.SCHEDULED && i.scheduledAt && new Date(i.scheduledAt) <= now)
-        return true;
-      return false;
+      if (i.status === Status.QUEUED) {
+        // ok
+      } else if (i.status === Status.SCHEDULED && i.scheduledAt && new Date(i.scheduledAt) <= now) {
+        // ok
+      } else {
+        return false;
+      }
+
+      // Skip if this item's effective dir overlaps with any busy dir
+      const effectiveDir = i.workingDir ?? cwd;
+      if (effectiveDir && busyDirs.some((busy) => dirsOverlap(effectiveDir, busy))) {
+        return false;
+      }
+      return true;
     })
     .sort((a, b) => {
       const pc = comparePriority(a.priority, b.priority);

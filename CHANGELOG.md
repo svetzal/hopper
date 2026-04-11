@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-04-11
+
+### Added
+
+- Directory-aware parallel claiming — `claimNext` automatically serializes items that target the same or overlapping `workingDir`, including parent/child containment detection (e.g., `/repo` and `/repo/subproject` serialize, but `/repo/a` and `/repo/b` run in parallel)
+- Items without an explicit `workingDir` use the process CWD as their effective directory for serialization
+
+### Changed
+
+- Default worker concurrency bumped from 1 to 4 — safe because same-directory work is now automatically serialized
+- Coordinator skill no longer requires manual `--after-item` chaining for conflict prevention; `--after-item` is now only needed for logical dependencies or explicit ordering
+
 ## [1.4.0] - 2026-03-28
 
 ### Changed

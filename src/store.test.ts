@@ -121,11 +121,13 @@ describe("store", () => {
     const inProgress = makeItem({
       title: "In Progress",
       status: "in_progress",
+      workingDir: "/repo/a",
       createdAt: "2025-01-01T00:00:00Z",
     });
     const queued = makeItem({
       title: "Queued",
       status: "queued",
+      workingDir: "/repo/b",
       createdAt: "2025-06-01T00:00:00Z",
     });
     await saveItems([inProgress, queued]);
