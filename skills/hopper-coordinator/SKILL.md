@@ -126,6 +126,14 @@ Since an autonomous agent will execute this work with no human oversight, descri
 2. **Work** — what specifically to do, with file paths and concrete details
 3. **Validation** — what commands must pass and what success looks like (e.g., "Run `bun test` and `bun run lint` — both must pass with zero errors")
 
+**Name a craftsperson agent when one fits naturally:**
+
+If the work maps cleanly to one of the language/framework craftsperson subagents (e.g. `uv-python-craftsperson` for a `uv`-managed Python project, `typescript-bun-cli-craftsperson` for a Bun CLI, `kotlin-android-craftsperson` for Android work, `elixir-phoenix-craftsperson` for Phoenix LiveView, etc.), include an instruction in the description telling the worker to use it — e.g. "Use the uv-python-craftsperson agent for implementation and the final quality-gate review." This gives the worker opinionated engineering standards (testing conventions, quality gates, documentation sync) for that stack.
+
+Do NOT force a craftsperson when none fits. Investigation-only items, shell-command items (`--command`), cross-cutting operational work, and tasks that don't match any available craftsperson should omit this entirely. A bad fit is worse than none.
+
+Quick heuristic: look at the project's primary language and runtime. If there's a craftsperson whose description matches the project's stack (Python/uv, Python/pip, TypeScript Bun CLI, TypeScript general, Kotlin Android, Kotlin server, Rust, Go, Java, C#, Swift, Ruby, Clojure, C++/Qt, Elixir, Elixir Phoenix) — name it. Otherwise, skip the instruction.
+
 ### Listing Items
 
 ```bash

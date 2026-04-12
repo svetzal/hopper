@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Coordinator skill now includes guidance on naming craftsperson subagents in work item descriptions for stack-specific engineering standards
+
 ## [1.5.2] - 2026-04-11
 
 ### Fixed
