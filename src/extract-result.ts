@@ -26,3 +26,20 @@ export function extractResult(jsonlOutput: string): string {
   }
   return "(see audit log for details)";
 }
+
+/**
+ * Wrap captured stderr as a single JSONL-valid event line so line-by-line
+ * parsers can still read the audit file without tripping over a bare error
+ * message at the tail. Returns an empty string when there's nothing to emit,
+ * so callers can safely concatenate.
+ *
+ * The emitted line is a JSON.stringify object with `type: "stderr"` and a
+ * `text` field holding the full stderr verbatim (newlines escaped), plus a
+ * trailing newline so it sits as its own JSONL row. Multi-line stderr stays
+ * in one event rather than being split into many — stack traces are easier
+ * to read as a single block.
+ */
+export function formatStderrEvent(stderr: string): string {
+  if (!stderr) return "";
+  return `${JSON.stringify({ type: "stderr", text: stderr })}\n`;
+}

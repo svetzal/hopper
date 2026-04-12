@@ -19,7 +19,7 @@ import {
   resolveMergeStep,
 } from "../git-workflow.ts";
 import type { ClaimedItem, Item, PhaseRecord } from "../store.ts";
-import { claimNextItem, completeItem, recordItemPhase } from "../store.ts";
+import { claimNextItem, completeItem, recordItemPhase, requeueItem } from "../store.ts";
 import {
   buildBranchSlugPrompt,
   buildCommitMessagePrompt,
@@ -41,6 +41,7 @@ import {
   buildTaskPrompt,
   resolveAttemptAuditPath,
   resolveAuditPaths,
+  resolveAutoRequeue,
   resolveCompletionAction,
   resolveEngineeringAuditPaths,
   resolveLoopAction,
@@ -176,7 +177,24 @@ async function handleCompletion(
     const sessionLabel = item.command ? "Command" : "Claude session";
     log(`${sessionLabel} failed for: ${item.title} (${item.id})`);
     if (workBranch) log(`Work branch ${workBranch} preserved for review.`);
-    log(`Use 'hopper requeue ${item.id} --reason "..."' to retry.`);
+
+    // A non-zero exit with no captured result almost always means Claude
+    // never ran (argv / environment / startup error). Auto-requeue those so
+    // the queue heals without operator intervention. Items that produced any
+    // real result stay wedged at in_progress on purpose — there's probably
+    // something worth reading before the operator decides whether to retry.
+    const autoRequeue = resolveAutoRequeue(exitCode, result);
+    if (autoRequeue.shouldAutoRequeue) {
+      try {
+        await requeueItem(item.id, autoRequeue.reason, agentName);
+        log(`Auto-requeued: ${item.title} (${autoRequeue.reason}).`);
+      } catch (err) {
+        log(`Auto-requeue failed: ${err instanceof Error ? err.message : String(err)}`);
+        log(`Use 'hopper requeue ${item.id} --reason "..."' to retry.`);
+      }
+    } else {
+      log(`Use 'hopper requeue ${item.id} --reason "..."' to retry.`);
+    }
   }
 }
 

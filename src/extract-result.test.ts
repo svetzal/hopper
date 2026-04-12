@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { extractResult } from "./extract-result.ts";
+import { extractResult, formatStderrEvent } from "./extract-result.ts";
 
 describe("extractResult", () => {
   test("returns result string from a valid JSONL stream", () => {
@@ -71,5 +71,36 @@ describe("extractResult", () => {
     // split("\n") leaves "\r" on the first token — verify it still parses
     // the result line correctly since JSON.parse handles trailing \r
     expect(extractResult(jsonl)).toBe("Windows result.");
+  });
+});
+
+describe("formatStderrEvent", () => {
+  test("returns empty string when stderr is empty", () => {
+    expect(formatStderrEvent("")).toBe("");
+  });
+
+  test("wraps a single-line stderr as a JSONL event with trailing newline", () => {
+    const line = formatStderrEvent("Error: Input must be provided");
+    expect(line.endsWith("\n")).toBe(true);
+    const parsed = JSON.parse(line.trimEnd());
+    expect(parsed).toEqual({ type: "stderr", text: "Error: Input must be provided" });
+  });
+
+  test("keeps multi-line stderr as a single JSONL object (escaped newlines)", () => {
+    const raw = 'Traceback (most recent call last):\n  File "x.py", line 1\nBoom\n';
+    const line = formatStderrEvent(raw);
+    // Exactly one JSONL row — no embedded unescaped newlines breaking the format
+    const rows = line.trimEnd().split("\n");
+    expect(rows).toHaveLength(1);
+    const parsed = JSON.parse(rows[0] as string);
+    expect(parsed.type).toBe("stderr");
+    expect(parsed.text).toBe(raw);
+  });
+
+  test("escapes quotes and control characters correctly so parsers don't choke", () => {
+    const raw = 'oops: "quoted" thing\ttab\x00nul';
+    const line = formatStderrEvent(raw);
+    const parsed = JSON.parse(line.trimEnd());
+    expect(parsed.text).toBe(raw);
   });
 });

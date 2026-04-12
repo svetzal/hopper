@@ -3,7 +3,7 @@
 // logic (JSONL result extraction and argv construction) is tested via
 // extract-result.test.ts and claude-argv.test.ts, and integration behaviour
 // is covered by worker-workflow tests.
-import { extractResult } from "../extract-result.ts";
+import { extractResult, formatStderrEvent } from "../extract-result.ts";
 import { buildClaudeArgv, type ClaudeSessionOptions } from "./claude-argv.ts";
 
 export type { ClaudeSessionOptions };
@@ -112,13 +112,17 @@ async function runSession(
     new Response(proc.stderr).text(),
   ]);
 
-  // Append stderr (usually empty) after the main JSONL stream.
-  if (stderr) {
+  // Wrap stderr (usually empty) as a single JSONL-valid event line so the
+  // audit file stays machine-parseable. The raw-append behaviour we had
+  // before produced bare error strings at the tail that broke line-by-line
+  // consumers.
+  const stderrEvent = formatStderrEvent(stderr);
+  if (stderrEvent) {
     await Bun.write(
       auditFile,
       (await Bun.file(auditFile)
         .text()
-        .catch(() => "")) + stderr,
+        .catch(() => "")) + stderrEvent,
     );
   }
 

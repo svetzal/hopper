@@ -5,6 +5,7 @@ import {
   buildTaskPrompt,
   resolveAttemptAuditPath,
   resolveAuditPaths,
+  resolveAutoRequeue,
   resolveCompletionAction,
   resolveEngineeringAuditPaths,
   resolveLoopAction,
@@ -360,6 +361,48 @@ describe("worker-workflow", () => {
       expect(action.type).toBe("shutdown");
       if (action.type === "shutdown") {
         expect(action.message).toContain("1 active task(s)");
+      }
+    });
+  });
+
+  describe("resolveAutoRequeue", () => {
+    test("exit 0 never auto-requeues regardless of result content", () => {
+      expect(resolveAutoRequeue(0, "(see audit log for details)")).toEqual({
+        shouldAutoRequeue: false,
+      });
+      expect(resolveAutoRequeue(0, "all done")).toEqual({ shouldAutoRequeue: false });
+      expect(resolveAutoRequeue(0, "")).toEqual({ shouldAutoRequeue: false });
+    });
+
+    test("non-zero exit with the extractResult sentinel triggers auto-requeue", () => {
+      const decision = resolveAutoRequeue(1, "(see audit log for details)");
+      expect(decision.shouldAutoRequeue).toBe(true);
+      if (decision.shouldAutoRequeue) {
+        expect(decision.reason).toContain("exited 1");
+        expect(decision.reason.toLowerCase()).toContain("startup");
+      }
+    });
+
+    test("non-zero exit with an empty result triggers auto-requeue", () => {
+      const decision = resolveAutoRequeue(1, "");
+      expect(decision.shouldAutoRequeue).toBe(true);
+    });
+
+    test("non-zero exit with whitespace-only result triggers auto-requeue", () => {
+      const decision = resolveAutoRequeue(1, "   \n  ");
+      expect(decision.shouldAutoRequeue).toBe(true);
+    });
+
+    test("non-zero exit with a real captured result does NOT auto-requeue (human triage)", () => {
+      expect(resolveAutoRequeue(1, "Partial output. Ran into X.")).toEqual({
+        shouldAutoRequeue: false,
+      });
+    });
+
+    test("reason includes the actual exit code for operator visibility", () => {
+      const decision = resolveAutoRequeue(137, "(see audit log for details)");
+      if (decision.shouldAutoRequeue) {
+        expect(decision.reason).toContain("137");
       }
     });
   });

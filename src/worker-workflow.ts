@@ -135,6 +135,44 @@ export function resolveCompletionAction(
   return claudeExitCode === 0 ? { action: "complete", result } : { action: "failed", result };
 }
 
+/**
+ * Sentinel string returned by `extractResult` when the Claude session emitted
+ * no `result`-type JSONL line. We compare against it to distinguish a
+ * startup/crash failure (no real work done) from a genuine partial result.
+ */
+const NO_RESULT_SENTINEL = "(see audit log for details)";
+
+export type AutoRequeueDecision =
+  | { shouldAutoRequeue: false }
+  | { shouldAutoRequeue: true; reason: string };
+
+/**
+ * Decide whether a non-zero exit looks like a pre-work startup failure that
+ * the worker should auto-requeue without human intervention.
+ *
+ * The signal we trust is `extractResult`'s output: when Claude produced any
+ * real `result`-type JSONL line, the captured string is the final assistant
+ * response; when it didn't, we get the sentinel. A non-zero exit WITH the
+ * sentinel means Claude failed before producing any captured work — almost
+ * always an argv / environment / startup problem, not a task-level error that
+ * deserves human triage. These should auto-requeue so the queue heals.
+ *
+ * Items with a real captured result (even if exit was non-zero) stay wedged
+ * at in_progress on purpose — the operator probably wants to read the result
+ * and decide whether to requeue.
+ */
+export function resolveAutoRequeue(exitCode: number, extractedResult: string): AutoRequeueDecision {
+  if (exitCode === 0) return { shouldAutoRequeue: false };
+  const trimmed = extractedResult.trim();
+  if (trimmed === NO_RESULT_SENTINEL || trimmed === "") {
+    return {
+      shouldAutoRequeue: true,
+      reason: `auto-requeue: Claude exited ${exitCode} before producing any result (likely a startup failure)`,
+    };
+  }
+  return { shouldAutoRequeue: false };
+}
+
 // ---------------------------------------------------------------------------
 // Worker config
 // ---------------------------------------------------------------------------

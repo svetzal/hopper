@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-04-12
+
+### Added
+
+- **Auto-requeue on Claude startup failures.** When Claude exits non-zero without producing any captured `result`-type event (typical signature of an argv / environment / startup error), the worker now calls `requeueItem` with a descriptive reason so the queue self-heals instead of leaving the item wedged at `in_progress`. Items that did produce a real result still stay in-progress on purpose — the operator probably wants to read the partial output before deciding whether to retry. Pure decision lives in `resolveAutoRequeue(exitCode, extractedResult)`.
+
+### Changed
+
+- **Stderr captured from Claude is now wrapped as a JSONL event.** Previously the claude subprocess's stderr was appended raw to the audit file, which tacked a non-JSON line onto the tail and broke line-by-line parsers. Stderr now lands as a single `{"type":"stderr","text":"…"}` JSONL row (multi-line stderr stays in one event, with newlines escaped). Empty stderr emits nothing.
+
 ## [2.0.1] - 2026-04-12
 
 ### Fixed

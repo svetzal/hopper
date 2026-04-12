@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
@@ -6,8 +6,16 @@ import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import type { Item } from "../store.ts";
 // Mock the store module so processItem doesn't touch the real items.json
 import * as store from "../store.ts";
-import { makeClaimedItem } from "./test-helpers.ts";
+import { makeClaimedItem, setupTempStoreDir } from "./test-helpers.ts";
 import { processItem } from "./worker.ts";
+
+// Capture the real requeueItem BEFORE mock.module rewires the module registry.
+// The module-level mock below delegates to this captured reference so that
+// other test files which rely on the real implementation (notably
+// src/commands/requeue.test.ts) continue to see real behaviour — each test
+// file sets its own temp store dir via `setupTempStoreDir`, so this
+// pass-through is safe across the whole suite.
+const realRequeueItem = store.requeueItem;
 
 mock.module("../store.ts", () => ({
   ...store,
@@ -16,10 +24,14 @@ mock.module("../store.ts", () => ({
     recurred: undefined,
   })),
   recordItemPhase: mock(async () => {}),
+  requeueItem: mock(async (id: string, reason: string, agent?: string) =>
+    realRequeueItem(id, reason, agent),
+  ),
 }));
-const { completeItem, recordItemPhase } = await import("../store.ts");
+const { completeItem, recordItemPhase, requeueItem } = await import("../store.ts");
 const completeItemMock = completeItem as ReturnType<typeof mock>;
 const recordItemPhaseMock = recordItemPhase as ReturnType<typeof mock>;
+const requeueItemMock = requeueItem as ReturnType<typeof mock>;
 
 function makeMockGit(overrides?: Partial<GitGateway>): GitGateway {
   return {
@@ -69,10 +81,19 @@ function makeMockFs(): FsGateway {
 const HOPPER_HOME = "/tmp/test-hopper";
 
 describe("processItem", () => {
-  beforeEach(() => {
+  // Isolate the store so the pass-through requeueItem mock can't touch the
+  // user's real ~/.hopper/items.json. The temp dir is set up per-test and
+  // torn down afterwards.
+  const storeDir = setupTempStoreDir("hopper-worker-test-");
+
+  beforeEach(async () => {
+    await storeDir.beforeEach();
     completeItemMock.mockClear();
     recordItemPhaseMock.mockClear();
+    requeueItemMock.mockClear();
   });
+
+  afterEach(storeDir.afterEach);
 
   test("completes a simple item (no worktree) successfully", async () => {
     const item = makeClaimedItem();
@@ -98,6 +119,54 @@ describe("processItem", () => {
     await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
 
     expect(completeItemMock).not.toHaveBeenCalled();
+  });
+
+  test("auto-requeues when Claude exits non-zero with the no-result sentinel (startup failure)", async () => {
+    const item = makeClaimedItem();
+    // Seed the temp store with the claimed item so the pass-through
+    // requeueItem can find and transition it.
+    await store.saveItems([item]);
+    const claude = makeMockClaude(1, "(see audit log for details)");
+    const fs = makeMockFs();
+    const git = makeMockGit();
+
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+
+    expect(completeItemMock).not.toHaveBeenCalled();
+    expect(requeueItemMock).toHaveBeenCalledTimes(1);
+    const call = (requeueItemMock.mock.calls as unknown[][])[0] as unknown[];
+    expect(call[0]).toBe(item.id);
+    expect(call[1] as string).toContain("exited 1");
+
+    // And the pass-through actually transitioned the item back to queued
+    const reloaded = await store.loadItems();
+    const refreshed = reloaded.find((i) => i.id === item.id);
+    expect(refreshed?.status).toBe("queued");
+    expect(refreshed?.requeueReason).toContain("exited 1");
+  });
+
+  test("does NOT auto-requeue when Claude exits non-zero with a real captured result", async () => {
+    const item = makeClaimedItem();
+    const claude = makeMockClaude(1, "Partial work. Ran into X before dying.");
+    const fs = makeMockFs();
+    const git = makeMockGit();
+
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+
+    expect(completeItemMock).not.toHaveBeenCalled();
+    expect(requeueItemMock).not.toHaveBeenCalled();
+  });
+
+  test("does not auto-requeue on Claude success even if result happens to be empty", async () => {
+    const item = makeClaimedItem();
+    const claude = makeMockClaude(0, "");
+    const fs = makeMockFs();
+    const git = makeMockGit();
+
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+
+    expect(completeItemMock).toHaveBeenCalledTimes(1);
+    expect(requeueItemMock).not.toHaveBeenCalled();
   });
 
   test("sets up worktree when item has workingDir and branch", async () => {
