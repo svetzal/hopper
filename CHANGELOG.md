@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Coordinator skill now includes 'Investigating In-Progress Tasks' section with audit log diagnosis, process inspection, failure mode taxonomy, and decision flow for stuck tasks
+
 ### Changed
 
 - Coordinator skill now includes guidance on naming craftsperson subagents in work item descriptions for stack-specific engineering standards

@@ -157,6 +157,89 @@ hopper show <id> --json      # Machine-readable output
 
 Shows all fields: description, status, timestamps, agent info, result, tags, dependencies, requeue reason, recurrence, and working directory.
 
+### Investigating In-Progress Tasks
+
+When an item has been in-progress suspiciously long (or a user asks "how is task X doing?"), don't guess. Check the audit log *first*. Only then look at processes. An IN_PROGRESS status in `hopper show` does not tell you whether the worker is actively making progress — the audit log does.
+
+**Key files per task:**
+
+| Path | Contents |
+|------|----------|
+| `~/.hopper/audit/<full-id>-audit.jsonl` | Every Claude session event: tool calls, thinking, user/assistant turns, hook runs. This is the primary signal. |
+| `~/.hopper/audit/<full-id>-result.md` | Final result written by the worker on completion. Present even if session ended early — may say "see audit log for details". |
+| `~/.hopper/worktrees/<full-id>/` | Git worktree the worker operated in. Useful for finding partial changes. |
+| `~/.hopper/items.json` | Full queue state, one JSON array at top level (NOT `.items[]`). Query with `jq '.[] | select(.id | startswith("<prefix>"))'`. |
+
+**Step 1 — count audit events and skim the shape.**
+
+```bash
+wc -l ~/.hopper/audit/<full-id>-audit.jsonl        # How much work was logged
+grep -o '"name":"[^"]*"' ~/.hopper/audit/<full-id>-audit.jsonl \
+  | sort | uniq -c | sort -rn | head -20            # Tool-use histogram
+grep -o '"command":"[^"]*"' ~/.hopper/audit/<full-id>-audit.jsonl \
+  | tail -10                                        # Last shell commands attempted
+```
+
+A session with zero audit events hung before doing real work (startup/MCP/hook problem). A session with hundreds of events then silence usually hit a runaway tool output, a stuck subagent, or an oversized response mid-stream.
+
+**Step 2 — decode the tail in context.**
+
+For readable summaries of the last N events, parse with Python to pull `role`, `tool_use` names, and `command`/`file_path` from the `input` object. One-liner sketch:
+
+```python
+import json
+events = [json.loads(l) for l in open(p)]
+for e in events[-15:]:
+    msg = e.get('message') or {}
+    content = msg.get('content')
+    # content is a list of blocks; first block may be thinking, tool_use, text, or tool_result
+    # Each needs slightly different extraction — see examples below
+```
+
+What to look for in the tail:
+- **A tool_use with no matching tool_result** — session died mid-call. The `input` of that tool tells you what it was attempting (often a huge command, a massive scan, or a subagent Task).
+- **A `system` event of subtype `task_started` with no subsequent assistant turn** — an Agent (subagent) was launched and never returned. Common when a Task prompt was too loose or the subagent itself got stuck.
+- **A final assistant `text` block saying "I need to..." followed by nothing** — the session was composing a plan and got cut off.
+
+**Step 3 — process tree, but interpret carefully.**
+
+```bash
+pgrep -fl "hopper worker"                              # Worker processes
+pgrep -P <worker-pid>                                   # Child Claude sessions (one per in-flight task)
+ps -p <claude-pid> -o pid,ppid,etime,state,command     # Check state
+pgrep -P <claude-pid>                                   # Children of the Claude process (MCP servers, Bash subprocesses)
+```
+
+**Do not over-interpret process state.** `S` and `S+` just mean "sleeping (foreground)" — this is the default state for almost any interactive process between ticks of work. It does NOT mean "hung". A normally-running Claude session looks exactly like a hung one in `ps`. **Always corroborate with the audit log before diagnosing a hang.** An active session writes new events every few seconds to minutes; a stuck session writes none for a long stretch despite elapsed runtime.
+
+**Common failure modes and what they look like:**
+
+| Signal | Likely cause |
+|--------|--------------|
+| Worktree exists, no audit file, no audit events, ~7+ hour elapsed | Claude binary itself failed to initialize — check hopper worker stdout for errors. Rare. |
+| Audit file exists with 5-20 events then silence, last event is `hook_response` or `init` | Startup hook or MCP server blocked post-init. Less common than people assume. |
+| Dozens-to-hundreds of events then silence, last event is a tool_use (often Bash with a large scan or a very long Read) | Tool output was too large, stream processing stalled. Most common real cause. |
+| Last event is `task_started` with no follow-up | Subagent (Task) hung. The subagent child of the Claude session is doing its own thing and got stuck there. |
+| Orphaned `npm exec` or `node` children with MCP in the command line, elapsed time matches session | MCP servers running but parent Claude is blocked elsewhere. Killing them won't unstick the parent unless MCP I/O was the blocker, which is rarely the case post-init. |
+
+**Step 4 — report to the user with specifics, not guesses.**
+
+When giving an update, include:
+- Total audit events (a proxy for how much work the worker did)
+- Tool-use distribution (shows what the worker focused on)
+- Last 2-3 commands or operations from the tail
+- Whether the expected output artifact (the file the description said to write) exists
+- Your diagnosis of the likely hang point, grounded in the audit log
+
+Avoid speculative MCP-hang narratives unless the audit log supports them. "Stuck" ≠ "stuck in MCP init".
+
+**Step 5 — decide with the user before killing processes.**
+
+Options when a task is genuinely stuck:
+1. Kill the Claude session PID → worker notices and auto-marks the item. May leave it as in_progress until the next worker tick; follow up with `hopper requeue` if needed.
+2. `hopper requeue <id> --reason "..."` → explicit requeue, worker claim is released, item re-enters the queue.
+3. If the audit log shows near-complete investigation work, you may have enough intel to synthesize findings manually from the audit content instead of retrying — check with the user first.
+
 ### Cancelling Items
 
 ```bash
