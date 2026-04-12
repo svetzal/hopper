@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.4] - 2026-04-12
+
+### Fixed
+
+- **Recurring items silently lost v2.0.0 configuration on each cycle.** When a recurring item completed, the recurrence builder in `store-workflow.complete()` propagated only `priority`, `workingDir`, `branch`, `command`, and `tags` to the next-cycle item. `type`, `agent`, and `retries` — all added in v2.0.0 — were dropped, so an item created with `--type engineering --agent typescript-craftsperson --retries 3 --every 1d` would recur as a default `task` with no pinned agent and no custom retry count. The recurrence builder now propagates all three fields.
+
 ## [2.0.3] - 2026-04-12
 
 ### Fixed

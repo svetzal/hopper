@@ -563,6 +563,20 @@ describe("complete", () => {
     expect(result.recurred?.tags).toEqual(["tag1", "tag2"]);
   });
 
+  test("recurred item preserves type, agent, and retries", () => {
+    const item = makeInProgressItem({
+      type: "engineering",
+      agent: "typescript-craftsperson",
+      retries: 3,
+      recurrence: { interval: "1h", intervalMs: 3_600_000 },
+    });
+    const result = complete([item], FIXED_UUID, "agent", undefined, FIXED_NOW, "recurred-uuid");
+
+    expect(result.recurred?.type).toBe("engineering");
+    expect(result.recurred?.agent).toBe("typescript-craftsperson");
+    expect(result.recurred?.retries).toBe(3);
+  });
+
   test("recurred item has scheduledAt = now + intervalMs", () => {
     const item = makeInProgressItem({
       recurrence: { interval: "4h", intervalMs: 4 * 3_600_000 },

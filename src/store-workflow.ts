@@ -188,6 +188,9 @@ export function complete(
         ...(item.branch ? { branch: item.branch } : {}),
         ...(item.command ? { command: item.command } : {}),
         ...(item.tags?.length ? { tags: [...item.tags] } : {}),
+        ...(item.type ? { type: item.type } : {}),
+        ...(item.agent ? { agent: item.agent } : {}),
+        ...(item.retries !== undefined ? { retries: item.retries } : {}),
       };
       updatedItems = [recurredItem, ...updatedItems];
     }
