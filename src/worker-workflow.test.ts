@@ -331,8 +331,25 @@ describe("worker-workflow", () => {
       expect(resolvePostClaimLoopAction(1, true, false, 60)).toEqual({ type: "continue" });
     });
 
-    test("returns continue when not runOnce and tasks still active even if nothing new claimed", () => {
-      expect(resolvePostClaimLoopAction(2, false, false, 60)).toEqual({ type: "continue" });
+    test("returns sleep when tasks are active but nothing new was claimed (prevents busy-loop)", () => {
+      // Regression: previously returned `continue`, which caused the worker
+      // loop to re-enter claimNext every tick — pegging CPU at ~100%
+      // re-reading ~/.hopper/items.json until a task settled.
+      const action = resolvePostClaimLoopAction(2, false, false, 60);
+      expect(action.type).toBe("sleep");
+      if (action.type === "sleep") {
+        expect(action.message).toContain("60s");
+        expect(action.message).toContain("2 active task(s)");
+      }
+    });
+
+    test("sleep message reflects the active-task count", () => {
+      const action = resolvePostClaimLoopAction(1, false, false, 30);
+      expect(action.type).toBe("sleep");
+      if (action.type === "sleep") {
+        expect(action.message).toContain("1 active task(s)");
+        expect(action.message).toContain("30s");
+      }
     });
   });
 

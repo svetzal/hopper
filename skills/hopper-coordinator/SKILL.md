@@ -2,7 +2,7 @@
 name: hopper-coordinator
 description: Dispatch concrete, ready-to-execute work to background Claude Code agents via the hopper queue. Use this skill when the user wants to queue up substantive coding tasks for unattended processing in specific projects on their machine — not for planning, to-do tracking, or lightweight tasks.
 metadata:
-  version: "2.0.2"
+  version: "2.0.3"
   author: Stacey Vetzal
 ---
 

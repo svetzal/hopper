@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.3] - 2026-04-12
+
+### Fixed
+
+- **Worker pegged CPU at ~100% when active tasks existed but no new work was queueable.** `resolvePostClaimLoopAction` returned `{ type: "continue" }` whenever there were active tasks — even if `claimNext` returned nothing new — so the outer loop immediately re-entered `claimNext` (re-reading `~/.hopper/items.json` every iteration). With at least one long-running task in flight, this was an unbounded busy-loop eating a full CPU core until something settled. The post-claim action now returns `sleep` whenever nothing was newly claimed, matching the fully-idle path. Latency to pick up newly-eligible work is bounded by the `--interval` setting, which was already the case for idle polling.
+
 ## [2.0.2] - 2026-04-12
 
 ### Added

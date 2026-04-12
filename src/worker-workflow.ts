@@ -239,6 +239,19 @@ export function resolvePostClaimLoopAction(
   if (runOnce) {
     return { type: "wait-and-exit" };
   }
+  // Active tasks exist but nothing new was claimed. Sleep instead of
+  // returning `continue` — otherwise the outer loop re-enters `claimNext`
+  // every tick, which re-reads ~/.hopper/items.json in a tight CPU-bound
+  // loop until something completes. The store state cannot change faster
+  // than the configured poll interval anyway (schedules fire on the minute,
+  // dependencies unblock via active-task completions which the sleep does
+  // NOT block — tasks run on their own promise chains).
+  if (!claimedAny) {
+    return {
+      type: "sleep",
+      message: `No new work; ${activeCount} active task(s). Waiting ${pollInterval}s...`,
+    };
+  }
   return { type: "continue" };
 }
 
