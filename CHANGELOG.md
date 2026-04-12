@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.5] - 2026-04-12
+
+### Changed
+
+- **Coordinator skill warns about non-idempotent `hopper add`.** Added a callout in the "Adding Work Items" section explaining that every successful `hopper add` mutates the queue immediately and re-running produces duplicates — check `hopper list` before retrying a batch that appeared to fail.
+- **Coordinator skill adds batch verification pattern.** New "Batch Operations" subsection under Workflow recommends tagging batch adds with a unique tag and verifying the count via `hopper list --tag <tag> --json | jq 'length'` before proceeding.
+
 ## [2.0.4] - 2026-04-12
 
 ### Fixed

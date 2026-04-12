@@ -2,7 +2,7 @@
 name: hopper-coordinator
 description: Dispatch concrete, ready-to-execute work to background Claude Code agents via the hopper queue. Use this skill when the user wants to queue up substantive coding tasks for unattended processing in specific projects on their machine — not for planning, to-do tracking, or lightweight tasks.
 metadata:
-  version: "2.0.4"
+  version: "2.0.5"
   author: Stacey Vetzal
 ---
 
@@ -83,6 +83,8 @@ All commands that accept an item `<id>` support prefix matching — you can use 
 ```bash
 hopper add "<description>" --dir <project-path> --branch <branch-name>
 ```
+
+Every successful `hopper add` mutates the queue before printing confirmation. If a batch of adds appears to fail (e.g. a shell pipe errored, your terminal scrolled past output, a network blip killed the confirmation), check `hopper list` before retrying — items may already exist. `hopper add` is not idempotent; re-running produces duplicates.
 
 **Flags:**
 
@@ -376,6 +378,22 @@ You no longer need `--after-item` purely to prevent concurrent execution conflic
 4. **Monitor** — Check `hopper list` to see what's been claimed, what's blocked, and what's still queued
 5. **Adjust** — Reprioritize, tag, cancel, or requeue items as the situation evolves
 6. **Review** — Check completed items with `hopper show <id>` to see the agent's results
+
+### Batch Operations
+
+When queueing N items in a loop, tag the batch with a unique identifier so you can verify the count before proceeding:
+
+```bash
+hopper add "..." --dir <path> --branch <branch> --tag batch-20260412-1
+```
+
+After the loop completes, confirm exactly N items landed:
+
+```bash
+hopper list --tag batch-20260412-1 --json | jq 'length'
+```
+
+If the count is higher than expected, duplicates were created — investigate before firing more commands. If lower, some adds failed silently.
 
 ## Examples
 
