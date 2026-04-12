@@ -12,6 +12,7 @@ describe("buildClaudeArgv", () => {
       "--dangerously-skip-permissions",
       "--output-format",
       "stream-json",
+      "--",
       "do the thing",
     ]);
   });
@@ -24,6 +25,33 @@ describe("buildClaudeArgv", () => {
     });
 
     expect(argv[argv.length - 1]).toBe("PROMPT");
+  });
+
+  test("regression: prompt is last even with multi-value --tools (Commander variadic does not eat it)", () => {
+    // This was the v2.0.0 bug: claude's Commander-variadic --tools greedily
+    // consumed all following positionals, including the prompt, so the CLI
+    // died with "Input must be provided either through stdin or as a prompt
+    // argument when using --print". Joining into one token + `--` sentinel
+    // keeps the prompt unambiguous.
+    const argv = buildClaudeArgv("claude", "MY_PROMPT", {
+      tools: ["Read", "Grep", "Glob", "WebFetch", "WebSearch", "Task"],
+    });
+    expect(argv[argv.length - 1]).toBe("MY_PROMPT");
+    expect(argv[argv.length - 2]).toBe("--");
+  });
+
+  test("regression: prompt is last with multi-value --allowedTools", () => {
+    const argv = buildClaudeArgv("claude", "MY_PROMPT", {
+      allowedTools: ["Bash(git diff:*)", "Bash(git status:*)", "Bash(git log:*)"],
+    });
+    expect(argv[argv.length - 1]).toBe("MY_PROMPT");
+  });
+
+  test("regression: prompt is last with multi-value --disallowedTools", () => {
+    const argv = buildClaudeArgv("claude", "MY_PROMPT", {
+      disallowedTools: ["Bash(git commit:*)", "Bash(git push:*)"],
+    });
+    expect(argv[argv.length - 1]).toBe("MY_PROMPT");
   });
 
   test("model is passed via --model", () => {
@@ -40,14 +68,14 @@ describe("buildClaudeArgv", () => {
     expect(argv[i + 1]).toBe("rust-craftsperson");
   });
 
-  test("tools are passed as a variadic --tools list", () => {
+  test("tools are passed as a single comma-joined token", () => {
     const argv = buildClaudeArgv("claude", "p", { tools: ["Read", "Grep", "Glob"] });
     const i = argv.indexOf("--tools");
     expect(i).toBeGreaterThan(-1);
-    expect(argv.slice(i + 1, i + 4)).toEqual(["Read", "Grep", "Glob"]);
+    expect(argv[i + 1]).toBe("Read,Grep,Glob");
   });
 
-  test('tools: [""] disables all tools', () => {
+  test('tools: [""] disables all tools (single empty-string token)', () => {
     const argv = buildClaudeArgv("claude", "p", { tools: [""] });
     const i = argv.indexOf("--tools");
     expect(i).toBeGreaterThan(-1);
@@ -59,20 +87,20 @@ describe("buildClaudeArgv", () => {
     expect(argv).not.toContain("--tools");
   });
 
-  test("allowedTools are passed variadically", () => {
+  test("allowedTools are passed as a single comma-joined token", () => {
     const argv = buildClaudeArgv("claude", "p", {
       allowedTools: ["Bash(git diff:*)", "Bash(git log:*)"],
     });
     const i = argv.indexOf("--allowedTools");
     expect(i).toBeGreaterThan(-1);
-    expect(argv.slice(i + 1, i + 3)).toEqual(["Bash(git diff:*)", "Bash(git log:*)"]);
+    expect(argv[i + 1]).toBe("Bash(git diff:*),Bash(git log:*)");
   });
 
-  test("disallowedTools are passed variadically", () => {
+  test("disallowedTools are passed as a single comma-joined token", () => {
     const argv = buildClaudeArgv("claude", "p", { disallowedTools: ["Edit", "Write"] });
     const i = argv.indexOf("--disallowedTools");
     expect(i).toBeGreaterThan(-1);
-    expect(argv.slice(i + 1, i + 3)).toEqual(["Edit", "Write"]);
+    expect(argv[i + 1]).toBe("Edit,Write");
   });
 
   test("permissionMode replaces --dangerously-skip-permissions", () => {
@@ -116,5 +144,6 @@ describe("buildClaudeArgv", () => {
     expect(argv).toContain("--append-system-prompt");
     expect(argv).not.toContain("--dangerously-skip-permissions");
     expect(argv[argv.length - 1]).toBe("do it");
+    expect(argv[argv.length - 2]).toBe("--");
   });
 });

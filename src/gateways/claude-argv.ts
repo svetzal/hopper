@@ -52,17 +52,29 @@ export function buildClaudeArgv(
 
   if (options.model) argv.push("--model", options.model);
   if (options.agent) argv.push("--agent", options.agent);
-  if (options.tools && options.tools.length > 0) argv.push("--tools", ...options.tools);
+  // --tools, --allowedTools, --disallowedTools are all Commander-variadic on
+  // the claude side. Passing each entry as its own argv token causes Commander
+  // to greedily consume every subsequent positional — including the prompt —
+  // and claude dies with "Input must be provided either through stdin or as a
+  // prompt argument when using --print". Join into a single comma-separated
+  // token instead, which matches the form the --help docs demonstrate
+  // ("Bash,Edit,Read") and leaves the prompt as an unambiguous positional.
+  if (options.tools && options.tools.length > 0) {
+    argv.push("--tools", options.tools.join(","));
+  }
   if (options.allowedTools && options.allowedTools.length > 0) {
-    argv.push("--allowedTools", ...options.allowedTools);
+    argv.push("--allowedTools", options.allowedTools.join(","));
   }
   if (options.disallowedTools && options.disallowedTools.length > 0) {
-    argv.push("--disallowedTools", ...options.disallowedTools);
+    argv.push("--disallowedTools", options.disallowedTools.join(","));
   }
   if (options.appendSystemPrompt) {
     argv.push("--append-system-prompt", options.appendSystemPrompt);
   }
 
-  argv.push(prompt);
+  // Terminate option parsing with `--` so even if a future flag ends up
+  // variadic, the prompt is always the final positional and never gets
+  // siphoned into an option's value list.
+  argv.push("--", prompt);
   return argv;
 }

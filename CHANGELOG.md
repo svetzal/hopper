@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-04-12
+
+### Fixed
+
+- **Investigation items and every engineering phase that set multiple tools were dying at session startup.** `buildClaudeArgv` spread `--tools`, `--allowedTools`, and `--disallowedTools` as variadic argv tokens, which claude CLI's Commander-style variadic parser greedily consumed — swallowing the prompt along with the tool names. The subprocess then exited with `Error: Input must be provided either through stdin or as a prompt argument when using --print`, leaving the item wedged at `in_progress`. Tool arrays are now joined into a single comma-separated token (matching claude's `--help` example `"Bash,Edit,Read"`), and the prompt is emitted after a `--` option-parsing terminator so it can never be siphoned into an option's value list. The same fix was applied to `ClaudeGateway.generateText` (the Haiku one-shot helper).
+
 ## [2.0.0] - 2026-04-12
 
 ### Added

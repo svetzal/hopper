@@ -132,6 +132,9 @@ async function generateText(
   options: { cwd?: string; appendSystemPrompt?: string } = {},
 ): Promise<{ exitCode: number; text: string }> {
   // Plain text output, no tools, no permissions. Just a model speaking to itself.
+  // Note: the prompt goes after `--` so Commander's variadic `--tools` handler
+  // on the claude side cannot siphon it into its value list. (See
+  // src/gateways/claude-argv.ts for the same reasoning applied to runSession.)
   const argv = [
     resolveClaudeBin(),
     "--print",
@@ -144,7 +147,7 @@ async function generateText(
   if (options.appendSystemPrompt) {
     argv.push("--append-system-prompt", options.appendSystemPrompt);
   }
-  argv.push(prompt);
+  argv.push("--", prompt);
 
   const proc = Bun.spawn(argv, {
     cwd: options.cwd ?? process.cwd(),
