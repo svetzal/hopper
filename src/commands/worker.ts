@@ -11,19 +11,38 @@ import { createGitGateway } from "../gateways/git-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import { createShellGateway } from "../gateways/shell-gateway.ts";
 import {
+  buildEngineeringBranchName,
   buildWorkBranchName,
   resolveBranchSetup,
   resolveFfResult,
   resolveMergeCommitResult,
   resolveMergeStep,
 } from "../git-workflow.ts";
-import type { ClaimedItem, Item } from "../store.ts";
-import { claimNextItem, completeItem } from "../store.ts";
+import type { ClaimedItem, Item, PhaseRecord } from "../store.ts";
+import { claimNextItem, completeItem, recordItemPhase } from "../store.ts";
+import {
+  buildBranchSlugPrompt,
+  buildCommitMessagePrompt,
+  buildExecuteOptions,
+  buildExecutePrompt,
+  buildExecuteRemediationPrompt,
+  buildInvestigationOptions,
+  buildInvestigationPrompt,
+  buildPlanOptions,
+  buildPlanPrompt,
+  buildValidateOptions,
+  buildValidatePrompt,
+  normaliseBranchSlug,
+  normaliseCommitMessage,
+  resolveValidateOutcome,
+} from "../task-type-workflow.ts";
 import {
   buildCommitMessage,
   buildTaskPrompt,
+  resolveAttemptAuditPath,
   resolveAuditPaths,
   resolveCompletionAction,
+  resolveEngineeringAuditPaths,
   resolveLoopAction,
   resolveMergeAction,
   resolvePostClaimLoopAction,
@@ -57,6 +76,7 @@ async function orchestrateWorktreeSetup(
   branch: string,
   worktreePath: string,
   itemId: string,
+  workBranchOverride?: string,
 ): Promise<string> {
   const localExists = await git.branchExists(repoDir, branch);
   const remoteExists = await git.remoteBranchExists(repoDir, branch);
@@ -73,7 +93,7 @@ async function orchestrateWorktreeSetup(
       break;
   }
 
-  const workBranch = buildWorkBranchName(itemId);
+  const workBranch = workBranchOverride ?? buildWorkBranchName(itemId);
   await git.createWorktree(repoDir, worktreePath, workBranch, branch);
   return workBranch;
 }
@@ -230,9 +250,325 @@ async function executeWork(
     log(`Starting command...\nAudit log: ${auditFile}`);
     return shell.runCommand(item.command, workDir ?? process.cwd(), auditFile);
   }
+  if (item.type === "investigation") {
+    const prompt = buildInvestigationPrompt(item);
+    const options = buildInvestigationOptions();
+    log(`Starting investigation session (opus, read-only)...\nAudit log: ${auditFile}`);
+    return claude.runSession(prompt, workDir ?? process.cwd(), auditFile, options);
+  }
   const prompt = buildTaskPrompt(item);
   log(`Starting Claude session...\nAudit log: ${auditFile}`);
   return claude.runSession(prompt, workDir ?? process.cwd(), auditFile);
+}
+
+// ---------------------------------------------------------------------------
+// Engineering type: phased orchestration
+// ---------------------------------------------------------------------------
+
+/**
+ * Record a phase without ever throwing. Phase records are a visibility aid,
+ * not a correctness-critical path — a transient I/O blip mid-flight must not
+ * take down an otherwise-healthy engineering run.
+ */
+async function safeRecordPhase(itemId: string, record: PhaseRecord): Promise<void> {
+  try {
+    await recordItemPhase(itemId, record);
+  } catch {
+    // intentional: phase recording is best-effort
+  }
+}
+
+/**
+ * Compose the result markdown for an engineering attempt transcript, with a
+ * section per execute/validate pair so coordinators reviewing `hopper show`
+ * or `<id>-result.md` can see how each remediation attempt unfolded.
+ */
+function buildEngineeringTranscript(
+  planText: string,
+  executeResults: readonly string[],
+  validateResults: readonly string[],
+): string {
+  const sections: string[] = ["## Plan", planText];
+  const pairs = Math.max(executeResults.length, validateResults.length);
+  for (let i = 0; i < pairs; i++) {
+    const label = pairs > 1 ? ` (attempt ${i + 1})` : "";
+    if (executeResults[i] !== undefined) {
+      sections.push(`## Execute${label}`, executeResults[i] ?? "");
+    }
+    if (validateResults[i] !== undefined) {
+      sections.push(`## Validate${label}`, validateResults[i] ?? "");
+    }
+  }
+  return sections.join("\n\n");
+}
+
+function buildEngineeringFailureResult(
+  planText: string,
+  executeResults: readonly string[],
+  validateResults: readonly string[],
+  failureMessage: string,
+): string {
+  return `${buildEngineeringTranscript(planText, executeResults, validateResults)}\n\n${failureMessage}`;
+}
+
+async function resolveEngineeringBranchSlug(
+  claude: ClaudeGateway,
+  item: Item,
+): Promise<string | null> {
+  try {
+    const prompt = buildBranchSlugPrompt(item.title, item.description);
+    const { exitCode, text } = await claude.generateText(prompt, "haiku");
+    if (exitCode !== 0) return null;
+    return normaliseBranchSlug(text);
+  } catch {
+    return null;
+  }
+}
+
+async function resolveEngineeringCommitMessage(
+  claude: ClaudeGateway,
+  item: Item,
+  diffSummary: string,
+): Promise<string> {
+  try {
+    const prompt = buildCommitMessagePrompt(item.title, item.description, diffSummary);
+    const { exitCode, text } = await claude.generateText(prompt, "haiku");
+    if (exitCode === 0 && text.trim()) {
+      return normaliseCommitMessage(text);
+    }
+  } catch {
+    // fall through to deterministic fallback
+  }
+  // Deterministic fallback: the legacy title/summary commit message shape so
+  // engineering items still commit cleanly when Haiku is unavailable.
+  return item.title;
+}
+
+async function processEngineeringItem(
+  item: ClaimedItem,
+  agentName: string,
+  hopperHome: string,
+  deps: { git: GitGateway; claude: ClaudeGateway; fs: FsGateway },
+  concurrency: number = 1,
+): Promise<void> {
+  const { git, claude, fs } = deps;
+  const log = createLogger(item.id, concurrency);
+
+  if (!item.workingDir || !item.branch) {
+    // Engineering items need both to work inside an isolated worktree. The add
+    // command enforces this on enqueue, but guard here belt-and-suspenders.
+    const message = "Engineering items require --dir and --branch; cannot run.";
+    log(message);
+    const { auditDir, resultFile } = resolveAuditPaths(item.id, hopperHome);
+    await fs.ensureDir(auditDir);
+    await fs.writeFile(resultFile, message);
+    log(`Use 'hopper requeue ${item.id} --reason "..."' to retry.`);
+    return;
+  }
+
+  log(`Claimed: ${item.title}`);
+  log(`Token:   ${item.claimToken}`);
+  log(`ID:      ${item.id}`);
+  log(`Dir:     ${item.workingDir}`);
+  log(`Branch:  ${item.branch}`);
+  log(`Type:    engineering${item.agent ? ` (agent: ${item.agent})` : ""}`);
+
+  const paths = resolveEngineeringAuditPaths(item.id, hopperHome);
+  await fs.ensureDir(paths.auditDir);
+
+  const worktreePath = join(hopperHome, "worktrees", item.id);
+  await fs.ensureDir(join(hopperHome, "worktrees"));
+
+  log("Generating branch slug...");
+  const slug = await resolveEngineeringBranchSlug(claude, item);
+  const workBranch = buildEngineeringBranchName(item.id, slug);
+  log(`Work branch: ${workBranch}`);
+
+  let worktreeLivePath: string | undefined;
+  try {
+    log(`Setting up worktree at ${worktreePath}...`);
+    await orchestrateWorktreeSetup(
+      git,
+      item.workingDir,
+      item.branch,
+      worktreePath,
+      item.id,
+      workBranch,
+    );
+    worktreeLivePath = worktreePath;
+
+    // --- Plan phase -------------------------------------------------------
+    log(`Plan phase (opus, plan mode, read-only)...\nAudit log: ${paths.planAuditFile}`);
+    const planPrompt = buildPlanPrompt(item);
+    const planStartedAt = new Date().toISOString();
+    const planRun = await claude.runSession(
+      planPrompt,
+      worktreePath,
+      paths.planAuditFile,
+      buildPlanOptions(),
+    );
+    const planText = planRun.result.trim();
+    await safeRecordPhase(item.id, {
+      name: "plan",
+      startedAt: planStartedAt,
+      endedAt: new Date().toISOString(),
+      exitCode: planRun.exitCode,
+    });
+    if (planRun.exitCode !== 0 || !planText) {
+      const msg = `Plan phase failed (exit ${planRun.exitCode}); worktree + branch preserved for inspection.`;
+      log(msg);
+      await fs.writeFile(paths.resultFile, `${planRun.result}\n\n${msg}`);
+      return;
+    }
+    log("Persisting plan to audit directory...");
+    await fs.writeFile(paths.planFile, planText);
+
+    // --- Execute / Validate loop ----------------------------------------
+    //
+    // One execute → validate attempt, then up to `maxRetries` remediation
+    // attempts when validate reports FAIL. Each attempt writes its own
+    // per-attempt audit file and records phase entries so `hopper show`
+    // reflects progress in real time.
+    const maxRetries = item.retries ?? 1;
+    const maxAttempts = 1 + maxRetries;
+    let attempt = 0;
+    let executeRun: { exitCode: number; result: string } = { exitCode: 0, result: "" };
+    let validateRun: { exitCode: number; result: string } = { exitCode: 0, result: "" };
+    let outcome: { passed: boolean; reason: string } = { passed: false, reason: "not run" };
+    // Transcript of every attempt, preserved for the result file + requeue
+    // reasoning. Remediation prompts consult only the most recent pair.
+    const executeResults: string[] = [];
+    const validateResults: string[] = [];
+
+    while (attempt < maxAttempts) {
+      attempt += 1;
+
+      // --- Execute (initial or remediation) -----------------------------
+      const executeAuditPath = resolveAttemptAuditPath(item.id, hopperHome, "execute", attempt);
+      const isRemediation = attempt > 1;
+      log(
+        `Execute phase attempt ${attempt}/${maxAttempts} (sonnet${
+          item.agent ? `, agent: ${item.agent}` : ""
+        }${isRemediation ? ", remediation" : ""})...\nAudit log: ${executeAuditPath}`,
+      );
+      const executePrompt = isRemediation
+        ? buildExecuteRemediationPrompt(
+            item,
+            planText,
+            executeResults[executeResults.length - 1] ?? "",
+            validateResults[validateResults.length - 1] ?? "",
+            attempt,
+          )
+        : buildExecutePrompt(item, planText);
+      const executeStartedAt = new Date().toISOString();
+      executeRun = await claude.runSession(
+        executePrompt,
+        worktreePath,
+        executeAuditPath,
+        buildExecuteOptions(item.agent),
+      );
+      executeResults.push(executeRun.result);
+      await safeRecordPhase(item.id, {
+        name: "execute",
+        startedAt: executeStartedAt,
+        endedAt: new Date().toISOString(),
+        exitCode: executeRun.exitCode,
+        attempt,
+      });
+      if (executeRun.exitCode !== 0) {
+        const msg = `Execute phase attempt ${attempt} failed (exit ${executeRun.exitCode}); worktree + branch preserved.`;
+        log(msg);
+        await fs.writeFile(
+          paths.resultFile,
+          buildEngineeringFailureResult(planText, executeResults, validateResults, msg),
+        );
+        return;
+      }
+
+      // --- Validate -----------------------------------------------------
+      const validateAuditPath = resolveAttemptAuditPath(item.id, hopperHome, "validate", attempt);
+      log(
+        `Validate phase attempt ${attempt}/${maxAttempts} (opus, read-only git)...\nAudit log: ${validateAuditPath}`,
+      );
+      const validateStartedAt = new Date().toISOString();
+      validateRun = await claude.runSession(
+        buildValidatePrompt(item, planText),
+        worktreePath,
+        validateAuditPath,
+        buildValidateOptions(),
+      );
+      validateResults.push(validateRun.result);
+      outcome = resolveValidateOutcome(validateRun.exitCode, validateRun.result);
+      await safeRecordPhase(item.id, {
+        name: "validate",
+        startedAt: validateStartedAt,
+        endedAt: new Date().toISOString(),
+        exitCode: validateRun.exitCode,
+        passed: outcome.passed,
+        attempt,
+      });
+
+      if (outcome.passed) break;
+
+      if (attempt < maxAttempts) {
+        log(
+          `Validate attempt ${attempt} did not pass (${outcome.reason}); remediating (attempt ${attempt + 1}/${maxAttempts})...`,
+        );
+      }
+    }
+
+    if (!outcome.passed) {
+      const msg = `Validate did not pass after ${attempt}/${maxAttempts} attempt(s) (${outcome.reason}); worktree + branch preserved.`;
+      log(msg);
+      await fs.writeFile(
+        paths.resultFile,
+        buildEngineeringFailureResult(planText, executeResults, validateResults, msg),
+      );
+      return;
+    }
+
+    // --- Commit (Hopper + Haiku) -----------------------------------------
+    const dirty = await git.isWorktreeDirty(worktreePath);
+    let commitMsg: string | undefined;
+    if (dirty) {
+      log("Generating commit message...");
+      const diff = await git.diffSummary(worktreePath);
+      commitMsg = await resolveEngineeringCommitMessage(claude, item, diff);
+      log("Committing changes...");
+      await git.commitAll(worktreePath, commitMsg);
+      log("Committed.");
+    } else {
+      log("No worktree changes to commit.");
+    }
+
+    // --- Worktree teardown + merge/push ----------------------------------
+    await teardownWorktree(git, item.workingDir, worktreePath, log);
+    worktreeLivePath = undefined;
+
+    let mergeNote = "";
+    if (dirty) {
+      mergeNote = await mergeAndPush(git, item, workBranch, log);
+    }
+
+    const combined = buildEngineeringTranscript(planText, executeResults, validateResults);
+    const finalResult = combined + mergeNote;
+    await fs.writeFile(paths.resultFile, finalResult);
+
+    log("Marking item complete...");
+    const { completed, recurred } = await completeItem(item.claimToken, agentName, finalResult);
+    log(`Completed: ${completed.title}`);
+    if (recurred) {
+      log(
+        `Re-queued: ${completed.title} (next run: ${recurred.scheduledAt ? new Date(recurred.scheduledAt).toLocaleString() : "unknown"})`,
+      );
+    }
+  } finally {
+    // Only tear down if the flow didn't already clean up the worktree. A live
+    // path here means we aborted mid-flight; the worktree may be in an
+    // intermediate state so leave it for inspection — the `worktrees` dir is
+    // shared with the user's review workflow, not a temp dir.
+    void worktreeLivePath;
+  }
 }
 
 export async function processItem(
@@ -242,6 +578,9 @@ export async function processItem(
   deps: { git: GitGateway; claude: ClaudeGateway; fs: FsGateway; shell: ShellGateway },
   concurrency: number = 1,
 ): Promise<void> {
+  if (item.type === "engineering" && !item.command) {
+    return processEngineeringItem(item, agentName, hopperHome, deps, concurrency);
+  }
   const { git, claude, fs, shell } = deps;
   const log = createLogger(item.id, concurrency);
 

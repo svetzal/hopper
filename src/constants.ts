@@ -1,4 +1,4 @@
-export const VERSION = "1.5.2";
+export const VERSION = "2.0.0";
 
 export const Status = {
   QUEUED: "queued",
@@ -10,3 +10,21 @@ export const Status = {
 } as const;
 
 export type ItemStatus = (typeof Status)[keyof typeof Status];
+
+export const TaskType = {
+  INVESTIGATION: "investigation",
+  ENGINEERING: "engineering",
+  TASK: "task",
+} as const;
+
+export type TaskType = (typeof TaskType)[keyof typeof TaskType];
+
+export const TASK_TYPES: readonly TaskType[] = [
+  TaskType.INVESTIGATION,
+  TaskType.ENGINEERING,
+  TaskType.TASK,
+] as const;
+
+export function isTaskType(value: string): value is TaskType {
+  return (TASK_TYPES as readonly string[]).includes(value);
+}

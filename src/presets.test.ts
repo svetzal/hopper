@@ -62,6 +62,19 @@ describe("presets", () => {
     expect(presets[0]?.branch).toBe("main");
   });
 
+  test("addPreset stores type and agent", async () => {
+    const preset = makePreset({
+      name: "with-type",
+      type: "engineering",
+      agent: "typescript-bun-cli-craftsperson",
+    });
+    await addPreset(preset);
+
+    const presets = await loadPresets();
+    expect(presets[0]?.type).toBe("engineering");
+    expect(presets[0]?.agent).toBe("typescript-bun-cli-craftsperson");
+  });
+
   test("findPreset returns match (case-insensitive)", async () => {
     await addPreset(makePreset({ name: "my-preset" }));
 

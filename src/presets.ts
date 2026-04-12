@@ -1,3 +1,4 @@
+import type { TaskType } from "./constants.ts";
 import { createPresetGateway, type PresetGateway } from "./gateways/preset-gateway.ts";
 
 export interface Preset {
@@ -7,6 +8,9 @@ export interface Preset {
   branch?: string;
   command?: string;
   tags?: string[];
+  type?: TaskType;
+  agent?: string;
+  retries?: number;
   createdAt: string;
 }
 

@@ -7,14 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-04-12
+
 ### Added
 
+- **Task types.** `hopper add --type <task|engineering|investigation>` picks a workflow per item. `task` (default) preserves existing behaviour exactly; `engineering` runs a phased plan→execute→validate flow; `investigation` runs a read-only session whose final markdown message becomes the item's result
+- **Investigation workflow.** Read-only, no worktree, no branch. Uses Opus with plan-mode permissions and a locked-down tool allowlist (Read, Grep, Glob, WebFetch, WebSearch, Task). Deliverable is a markdown findings report stored verbatim in `item.result`
+- **Engineering workflow.** Multi-phase orchestration where each phase gets its own model and tool profile: plan (Opus, plan mode, read-only tools), execute (Sonnet, craftsperson agent, git mutations denied), validate (Opus, read-only git plus test/lint tools). Hopper owns every git operation — the agent never commits, branches, merges, or pushes
+- **Craftsperson auto-resolution.** For engineering items without `--agent`, Hopper probes the project for stack markers (`package.json`, `Cargo.toml`, `pyproject.toml`, etc.) and asks Haiku to pick the best-fitting agent from `~/.claude/agents/` and `<project>/.claude/agents/`. Resolved name is stored on the item and visible in `hopper show`
+- **Haiku as a text utility.** New `ClaudeGateway.generateText` helper (no tools, no permissions) generates branch slugs and Conventional Commit messages. Engineering branches use `hopper-eng/<slug>-<id-prefix>` with deterministic fallback when the Haiku call fails
+- **Remediation retry loop.** When validate reports `VALIDATE: FAIL`, Hopper loops back into execute with the prior execute summary and validate failure inlined, up to `--retries <n>` times (default 1, max 5; `0` disables). Each retry writes its own audit files (`<id>-execute-2.jsonl`, `<id>-validate-2.jsonl`, …)
+- **Per-phase visibility.** `PhaseRecord[]` on each engineering item records `{ name, attempt, startedAt, endedAt, exitCode, passed? }` as each phase finishes. `hopper show` renders a status strip like `plan ✓ 34s / execute ✓ 2m11s / validate ✗ FAIL / execute ✓ 45s / validate ✓ 20s`
+- **Per-phase audit artefacts.** Engineering items write `<id>-plan.jsonl`, `<id>-execute.jsonl`, `<id>-validate.jsonl` (plus `-N` suffixes for retries) under `~/.hopper/audit/`. The plan's markdown text is persisted to `<id>-plan.md` — never inside the worktree, so nothing leaks into the committed diff
+- `hopper add --agent <name>` and `hopper preset add --agent <name>` to force a specific craftsperson
+- `hopper add --retries <n>` and `hopper preset add --retries <n>`
+- `hopper list --type <type>` filter, plus `[eng]` / `[inv]` badges in the default list output
+- Coordinator skill gained a "Choosing a task type" section, engineering/investigation examples, and documentation for retries and auto-resolution
 - Coordinator skill now includes 'Investigating In-Progress Tasks' section with audit log diagnosis, process inspection, failure mode taxonomy, and decision flow for stuck tasks
 
 ### Changed
 
+- `Item` gained optional `type`, `agent`, `phases`, and `retries` fields. All optional — existing `~/.hopper/items.json` files load without migration. Legacy items (no `type`) follow the original single-session workflow unchanged
 - Coordinator skill now includes guidance on naming craftsperson subagents in work item descriptions for stack-specific engineering standards
 - Revise failure-mode guidance: remove speculative frequency-ranked table, replace with signal-based bullet list
+
+### Notes
+
+- Major version bump reflects the scope of new first-class concepts (task types, phased workflows, per-item agent resolution, remediation loops) rather than a backwards-incompatible break. Existing queues, presets, CLI invocations, and worker scripts continue to work unchanged
 
 ## [1.5.2] - 2026-04-11
 

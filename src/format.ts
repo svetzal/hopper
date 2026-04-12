@@ -45,7 +45,44 @@ export function shortId(uuid: string): string {
   return uuid.slice(0, 8);
 }
 
-import type { Item } from "./store.ts";
+import type { Item, PhaseRecord } from "./store.ts";
+
+/**
+ * Render the per-phase status strip for an engineering item, e.g.
+ *   "plan ✓ 34s / execute ✓ 2m11s / validate ✗ FAIL / execute ✓ 45s / validate ✓ 20s"
+ *
+ * Returns an empty string when there are no phase records yet. Phases are
+ * ordered by attempt (ascending), with `plan` always first since it has no
+ * retries. Within an attempt, the canonical plan → execute → validate order
+ * is preserved. This mirrors the temporal order the worker actually ran
+ * things, which is what a reader wants to see.
+ */
+export function formatPhasesStatus(phases: PhaseRecord[] | undefined): string {
+  if (!phases || phases.length === 0) return "";
+  const valid: Array<PhaseRecord["name"]> = ["plan", "execute", "validate"];
+  const attemptOf = (p: PhaseRecord): number => p.attempt ?? 1;
+  const rankByName = (name: PhaseRecord["name"]): number => valid.indexOf(name);
+
+  const sorted = phases
+    .filter((p) => valid.includes(p.name))
+    .sort((a, b) => {
+      const attemptDiff = attemptOf(a) - attemptOf(b);
+      if (attemptDiff !== 0) return attemptDiff;
+      return rankByName(a.name) - rankByName(b.name);
+    });
+
+  const segments: string[] = [];
+  for (const p of sorted) {
+    // Validate has an explicit passed?: boolean; plan/execute infer from exit.
+    const ok = p.name === "validate" ? p.passed === true : p.exitCode === 0;
+    const marker = ok ? "✓" : "✗";
+    const duration = formatDuration(p.startedAt, p.endedAt);
+    const shownDuration = duration === "0m" ? "<1m" : duration;
+    const failSuffix = !ok && p.name === "validate" && p.passed === false ? " FAIL" : "";
+    segments.push(`${p.name} ${marker} ${shownDuration}${failSuffix}`);
+  }
+  return segments.join(" / ");
+}
 
 /** Format full details of an item as a multi-line string (for the show command). */
 export function formatItemDetail(item: Item): string {
@@ -53,6 +90,9 @@ export function formatItemDetail(item: Item): string {
   lines.push(`ID:          ${shortId(item.id)}`);
   lines.push(`Title:       ${item.title}`);
   lines.push(`Status:      ${item.status}`);
+  if (item.type) lines.push(`Type:        ${item.type}`);
+  if (item.agent) lines.push(`Agent:       ${item.agent}`);
+  if (item.retries !== undefined) lines.push(`Retries:     ${item.retries}`);
   lines.push(`Created:     ${item.createdAt}`);
   if (item.claimedAt) lines.push(`Claimed:     ${item.claimedAt}`);
   if (item.claimedBy) lines.push(`Claimed by:  ${item.claimedBy}`);
@@ -76,6 +116,19 @@ export function formatItemDetail(item: Item): string {
     lines.push(`Depends on:  ${item.dependsOn.map((id) => shortId(id)).join(", ")}`);
   if (item.requeueReason) lines.push(`Requeue reason: ${item.requeueReason}`);
   if (item.requeuedBy) lines.push(`Requeued by: ${item.requeuedBy}`);
+  // Engineering items run a plan → execute → validate workflow; each phase
+  // writes its own audit file. Surface the canonical locations so coordinators
+  // know exactly where to read per-phase traces without computing them from
+  // the item ID. Paths use a literal `~/.hopper/audit/` — this is display copy,
+  // not a filesystem argument, and matches the skill documentation.
+  if (item.type === "engineering") {
+    const phases = formatPhasesStatus(item.phases);
+    if (phases) lines.push(`Phases:       ${phases}`);
+    lines.push(`Plan file:    ~/.hopper/audit/${item.id}-plan.md`);
+    lines.push(`Plan audit:   ~/.hopper/audit/${item.id}-plan.jsonl`);
+    lines.push(`Exec audit:   ~/.hopper/audit/${item.id}-execute.jsonl`);
+    lines.push(`Valid audit:  ~/.hopper/audit/${item.id}-validate.jsonl`);
+  }
   lines.push("");
   lines.push("Description:");
   lines.push(`  ${item.description}`);

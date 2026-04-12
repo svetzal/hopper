@@ -4,9 +4,12 @@ import {
   buildNewItem,
   formatValidationError,
   hasCycle,
+  MAX_RETRIES,
   resolveDependencies,
   resolveScheduling,
   validateDirBranch,
+  validateRetries,
+  validateTaskType,
   validateTimesSpec,
 } from "./add-workflow.ts";
 import type { Item } from "./store.ts";
@@ -59,6 +62,64 @@ describe("validateDirBranch", () => {
   test("BRANCH_REQUIRES_DIR when branch is set but dir is not", () => {
     expect(validateDirBranch(undefined, "main", undefined)).toEqual({
       code: "BRANCH_REQUIRES_DIR",
+    });
+  });
+
+  test("investigation type with branch is rejected", () => {
+    expect(validateDirBranch("/repo", "feat/x", undefined, "investigation")).toEqual({
+      code: "INVESTIGATION_NO_BRANCH",
+    });
+  });
+
+  test("investigation type with only dir is allowed", () => {
+    expect(validateDirBranch("/repo", undefined, undefined, "investigation")).toBeNull();
+  });
+
+  test("investigation type with no dir and no branch is allowed", () => {
+    expect(validateDirBranch(undefined, undefined, undefined, "investigation")).toBeNull();
+  });
+
+  test("engineering type with dir + branch is allowed", () => {
+    expect(validateDirBranch("/repo", "main", undefined, "engineering")).toBeNull();
+  });
+
+  test("engineering type with dir only is rejected (branch or command required)", () => {
+    expect(validateDirBranch("/repo", undefined, undefined, "engineering")).toEqual({
+      code: "DIR_REQUIRES_BRANCH_OR_COMMAND",
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateTaskType
+// ---------------------------------------------------------------------------
+
+describe("validateTaskType", () => {
+  test("undefined input returns undefined value", () => {
+    expect(validateTaskType(undefined)).toEqual({ value: undefined });
+  });
+
+  test("accepts investigation", () => {
+    expect(validateTaskType("investigation")).toEqual({ value: "investigation" });
+  });
+
+  test("accepts engineering", () => {
+    expect(validateTaskType("engineering")).toEqual({ value: "engineering" });
+  });
+
+  test("accepts task", () => {
+    expect(validateTaskType("task")).toEqual({ value: "task" });
+  });
+
+  test("rejects unknown type with INVALID_TYPE", () => {
+    expect(validateTaskType("spike")).toEqual({
+      error: { code: "INVALID_TYPE", value: "spike" },
+    });
+  });
+
+  test("rejects empty string", () => {
+    expect(validateTaskType("")).toEqual({
+      error: { code: "INVALID_TYPE", value: "" },
     });
   });
 });
@@ -453,6 +514,18 @@ describe("buildNewItem", () => {
     expect(item.recurrence).toBeUndefined();
     expect(item.dependsOn).toBeUndefined();
     expect(item.tags).toBeUndefined();
+    expect(item.type).toBeUndefined();
+    expect(item.agent).toBeUndefined();
+  });
+
+  test("sets type when provided", () => {
+    const item = buildNewItem({ ...BASE, type: "engineering" });
+    expect(item.type).toBe("engineering");
+  });
+
+  test("sets agent when provided", () => {
+    const item = buildNewItem({ ...BASE, agent: "rust-craftsperson" });
+    expect(item.agent).toBe("rust-craftsperson");
   });
 });
 
@@ -477,6 +550,8 @@ describe("formatValidationError", () => {
     [{ code: "CIRCULAR_DEPENDENCY" }, "Circular dependency"],
     [{ code: "DEP_NOT_FOUND", idPrefix: "abc123" }, "abc123"],
     [{ code: "DEP_AMBIGUOUS", idPrefix: "abc", matchCount: 3 }, "3 items"],
+    [{ code: "INVALID_TYPE", value: "spike" }, "spike"],
+    [{ code: "INVESTIGATION_NO_BRANCH" }, "investigation items cannot have --branch"],
   ];
 
   for (const [error, expectedSubstring] of cases) {
@@ -484,4 +559,55 @@ describe("formatValidationError", () => {
       expect(formatValidationError(error)).toContain(expectedSubstring);
     });
   }
+});
+
+describe("validateRetries", () => {
+  test("accepts undefined (no flag provided)", () => {
+    expect(validateRetries(undefined)).toEqual({ value: undefined });
+  });
+
+  test("accepts 0 (explicitly opt out of any retries)", () => {
+    expect(validateRetries("0")).toEqual({ value: 0 });
+  });
+
+  test("accepts the max cap value", () => {
+    expect(validateRetries(String(MAX_RETRIES))).toEqual({ value: MAX_RETRIES });
+  });
+
+  test("rejects negative integers", () => {
+    expect(validateRetries("-1")).toEqual({
+      error: { code: "RETRIES_INVALID", value: "-1" },
+    });
+  });
+
+  test("rejects non-numeric input", () => {
+    expect(validateRetries("lots")).toEqual({
+      error: { code: "RETRIES_INVALID", value: "lots" },
+    });
+  });
+
+  test("rejects decimals", () => {
+    expect(validateRetries("1.5")).toEqual({
+      error: { code: "RETRIES_INVALID", value: "1.5" },
+    });
+  });
+
+  test("rejects values above the cap", () => {
+    const above = MAX_RETRIES + 1;
+    expect(validateRetries(String(above))).toEqual({
+      error: { code: "RETRIES_TOO_HIGH", value: above, max: MAX_RETRIES },
+    });
+  });
+
+  test("formatValidationError renders a readable message for RETRIES_INVALID", () => {
+    expect(formatValidationError({ code: "RETRIES_INVALID", value: "lots" })).toContain(
+      "non-negative integer",
+    );
+  });
+
+  test("formatValidationError renders a readable message for RETRIES_TOO_HIGH", () => {
+    expect(
+      formatValidationError({ code: "RETRIES_TOO_HIGH", value: 10, max: MAX_RETRIES }),
+    ).toContain(`capped at ${MAX_RETRIES}`);
+  });
 });

@@ -38,6 +38,14 @@ export interface GitGateway {
   deleteBranch(repoDir: string, branch: string): Promise<void>;
   push(repoDir: string, branch: string): Promise<{ success: boolean; message: string }>;
   pushTags(repoDir: string): Promise<{ success: boolean; message: string }>;
+  /**
+   * Return a compact description of the changes in the worktree, suitable for
+   * feeding to a small LLM for commit-message generation. Combines `git diff
+   * --stat HEAD` (for the file list) with `git diff HEAD` truncated to a
+   * reasonable length (so we don't blow the Haiku context window on a large
+   * refactor).
+   */
+  diffSummary(worktreePath: string): Promise<string>;
 }
 
 async function branchExists(repoDir: string, branch: string): Promise<boolean> {
@@ -225,6 +233,30 @@ async function push(
   return { success: true, message: `Pushed ${branch} to origin.` };
 }
 
+async function diffSummary(worktreePath: string): Promise<string> {
+  const statProc = Bun.spawn([resolveGit(), "diff", "--stat", "HEAD"], {
+    cwd: worktreePath,
+    stdout: "pipe",
+    stderr: "ignore",
+  });
+  const stat = (await new Response(statProc.stdout).text()).trim();
+  await statProc.exited;
+
+  // Keep the body diff small; Haiku does not need 10k lines to write a subject
+  // + body. 200 lines is plenty for a conventional commit.
+  const diffProc = Bun.spawn([resolveGit(), "diff", "HEAD"], {
+    cwd: worktreePath,
+    stdout: "pipe",
+    stderr: "ignore",
+  });
+  const body = await new Response(diffProc.stdout).text();
+  await diffProc.exited;
+  const truncated = body.split("\n").slice(0, 200).join("\n");
+  const suffix = body.split("\n").length > 200 ? "\n... (truncated)" : "";
+
+  return `${stat}\n\n${truncated}${suffix}`.trim();
+}
+
 async function pushTags(repoDir: string): Promise<{ success: boolean; message: string }> {
   const proc = Bun.spawn([resolveGit(), "push", "origin", "--tags"], {
     cwd: repoDir,
@@ -256,5 +288,6 @@ export function createGitGateway(): GitGateway {
     deleteBranch,
     push,
     pushTags,
+    diffSummary,
   };
 }

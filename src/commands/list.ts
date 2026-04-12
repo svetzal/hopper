@@ -18,8 +18,9 @@ export async function listCommand(parsed: ParsedArgs): Promise<CommandResult> {
 
   const priorityFilter = stringFlag(parsed, "priority");
   const tagFilter = parsed.arrayFlags.tag ?? [];
+  const typeFilter = stringFlag(parsed, "type");
 
-  const filterResult = filterAndSortItems(allItems, filter, priorityFilter, tagFilter);
+  const filterResult = filterAndSortItems(allItems, filter, priorityFilter, tagFilter, typeFilter);
   if (!filterResult.ok) {
     return { status: "error", message: filterResult.error };
   }

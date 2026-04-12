@@ -15,9 +15,11 @@ mock.module("../store.ts", () => ({
     completed: { title: "done" } as Item,
     recurred: undefined,
   })),
+  recordItemPhase: mock(async () => {}),
 }));
-const { completeItem } = await import("../store.ts");
+const { completeItem, recordItemPhase } = await import("../store.ts");
 const completeItemMock = completeItem as ReturnType<typeof mock>;
+const recordItemPhaseMock = recordItemPhase as ReturnType<typeof mock>;
 
 function makeMockGit(overrides?: Partial<GitGateway>): GitGateway {
   return {
@@ -37,6 +39,9 @@ function makeMockGit(overrides?: Partial<GitGateway>): GitGateway {
     deleteBranch: mock(async () => {}),
     push: mock(async () => ({ success: true, message: "Pushed main to origin." })),
     pushTags: mock(async () => ({ success: true, message: "Pushed tags to origin." })),
+    diffSummary: mock(
+      async () => " src/foo.ts | 2 +-\n\ndiff --git a/src/foo.ts b/src/foo.ts\n+changed line",
+    ),
     ...overrides,
   };
 }
@@ -44,6 +49,7 @@ function makeMockGit(overrides?: Partial<GitGateway>): GitGateway {
 function makeMockClaude(exitCode = 0, result = "Done."): ClaudeGateway {
   return {
     runSession: mock(async () => ({ exitCode, result })),
+    generateText: mock(async () => ({ exitCode: 0, text: "stub-slug" })),
   };
 }
 
@@ -65,6 +71,7 @@ const HOPPER_HOME = "/tmp/test-hopper";
 describe("processItem", () => {
   beforeEach(() => {
     completeItemMock.mockClear();
+    recordItemPhaseMock.mockClear();
   });
 
   test("completes a simple item (no worktree) successfully", async () => {
@@ -154,6 +161,7 @@ describe("processItem", () => {
         await new Promise<void>((r) => setTimeout(r, 10));
         return { exitCode: 0, result: "Done." };
       }),
+      generateText: mock(async () => ({ exitCode: 0, text: "stub" })),
     };
 
     // Run both concurrently
@@ -411,5 +419,673 @@ describe("processItem", () => {
 
     expect(git.mergeAbort).toHaveBeenCalledTimes(1);
     expect(git.deleteBranch).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // Engineering type: phased orchestration
+  // -------------------------------------------------------------------------
+
+  /**
+   * Build a Claude mock whose `runSession` replies are driven by the prompt
+   * content so a single mock can serve all three phases. `generateText`
+   * (Haiku) returns a stable slug + commit message.
+   */
+  function makeEngineeringClaude(overrides?: {
+    planExit?: number;
+    planResult?: string;
+    executeExit?: number;
+    executeResult?: string;
+    validateExit?: number;
+    validateResult?: string;
+    slug?: string;
+    commitMessage?: string;
+  }): ClaudeGateway {
+    const o = {
+      planExit: 0,
+      planResult: "## Approach\nEdit src/cli.ts\n\n## Validation\nbun test",
+      executeExit: 0,
+      executeResult: "Implemented the change.",
+      validateExit: 0,
+      validateResult: "All checks green.\n\nVALIDATE: PASS",
+      slug: "add-quiet-flag",
+      commitMessage: "Add --quiet flag\n\nSilence info logs.",
+      ...overrides,
+    };
+    return {
+      runSession: mock(async (prompt: string) => {
+        if (prompt.includes("PLANNING phase")) {
+          return { exitCode: o.planExit, result: o.planResult };
+        }
+        if (prompt.includes("EXECUTE phase")) {
+          return { exitCode: o.executeExit, result: o.executeResult };
+        }
+        if (prompt.includes("VALIDATE phase")) {
+          return { exitCode: o.validateExit, result: o.validateResult };
+        }
+        return { exitCode: 0, result: "unknown prompt" };
+      }),
+      generateText: mock(async (prompt: string) => {
+        if (prompt.toLowerCase().includes("kebab-case")) {
+          return { exitCode: 0, text: o.slug };
+        }
+        // Commit-message prompt
+        return { exitCode: 0, text: o.commitMessage };
+      }),
+    };
+  }
+
+  test("engineering: runs plan → execute → validate and commits on PASS", async () => {
+    const item = makeClaimedItem({
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+      agent: "typescript-bun-cli-craftsperson",
+    });
+    const git = makeMockGit({
+      isWorktreeDirty: mock(async () => true),
+    });
+    const claude = makeEngineeringClaude();
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    // All three phases ran
+    expect(claude.runSession).toHaveBeenCalledTimes(3);
+    // Haiku called twice: slug + commit message
+    expect(claude.generateText).toHaveBeenCalledTimes(2);
+    // Hopper-driven commit happened with the Haiku message
+    expect(git.commitAll).toHaveBeenCalledTimes(1);
+    const commitMsg = (git.commitAll as ReturnType<typeof mock>).mock.calls[0]?.[1];
+    expect(commitMsg).toContain("Add --quiet flag");
+    // Merge + push happened
+    expect(git.mergeFastForward).toHaveBeenCalledTimes(1);
+    expect(git.push).toHaveBeenCalledTimes(1);
+    // Item completed
+    expect(completeItemMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("engineering: uses engineering branch name with slug from Haiku", async () => {
+    const item = makeClaimedItem({
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
+    const claude = makeEngineeringClaude({ slug: "refactor-parser" });
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    const workBranchArg = (git.createWorktree as ReturnType<typeof mock>).mock
+      .calls[0]?.[2] as string;
+    expect(workBranchArg.startsWith("hopper-eng/refactor-parser-")).toBe(true);
+  });
+
+  test("engineering: falls back to bare id-prefix branch when Haiku slug call fails", async () => {
+    const item = makeClaimedItem({
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
+    const claude: ClaudeGateway = {
+      runSession: mock(async (prompt: string) => {
+        if (prompt.includes("PLANNING phase")) return { exitCode: 0, result: "plan" };
+        if (prompt.includes("EXECUTE phase")) return { exitCode: 0, result: "executed" };
+        return { exitCode: 0, result: "VALIDATE: PASS" };
+      }),
+      generateText: mock(async () => ({ exitCode: 1, text: "" })),
+    };
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    const workBranchArg = (git.createWorktree as ReturnType<typeof mock>).mock
+      .calls[0]?.[2] as string;
+    // hopper-eng/<id-prefix> with no slug segment
+    expect(workBranchArg).toMatch(/^hopper-eng\/[a-f0-9]{8}$/);
+  });
+
+  test("engineering: persists plan.md to audit dir, not the worktree", async () => {
+    const item = makeClaimedItem({
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
+    const claude = makeEngineeringClaude();
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    const writeCalls = (fs.writeFile as ReturnType<typeof mock>).mock.calls as unknown[][];
+    const planWrite = writeCalls.find((c) => (c[0] as string).endsWith("-plan.md"));
+    expect(planWrite).toBeDefined();
+    expect((planWrite?.[0] as string).startsWith(HOPPER_HOME)).toBe(true);
+    // Ensure nothing was written inside the worktree directory
+    const worktreeWrite = writeCalls.find((c) => (c[0] as string).includes("/worktrees/"));
+    expect(worktreeWrite).toBeUndefined();
+  });
+
+  test("engineering: stops at plan and does not commit when plan phase fails", async () => {
+    const item = makeClaimedItem({
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
+    const claude = makeEngineeringClaude({ planExit: 1, planResult: "Plan crashed." });
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    // Only the plan phase ran
+    expect(claude.runSession).toHaveBeenCalledTimes(1);
+    expect(git.commitAll).not.toHaveBeenCalled();
+    expect(git.mergeFastForward).not.toHaveBeenCalled();
+    // Worktree NOT torn down — preserved for inspection
+    expect(git.worktreeRemove).not.toHaveBeenCalled();
+    expect(completeItemMock).not.toHaveBeenCalled();
+  });
+
+  test("engineering: stops at execute and preserves worktree on non-zero execute exit", async () => {
+    const item = makeClaimedItem({
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
+    const claude = makeEngineeringClaude({ executeExit: 2, executeResult: "broke" });
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    // Plan + execute ran; validate did not
+    expect(claude.runSession).toHaveBeenCalledTimes(2);
+    expect(git.commitAll).not.toHaveBeenCalled();
+    expect(git.worktreeRemove).not.toHaveBeenCalled();
+    expect(completeItemMock).not.toHaveBeenCalled();
+  });
+
+  test("engineering: does not commit or merge when validate reports FAIL (retries=0)", async () => {
+    const item = makeClaimedItem({
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+      retries: 0,
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
+    const claude = makeEngineeringClaude({
+      validateResult: "Lint errors.\n\nVALIDATE: FAIL",
+    });
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    expect(claude.runSession).toHaveBeenCalledTimes(3);
+    expect(git.commitAll).not.toHaveBeenCalled();
+    expect(git.mergeFastForward).not.toHaveBeenCalled();
+    // Worktree preserved
+    expect(git.worktreeRemove).not.toHaveBeenCalled();
+  });
+
+  test("engineering: treats missing PASS/FAIL marker as a failure", async () => {
+    const item = makeClaimedItem({
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
+    const claude = makeEngineeringClaude({ validateResult: "Seems OK to me." });
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    expect(git.commitAll).not.toHaveBeenCalled();
+    expect(git.mergeFastForward).not.toHaveBeenCalled();
+  });
+
+  test("engineering: skips commit when worktree is clean but still tears down and completes", async () => {
+    const item = makeClaimedItem({
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => false) });
+    const claude = makeEngineeringClaude();
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    expect(git.commitAll).not.toHaveBeenCalled();
+    // No commit → no merge
+    expect(git.mergeFastForward).not.toHaveBeenCalled();
+    // Haiku commit-message call was NOT made (we skipped commit entirely)
+    const generateCalls = (claude.generateText as ReturnType<typeof mock>).mock
+      .calls as unknown[][];
+    const commitMsgCall = generateCalls.find((c) =>
+      (c[0] as string).toLowerCase().includes("conventional-commit"),
+    );
+    expect(commitMsgCall).toBeUndefined();
+    // Item still completed
+    expect(completeItemMock).toHaveBeenCalledTimes(1);
+    // Worktree torn down
+    expect(git.worktreeRemove).toHaveBeenCalledTimes(1);
+  });
+
+  test("engineering: execute phase receives the plan text inline", async () => {
+    const item = makeClaimedItem({
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
+    const planText = "## Approach\nUse a single flag check in cli.ts";
+    const claude = makeEngineeringClaude({ planResult: planText });
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    const sessionCalls = (claude.runSession as ReturnType<typeof mock>).mock.calls as unknown[][];
+    const executeCall = sessionCalls.find((c) => (c[0] as string).includes("EXECUTE phase"));
+    expect(executeCall).toBeDefined();
+    expect(executeCall?.[0] as string).toContain(planText);
+  });
+
+  test("engineering: forwards the resolved agent to the execute phase options", async () => {
+    const item = makeClaimedItem({
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+      agent: "rust-craftsperson",
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
+    const claude = makeEngineeringClaude();
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    const sessionCalls = (claude.runSession as ReturnType<typeof mock>).mock.calls as unknown[][];
+    const executeCall = sessionCalls.find((c) => (c[0] as string).includes("EXECUTE phase"));
+    const executeOptions = executeCall?.[3] as { agent?: string } | undefined;
+    expect(executeOptions?.agent).toBe("rust-craftsperson");
+  });
+
+  test("engineering: records a phase entry after each phase finishes", async () => {
+    const item = makeClaimedItem({
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
+    const claude = makeEngineeringClaude();
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    expect(recordItemPhaseMock).toHaveBeenCalledTimes(3);
+    const recorded = (recordItemPhaseMock.mock.calls as unknown[][]).map(
+      (c) => c[1] as { name: string; exitCode: number; passed?: boolean },
+    );
+    expect(recorded.map((r) => r.name)).toEqual(["plan", "execute", "validate"]);
+    expect(recorded[0]?.exitCode).toBe(0);
+    expect(recorded[2]?.passed).toBe(true);
+  });
+
+  test("engineering: validate phase record carries passed: false when FAIL marker emitted", async () => {
+    const item = makeClaimedItem({
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
+    const claude = makeEngineeringClaude({
+      validateResult: "Lint errors.\n\nVALIDATE: FAIL",
+    });
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    const validateCall = (recordItemPhaseMock.mock.calls as unknown[][]).find(
+      (c) => (c[1] as { name: string }).name === "validate",
+    );
+    expect((validateCall?.[1] as { passed: boolean }).passed).toBe(false);
+  });
+
+  test("engineering: does not record execute or validate phases when plan phase fails", async () => {
+    const item = makeClaimedItem({
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => false) });
+    const claude = makeEngineeringClaude({ planExit: 1, planResult: "crashed" });
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    const recorded = (recordItemPhaseMock.mock.calls as unknown[][]).map(
+      (c) => (c[1] as { name: string }).name,
+    );
+    expect(recorded).toEqual(["plan"]);
+  });
+
+  test("engineering: retries once by default after validate FAIL, then passes on retry", async () => {
+    const item = makeClaimedItem({
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
+    // First validate fails, second passes. Prompt differs by phase.
+    let validateCalls = 0;
+    const claude: ClaudeGateway = {
+      runSession: mock(async (prompt: string) => {
+        if (prompt.includes("PLANNING phase")) return { exitCode: 0, result: "plan-text" };
+        if (prompt.includes("EXECUTE phase")) return { exitCode: 0, result: "ran execute" };
+        if (prompt.includes("VALIDATE phase")) {
+          validateCalls += 1;
+          return validateCalls === 1
+            ? { exitCode: 0, result: "Lint errors.\n\nVALIDATE: FAIL" }
+            : { exitCode: 0, result: "All good.\n\nVALIDATE: PASS" };
+        }
+        return { exitCode: 0, result: "" };
+      }),
+      generateText: mock(async () => ({ exitCode: 0, text: "slug-or-msg" })),
+    };
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    // plan + execute(1) + validate(1) + execute(2) + validate(2) = 5
+    expect(claude.runSession).toHaveBeenCalledTimes(5);
+    // Commit ran — the PASS on retry is the green gate
+    expect(git.commitAll).toHaveBeenCalledTimes(1);
+    expect(git.mergeFastForward).toHaveBeenCalledTimes(1);
+    expect(completeItemMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("engineering: remediation prompt inlines prior execute + validate output", async () => {
+    const item = makeClaimedItem({
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
+    let validateCalls = 0;
+    const claude: ClaudeGateway = {
+      runSession: mock(async (prompt: string) => {
+        if (prompt.includes("PLANNING phase")) return { exitCode: 0, result: "plan-text" };
+        if (prompt.includes("EXECUTE phase"))
+          return { exitCode: 0, result: "first-execute-summary" };
+        if (prompt.includes("VALIDATE phase")) {
+          validateCalls += 1;
+          return validateCalls === 1
+            ? { exitCode: 0, result: "failing-validate-output\nVALIDATE: FAIL" }
+            : { exitCode: 0, result: "VALIDATE: PASS" };
+        }
+        return { exitCode: 0, result: "" };
+      }),
+      generateText: mock(async () => ({ exitCode: 0, text: "slug" })),
+    };
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    const calls = (claude.runSession as ReturnType<typeof mock>).mock.calls as unknown[][];
+    const remediationCall = calls.find(
+      (c) => (c[0] as string).includes("EXECUTE phase") && (c[0] as string).includes("remediation"),
+    );
+    expect(remediationCall).toBeDefined();
+    const prompt = remediationCall?.[0] as string;
+    expect(prompt).toContain("first-execute-summary");
+    expect(prompt).toContain("failing-validate-output");
+  });
+
+  test("engineering: stops after exhausting retries and preserves worktree", async () => {
+    const item = makeClaimedItem({
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+      retries: 2,
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
+    // All validate attempts FAIL
+    const claude = makeEngineeringClaude({
+      validateResult: "still broken\n\nVALIDATE: FAIL",
+    });
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    // plan + 3 * (execute + validate) = 7
+    expect(claude.runSession).toHaveBeenCalledTimes(7);
+    expect(git.commitAll).not.toHaveBeenCalled();
+    expect(git.mergeFastForward).not.toHaveBeenCalled();
+    // Worktree preserved for inspection
+    expect(git.worktreeRemove).not.toHaveBeenCalled();
+    expect(completeItemMock).not.toHaveBeenCalled();
+  });
+
+  test("engineering: retries=0 disables remediation (single execute+validate)", async () => {
+    const item = makeClaimedItem({
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+      retries: 0,
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
+    const claude = makeEngineeringClaude({
+      validateResult: "broken\n\nVALIDATE: FAIL",
+    });
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    // plan + execute + validate = 3; no retry
+    expect(claude.runSession).toHaveBeenCalledTimes(3);
+    expect(git.commitAll).not.toHaveBeenCalled();
+  });
+
+  test("engineering: retry audit files use -N suffix for attempts ≥ 2", async () => {
+    const item = makeClaimedItem({
+      id: "11111111-2222-3333-4444-555555555555",
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+      retries: 1,
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
+    let vc = 0;
+    const claude: ClaudeGateway = {
+      runSession: mock(async (prompt: string) => {
+        if (prompt.includes("PLANNING phase")) return { exitCode: 0, result: "plan" };
+        if (prompt.includes("EXECUTE phase")) return { exitCode: 0, result: "exec" };
+        if (prompt.includes("VALIDATE phase")) {
+          vc += 1;
+          return vc === 1
+            ? { exitCode: 0, result: "VALIDATE: FAIL" }
+            : { exitCode: 0, result: "VALIDATE: PASS" };
+        }
+        return { exitCode: 0, result: "" };
+      }),
+      generateText: mock(async () => ({ exitCode: 0, text: "slug" })),
+    };
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    const calls = (claude.runSession as ReturnType<typeof mock>).mock.calls as unknown[][];
+    const auditPaths = calls.map((c) => c[2] as string);
+    expect(auditPaths).toContain(`${HOPPER_HOME}/audit/${item.id}-execute.jsonl`);
+    expect(auditPaths).toContain(`${HOPPER_HOME}/audit/${item.id}-validate.jsonl`);
+    expect(auditPaths).toContain(`${HOPPER_HOME}/audit/${item.id}-execute-2.jsonl`);
+    expect(auditPaths).toContain(`${HOPPER_HOME}/audit/${item.id}-validate-2.jsonl`);
+  });
+
+  test("engineering: records execute + validate phases with attempt numbers", async () => {
+    const item = makeClaimedItem({
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+      retries: 1,
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
+    let vc = 0;
+    const claude: ClaudeGateway = {
+      runSession: mock(async (prompt: string) => {
+        if (prompt.includes("PLANNING phase")) return { exitCode: 0, result: "plan" };
+        if (prompt.includes("EXECUTE phase")) return { exitCode: 0, result: "exec" };
+        if (prompt.includes("VALIDATE phase")) {
+          vc += 1;
+          return vc === 1
+            ? { exitCode: 0, result: "VALIDATE: FAIL" }
+            : { exitCode: 0, result: "VALIDATE: PASS" };
+        }
+        return { exitCode: 0, result: "" };
+      }),
+      generateText: mock(async () => ({ exitCode: 0, text: "slug" })),
+    };
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    const recorded = (recordItemPhaseMock.mock.calls as unknown[][]).map(
+      (c) => c[1] as { name: string; attempt?: number; passed?: boolean },
+    );
+    expect(recorded.map((r) => `${r.name}@${r.attempt ?? 1}`)).toEqual([
+      "plan@1",
+      "execute@1",
+      "validate@1",
+      "execute@2",
+      "validate@2",
+    ]);
+    expect(recorded.find((r) => r.name === "validate" && r.attempt === 1)?.passed).toBe(false);
+    expect(recorded.find((r) => r.name === "validate" && r.attempt === 2)?.passed).toBe(true);
+  });
+
+  test("engineering: writes per-phase audit files under ~/.hopper/audit", async () => {
+    const item = makeClaimedItem({
+      id: "abcdef12-1111-2222-3333-444444444444",
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
+    const claude = makeEngineeringClaude();
+    const fs = makeMockFs();
+
+    await processItem(item, "test-agent", HOPPER_HOME, {
+      git,
+      claude,
+      fs,
+      shell: makeMockShell(),
+    });
+
+    const runCalls = (claude.runSession as ReturnType<typeof mock>).mock.calls as unknown[][];
+    const auditPaths = runCalls.map((c) => c[2] as string);
+    expect(auditPaths).toContain(`${HOPPER_HOME}/audit/${item.id}-plan.jsonl`);
+    expect(auditPaths).toContain(`${HOPPER_HOME}/audit/${item.id}-execute.jsonl`);
+    expect(auditPaths).toContain(`${HOPPER_HOME}/audit/${item.id}-validate.jsonl`);
   });
 });

@@ -841,4 +841,44 @@ describe("store", () => {
     const blockedItem = items.find((i) => i.title === "Blocked");
     expect(blockedItem?.dependsOn).toEqual([dep.id]);
   });
+
+  // task type + agent tests
+  test("type and agent fields round-trip through save/load", async () => {
+    const item = makeItem({
+      title: "Typed",
+      type: "engineering",
+      agent: "typescript-bun-cli-craftsperson",
+    });
+    await saveItems([item]);
+
+    const items = await loadItems();
+    expect(items[0]?.type).toBe("engineering");
+    expect(items[0]?.agent).toBe("typescript-bun-cli-craftsperson");
+  });
+
+  test("type and agent are preserved through claim and complete", async () => {
+    const item = makeItem({
+      title: "Investigate",
+      type: "investigation",
+      agent: "rust-craftsperson",
+    });
+    await addItem(item);
+
+    const claimed = await claimNextItem("agent");
+    expect(claimed?.type).toBe("investigation");
+    expect(claimed?.agent).toBe("rust-craftsperson");
+
+    const { completed } = await completeItem(claimed?.claimToken as string, "agent", "done");
+    expect(completed.type).toBe("investigation");
+    expect(completed.agent).toBe("rust-craftsperson");
+  });
+
+  test("legacy items without type or agent load unchanged", async () => {
+    const legacy = makeItem({ title: "Legacy" });
+    await saveItems([legacy]);
+
+    const items = await loadItems();
+    expect(items[0]?.type).toBeUndefined();
+    expect(items[0]?.agent).toBeUndefined();
+  });
 });

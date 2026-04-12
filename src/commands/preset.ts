@@ -1,3 +1,4 @@
+import { formatValidationError, validateRetries, validateTaskType } from "../add-workflow.ts";
 import type { ParsedArgs } from "../cli.ts";
 import { requirePositional, stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
@@ -34,7 +35,8 @@ async function presetAddCommand(parsed: ParsedArgs): Promise<CommandResult> {
   if (!rawName || !description) {
     return {
       status: "error",
-      message: "Usage: hopper preset add <name> <description> [--dir <path>] [--branch <branch>]",
+      message:
+        "Usage: hopper preset add <name> <description> [--dir <path>] [--branch <branch>] [--command <cmd>] [--type <type>] [--agent <name>] [--retries <n>]",
     };
   }
 
@@ -48,6 +50,17 @@ async function presetAddCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const dir = stringFlag(parsed, "dir");
   const branch = stringFlag(parsed, "branch");
   const command = stringFlag(parsed, "command");
+  const agent = stringFlag(parsed, "agent");
+  const typeResult = validateTaskType(stringFlag(parsed, "type"));
+  if ("error" in typeResult) {
+    return { status: "error", message: formatValidationError(typeResult.error) };
+  }
+  const type = typeResult.value;
+  const retriesResult = validateRetries(stringFlag(parsed, "retries"));
+  if ("error" in retriesResult) {
+    return { status: "error", message: formatValidationError(retriesResult.error) };
+  }
+  const retries = retriesResult.value;
   const force = parsed.flags.force === true;
 
   try {
@@ -58,6 +71,9 @@ async function presetAddCommand(parsed: ParsedArgs): Promise<CommandResult> {
         ...(dir ? { workingDir: dir } : {}),
         ...(branch ? { branch } : {}),
         ...(command ? { command } : {}),
+        ...(type ? { type } : {}),
+        ...(agent ? { agent } : {}),
+        ...(retries !== undefined ? { retries } : {}),
         createdAt: new Date().toISOString(),
       },
       force,
@@ -93,6 +109,9 @@ async function presetListCommand(_parsed: ParsedArgs): Promise<CommandResult> {
         ? `${preset.description.slice(0, 60).trim()}...`
         : preset.description;
     const extras: string[] = [];
+    if (preset.type) extras.push(`type: ${preset.type}`);
+    if (preset.agent) extras.push(`agent: ${preset.agent}`);
+    if (preset.retries !== undefined) extras.push(`retries: ${preset.retries}`);
     if (preset.workingDir) extras.push(`dir: ${preset.workingDir}`);
     if (preset.branch) extras.push(`branch: ${preset.branch}`);
     if (preset.command) extras.push(`command: ${preset.command}`);
@@ -140,6 +159,9 @@ async function presetShowCommand(parsed: ParsedArgs): Promise<CommandResult> {
 
   const lines: string[] = [];
   lines.push(`Name:        ${preset.name}`);
+  if (preset.type) lines.push(`Type:        ${preset.type}`);
+  if (preset.agent) lines.push(`Agent:       ${preset.agent}`);
+  if (preset.retries !== undefined) lines.push(`Retries:     ${preset.retries}`);
   if (preset.workingDir) lines.push(`Directory:   ${preset.workingDir}`);
   if (preset.branch) lines.push(`Branch:      ${preset.branch}`);
   if (preset.command) lines.push(`Command:     ${preset.command}`);

@@ -13,11 +13,19 @@ export type WorkSetup =
 /**
  * Decide where Claude should do its work based on the item's metadata.
  *
+ * - Investigation items never get a worktree — they're read-only and have no
+ *   branch to merge. They run in `workingDir` if set, otherwise in cwd.
  * - Items with both `workingDir` and `branch` get an isolated git worktree.
  * - Items with only `workingDir` run directly in that directory.
  * - All other items run in the current working directory.
  */
 export function resolveWorkSetup(item: Item, hopperHome: string): WorkSetup {
+  if (item.type === "investigation") {
+    if (item.workingDir) {
+      return { type: "existing-dir", dir: item.workingDir };
+    }
+    return { type: "cwd" };
+  }
   if (item.workingDir && item.branch) {
     return {
       type: "worktree",
@@ -243,4 +251,59 @@ export function resolveAuditPaths(itemId: string, hopperHome: string): AuditPath
     auditFile: join(auditDir, `${itemId}-audit.jsonl`),
     resultFile: join(auditDir, `${itemId}-result.md`),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Engineering audit paths
+// ---------------------------------------------------------------------------
+
+export interface EngineeringAuditPaths {
+  auditDir: string;
+  planAuditFile: string;
+  executeAuditFile: string;
+  validateAuditFile: string;
+  /**
+   * Markdown file holding the extracted plan text. Persisted under
+   * `~/.hopper/audit/` — NEVER inside the worktree — so it survives worktree
+   * teardown and cannot leak into the committed diff.
+   */
+  planFile: string;
+  /**
+   * Final result markdown file, same name the legacy task flow uses. Written
+   * after validate to give `hopper show` a single place to read from.
+   */
+  resultFile: string;
+}
+
+export function resolveEngineeringAuditPaths(
+  itemId: string,
+  hopperHome: string,
+): EngineeringAuditPaths {
+  const auditDir = join(hopperHome, "audit");
+  return {
+    auditDir,
+    planAuditFile: join(auditDir, `${itemId}-plan.jsonl`),
+    executeAuditFile: join(auditDir, `${itemId}-execute.jsonl`),
+    validateAuditFile: join(auditDir, `${itemId}-validate.jsonl`),
+    planFile: join(auditDir, `${itemId}-plan.md`),
+    resultFile: join(auditDir, `${itemId}-result.md`),
+  };
+}
+
+/**
+ * Audit file name for a specific phase attempt.
+ *
+ * Attempt 1 keeps the existing naming (`<id>-execute.jsonl`) so first-time
+ * callers and existing consumers read exactly what they did before. Attempts
+ * ≥ 2 get a suffix (`<id>-execute-2.jsonl`, etc.) so each remediation pass
+ * has its own inspectable audit log.
+ */
+export function resolveAttemptAuditPath(
+  itemId: string,
+  hopperHome: string,
+  phase: "execute" | "validate",
+  attempt: number,
+): string {
+  const suffix = attempt <= 1 ? "" : `-${attempt}`;
+  return join(hopperHome, "audit", `${itemId}-${phase}${suffix}.jsonl`);
 }

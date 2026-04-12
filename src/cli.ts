@@ -2,6 +2,7 @@
 
 import { runCommand } from "./command-runner.ts";
 import { addCommand } from "./commands/add.ts";
+import { createAgentResolver } from "./commands/add-agent-resolver.ts";
 import { cancelCommand } from "./commands/cancel.ts";
 import { claimCommand } from "./commands/claim.ts";
 import { completeCommand } from "./commands/complete.ts";
@@ -13,6 +14,8 @@ import { showCommand } from "./commands/show.ts";
 import { tagCommand, untagCommand } from "./commands/tag.ts";
 import { workerCommand } from "./commands/worker.ts";
 import { VERSION } from "./constants.ts";
+import { createAgentsGateway } from "./gateways/agents-gateway.ts";
+import { createClaudeGateway } from "./gateways/claude-gateway.ts";
 import { createLlmGateway } from "./gateways/llm-gateway.ts";
 import { createTitleGenerator } from "./titler.ts";
 
@@ -86,6 +89,8 @@ Usage:
   hopper add <description> [--command <cmd>]                 Add a shell command item
   hopper add <description> [--tag <tag>]                      Add with tags (repeatable)
   hopper add <description> [--after-item <id>]               Add blocked on another item (repeatable)
+  hopper add <description> [--type investigation|engineering|task]  Set the task type (default: task)
+  hopper add <description> [--agent <name>]                  Pin a craftsperson/agent
   hopper add --preset <name> [--after --every]               Create item from preset
   hopper show <id>                   Show full details of an item
   hopper list                        List queued + in-progress + scheduled items
@@ -94,6 +99,7 @@ Usage:
   hopper list --scheduled            Show only scheduled items
   hopper list --tag <tag>             Filter by tag (repeatable, OR logic)
   hopper list --priority <level>     Filter by priority
+  hopper list --type <type>          Filter by task type (investigation|engineering|task)
   hopper claim [--agent <name>]      Claim next queued item (priority, then FIFO)
   hopper complete <token>            Complete a claimed item
   hopper complete <token> --result "…" Attach a result summary
@@ -123,8 +129,9 @@ Options:
   --command   Shell command to run instead of Claude (add command)
   --dir       Working directory for the task (add command)
   --branch    Git branch for the task (add command, required with --dir unless --command is set)
+  --type      Task type: investigation, engineering, task (add command)
+  --agent     Agent for claim/complete/worker; or craftsperson override (add command)
   --json      Output as JSON
-  --agent     Agent name for claim/complete/worker
   --help      Show this help
   --version   Show version`);
 }
@@ -148,7 +155,8 @@ async function main(): Promise<void> {
       const apiKey = process.env.OPENAI_API_KEY ?? "";
       const llm = apiKey ? createLlmGateway(apiKey) : undefined;
       const titler = createTitleGenerator(llm);
-      await runCommand((p) => addCommand(p, titler), parsed);
+      const agentResolver = createAgentResolver(createAgentsGateway(), createClaudeGateway());
+      await runCommand((p) => addCommand(p, titler, undefined, agentResolver), parsed);
       break;
     }
     case "list":

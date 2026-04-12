@@ -1,9 +1,10 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { ItemStatus } from "./constants.ts";
+import type { ItemStatus, TaskType } from "./constants.ts";
 import { createStoreGateway, type StoreGateway } from "./gateways/store-gateway.ts";
 import {
   addTags,
+  appendPhase,
   cancel,
   claimNext,
   complete,
@@ -13,6 +14,30 @@ import {
   requeue,
   resolveItem,
 } from "./store-workflow.ts";
+
+/**
+ * Per-phase runtime record for an engineering item.
+ *
+ * Written to the item as each phase finishes so `hopper show` can report
+ * mid-flight progress (e.g. "plan ✓ 34s / execute ✗ FAIL") without having to
+ * replay the per-phase audit JSONL files.
+ */
+export type PhaseName = "plan" | "execute" | "validate";
+
+export interface PhaseRecord {
+  name: PhaseName;
+  startedAt: string;
+  endedAt: string;
+  exitCode: number;
+  /** Validate-phase PASS/FAIL marker. Undefined for plan / execute. */
+  passed?: boolean;
+  /**
+   * 1-based attempt number. Undefined / 1 = first attempt. Values > 1 indicate
+   * a remediation retry after a prior validate phase failed. Only the execute
+   * and validate phases ever run more than once per item.
+   */
+  attempt?: number;
+}
 
 export interface Item {
   id: string;
@@ -42,6 +67,27 @@ export interface Item {
     until?: string;
     remainingRuns?: number;
   };
+  /**
+   * Task type — determines which workflow the worker runs for this item.
+   * Undefined is treated as the legacy "task" workflow (preserves prior behaviour).
+   */
+  type?: TaskType;
+  /**
+   * Craftsperson/agent to pass via `--agent` when the worker runs Claude.
+   * Undefined means no agent is selected (default Claude behaviour).
+   */
+  agent?: string;
+  /**
+   * Per-phase runtime records for engineering items. Written incrementally as
+   * each phase completes, so `hopper show` can render in-flight progress.
+   */
+  phases?: PhaseRecord[];
+  /**
+   * Maximum number of execute→validate remediation retries after the initial
+   * pass fails validation. 0 = no retries (single execute+validate). Only
+   * engineering items consult this; defaults to 1 when unset.
+   */
+  retries?: number;
 }
 
 export type ClaimedItem = Item & {
@@ -155,4 +201,18 @@ export async function reprioritizeItem(
   const outcome = reprioritize(items, id, priority);
   await saveItems(outcome.items);
   return { item: outcome.item, oldPriority: outcome.oldPriority };
+}
+
+/**
+ * Append a phase record to an engineering item. Called mid-flight by the
+ * worker after each phase finishes so `hopper show` reflects current progress.
+ * Silently no-ops if the item is not found — phase recording is a visibility
+ * aid, not a correctness-critical path.
+ */
+export async function recordItemPhase(id: string, record: PhaseRecord): Promise<void> {
+  const items = await loadItems();
+  const outcome = appendPhase(items, id, record);
+  if (outcome.changed) {
+    await saveItems(outcome.items);
+  }
 }

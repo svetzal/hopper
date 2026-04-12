@@ -1,6 +1,6 @@
 import { Status } from "./constants.ts";
 import { comparePriority } from "./priority.ts";
-import type { ClaimedItem, Item } from "./store.ts";
+import type { ClaimedItem, Item, PhaseRecord } from "./store.ts";
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -351,6 +351,42 @@ export function removeTags(items: Item[], id: string, tags: string[]): TagResult
  */
 export function prependItem(items: Item[], item: Item): Item[] {
   return [item, ...items];
+}
+
+// ---------------------------------------------------------------------------
+// appendPhase
+// ---------------------------------------------------------------------------
+
+export interface AppendPhaseResult {
+  items: Item[];
+  changed: boolean;
+}
+
+/**
+ * Append a phase record to an engineering item's `phases` array.
+ *
+ * Returns `changed: false` when the item is not found — phase recording is a
+ * visibility aid and must never be allowed to crash the worker on a stale id.
+ * Duplicates are keyed on `{name, attempt}` (attempt defaults to 1 when
+ * missing) so remediation retries — which re-run execute/validate at
+ * attempt=2, 3, … — keep stacking, while an accidental double-write of the
+ * same attempt just replaces.
+ */
+export function appendPhase(items: Item[], itemId: string, record: PhaseRecord): AppendPhaseResult {
+  const target = items.find((i) => i.id === itemId);
+  if (!target) return { items, changed: false };
+
+  const attemptOf = (p: PhaseRecord): number => p.attempt ?? 1;
+  const recordAttempt = attemptOf(record);
+
+  const existing = target.phases ?? [];
+  const withoutDup = existing.filter(
+    (p) => !(p.name === record.name && attemptOf(p) === recordAttempt),
+  );
+  const nextPhases = [...withoutDup, record];
+
+  const updated: Item = { ...target, phases: nextPhases };
+  return { items: replaceItem(items, itemId, updated), changed: true };
 }
 
 // ---------------------------------------------------------------------------

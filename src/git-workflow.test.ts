@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildEngineeringBranchName,
   buildWorkBranchName,
   resolveBranchSetup,
   resolveFfResult,
@@ -48,6 +49,27 @@ describe("buildWorkBranchName", () => {
   test("prefixes with hopper/", () => {
     const result = buildWorkBranchName("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
     expect(result).toMatch(/^hopper\//);
+  });
+});
+
+describe("buildEngineeringBranchName", () => {
+  test("uses slug plus id prefix when slug is provided", () => {
+    const result = buildEngineeringBranchName(
+      "abcdef12-0000-0000-0000-000000000000",
+      "add-quiet-flag",
+    );
+    expect(result).toBe("hopper-eng/add-quiet-flag-abcdef12");
+  });
+
+  test("falls back to bare id prefix when slug is null", () => {
+    const result = buildEngineeringBranchName("abcdef12-0000-0000-0000-000000000000", null);
+    expect(result).toBe("hopper-eng/abcdef12");
+  });
+
+  test("falls back to bare id prefix when slug is empty string", () => {
+    // Empty string is treated the same as null — nothing meaningful to use.
+    const result = buildEngineeringBranchName("abcdef12-0000-0000-0000-000000000000", "");
+    expect(result).toBe("hopper-eng/abcdef12");
   });
 });
 

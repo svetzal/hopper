@@ -1,4 +1,4 @@
-import { Status } from "./constants.ts";
+import { isTaskType, Status, TaskType } from "./constants.ts";
 import { parseDuration, parseTimeSpec } from "./parse-time.ts";
 import type { Priority } from "./priority.ts";
 import type { Item } from "./store.ts";
@@ -19,22 +19,77 @@ export type AddValidationError =
   | { code: "UNTIL_BEFORE_START"; until: string; start: string }
   | { code: "CIRCULAR_DEPENDENCY" }
   | { code: "DEP_NOT_FOUND"; idPrefix: string }
-  | { code: "DEP_AMBIGUOUS"; idPrefix: string; matchCount: number };
+  | { code: "DEP_AMBIGUOUS"; idPrefix: string; matchCount: number }
+  | { code: "INVALID_TYPE"; value: string }
+  | { code: "INVESTIGATION_NO_BRANCH" }
+  | { code: "RETRIES_INVALID"; value: string }
+  | { code: "RETRIES_TOO_HIGH"; value: number; max: number };
+
+// ---------------------------------------------------------------------------
+// Task type validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate the --type flag. Accepts undefined (no type set) and any known
+ * TaskType. Returns the normalized TaskType or an error.
+ */
+export function validateTaskType(
+  raw: string | undefined,
+): { error: AddValidationError } | { value: TaskType | undefined } {
+  if (raw === undefined) return { value: undefined };
+  if (isTaskType(raw)) return { value: raw };
+  return { error: { code: "INVALID_TYPE", value: raw } };
+}
+
+// ---------------------------------------------------------------------------
+// Retries validation
+// ---------------------------------------------------------------------------
+
+export const MAX_RETRIES = 5;
+
+/**
+ * Validate the --retries flag. Accepts undefined, or a non-negative integer
+ * up to MAX_RETRIES. Values above the cap are rejected outright so an
+ * accidental `--retries 100` cannot burn through a credit card.
+ */
+export function validateRetries(
+  raw: string | undefined,
+): { error: AddValidationError } | { value: number | undefined } {
+  if (raw === undefined) return { value: undefined };
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0) {
+    return { error: { code: "RETRIES_INVALID", value: raw } };
+  }
+  if (n > MAX_RETRIES) {
+    return { error: { code: "RETRIES_TOO_HIGH", value: n, max: MAX_RETRIES } };
+  }
+  return { value: n };
+}
 
 // ---------------------------------------------------------------------------
 // Dir/branch validation
 // ---------------------------------------------------------------------------
 
 /**
- * Validate the dir/branch/command combination.
- * - dir alone (without branch or command) is not meaningful.
- * - branch without dir cannot be checked out.
+ * Validate the dir/branch/command combination for the given task type.
+ *
+ * Default (task / engineering / undefined type):
+ *   - dir alone (without branch or command) is not meaningful.
+ *   - branch without dir cannot be checked out.
+ *
+ * Investigation items are read-only: no worktree, no branch. `--dir` alone is
+ * fine; `--branch` is rejected because it implies a worktree.
  */
 export function validateDirBranch(
   dir: string | undefined,
   branch: string | undefined,
   command: string | undefined,
+  type?: TaskType,
 ): AddValidationError | null {
+  if (type === TaskType.INVESTIGATION) {
+    if (branch) return { code: "INVESTIGATION_NO_BRANCH" };
+    return null;
+  }
   if (dir && !branch && !command) return { code: "DIR_REQUIRES_BRANCH_OR_COMMAND" };
   if (branch && !dir) return { code: "BRANCH_REQUIRES_DIR" };
   return null;
@@ -262,6 +317,9 @@ export function buildNewItem(params: {
   recurrence?: RecurrenceResult["recurrence"];
   dependsOn?: string[];
   tags?: string[];
+  type?: TaskType;
+  agent?: string;
+  retries?: number;
 }): Item {
   return {
     id: params.id,
@@ -277,6 +335,9 @@ export function buildNewItem(params: {
     ...(params.recurrence ? { recurrence: params.recurrence } : {}),
     ...(params.dependsOn ? { dependsOn: params.dependsOn } : {}),
     ...(params.tags?.length ? { tags: params.tags } : {}),
+    ...(params.type ? { type: params.type } : {}),
+    ...(params.agent ? { agent: params.agent } : {}),
+    ...(params.retries !== undefined ? { retries: params.retries } : {}),
   };
 }
 
@@ -314,5 +375,13 @@ export function formatValidationError(error: AddValidationError): string {
       return `No item found with id: ${error.idPrefix}`;
     case "DEP_AMBIGUOUS":
       return `Ambiguous id prefix "${error.idPrefix}" matches ${error.matchCount} items. Use a longer prefix.`;
+    case "INVALID_TYPE":
+      return `Error: --type must be one of: investigation, engineering, task (got "${error.value}")`;
+    case "INVESTIGATION_NO_BRANCH":
+      return "Error: investigation items cannot have --branch (investigations run read-only, with no worktree)";
+    case "RETRIES_INVALID":
+      return `Error: --retries must be a non-negative integer, got "${error.value}"`;
+    case "RETRIES_TOO_HIGH":
+      return `Error: --retries is capped at ${error.max} (got ${error.value})`;
   }
 }

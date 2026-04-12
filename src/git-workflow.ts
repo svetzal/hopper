@@ -45,6 +45,21 @@ export function buildWorkBranchName(itemId: string): string {
   return `hopper/${itemId.slice(0, 8)}`;
 }
 
+/**
+ * Derive the work-branch name for an engineering item.
+ *
+ * When the caller has a Haiku-generated slug we produce
+ * `hopper-eng/<slug>-<id-prefix>` so humans can tell branches apart at a
+ * glance. When the slug is missing (e.g. Haiku returned junk) we fall back to
+ * `hopper-eng/<id-prefix>` — uninformative but unambiguous, and we never block
+ * the workflow on a string-generation failure.
+ */
+export function buildEngineeringBranchName(itemId: string, slug: string | null): string {
+  const prefix = itemId.slice(0, 8);
+  if (!slug) return `hopper-eng/${prefix}`;
+  return `hopper-eng/${slug}-${prefix}`;
+}
+
 // ---------------------------------------------------------------------------
 // Merge orchestration
 // ---------------------------------------------------------------------------

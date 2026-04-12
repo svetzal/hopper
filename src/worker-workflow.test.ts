@@ -3,8 +3,10 @@ import type { Item } from "./store.ts";
 import {
   buildCommitMessage,
   buildTaskPrompt,
+  resolveAttemptAuditPath,
   resolveAuditPaths,
   resolveCompletionAction,
+  resolveEngineeringAuditPaths,
   resolveLoopAction,
   resolveMergeAction,
   resolvePostClaimLoopAction,
@@ -55,6 +57,25 @@ describe("worker-workflow", () => {
     test("returns cwd setup when item has branch but no workingDir", () => {
       // branch without workingDir is not actionable — fall back to cwd
       const item = makeItem({ branch: "main" });
+      expect(resolveWorkSetup(item, HOPPER_HOME)).toEqual({ type: "cwd" });
+    });
+
+    test("investigation items with workingDir run as existing-dir (never worktree)", () => {
+      // Even if branch is somehow set on an investigation item, the worker
+      // must not create a worktree — investigations are read-only deliverables.
+      const item = makeItem({
+        type: "investigation",
+        workingDir: "/repo/project",
+        branch: "main",
+      });
+      expect(resolveWorkSetup(item, HOPPER_HOME)).toEqual({
+        type: "existing-dir",
+        dir: "/repo/project",
+      });
+    });
+
+    test("investigation items with no workingDir fall back to cwd", () => {
+      const item = makeItem({ type: "investigation" });
       expect(resolveWorkSetup(item, HOPPER_HOME)).toEqual({ type: "cwd" });
     });
 
@@ -366,6 +387,63 @@ describe("worker-workflow", () => {
     test("uses the provided hopperHome as the root", () => {
       const { auditDir } = resolveAuditPaths("some-id", "/custom/hopper");
       expect(auditDir).toBe("/custom/hopper/audit");
+    });
+  });
+
+  describe("resolveEngineeringAuditPaths", () => {
+    const ID = "abcdef12-0000-0000-0000-000000000000";
+
+    test("places all per-phase files under <hopperHome>/audit", () => {
+      const paths = resolveEngineeringAuditPaths(ID, HOPPER_HOME);
+      expect(paths.auditDir).toBe("/home/user/.hopper/audit");
+      expect(paths.planAuditFile).toBe(`/home/user/.hopper/audit/${ID}-plan.jsonl`);
+      expect(paths.executeAuditFile).toBe(`/home/user/.hopper/audit/${ID}-execute.jsonl`);
+      expect(paths.validateAuditFile).toBe(`/home/user/.hopper/audit/${ID}-validate.jsonl`);
+    });
+
+    test("plan markdown lives in audit dir, never the worktree", () => {
+      const { planFile, auditDir } = resolveEngineeringAuditPaths(ID, HOPPER_HOME);
+      expect(planFile.startsWith(auditDir)).toBe(true);
+      expect(planFile).toBe(`/home/user/.hopper/audit/${ID}-plan.md`);
+    });
+
+    test("result file is the same name the legacy task flow uses", () => {
+      const { resultFile } = resolveEngineeringAuditPaths(ID, HOPPER_HOME);
+      expect(resultFile).toBe(`/home/user/.hopper/audit/${ID}-result.md`);
+    });
+
+    test("respects a custom hopperHome", () => {
+      const { auditDir, planFile } = resolveEngineeringAuditPaths("id", "/opt/hopper");
+      expect(auditDir).toBe("/opt/hopper/audit");
+      expect(planFile).toBe("/opt/hopper/audit/id-plan.md");
+    });
+  });
+
+  describe("resolveAttemptAuditPath", () => {
+    const ID = "abcdef12-0000-0000-0000-000000000000";
+
+    test("attempt 1 uses the legacy name (no suffix)", () => {
+      expect(resolveAttemptAuditPath(ID, HOPPER_HOME, "execute", 1)).toBe(
+        `/home/user/.hopper/audit/${ID}-execute.jsonl`,
+      );
+      expect(resolveAttemptAuditPath(ID, HOPPER_HOME, "validate", 1)).toBe(
+        `/home/user/.hopper/audit/${ID}-validate.jsonl`,
+      );
+    });
+
+    test("attempt 0 also keeps the legacy name (caller treats unset as 1)", () => {
+      expect(resolveAttemptAuditPath(ID, HOPPER_HOME, "execute", 0)).toBe(
+        `/home/user/.hopper/audit/${ID}-execute.jsonl`,
+      );
+    });
+
+    test("attempts ≥ 2 append -N to the file name", () => {
+      expect(resolveAttemptAuditPath(ID, HOPPER_HOME, "execute", 2)).toBe(
+        `/home/user/.hopper/audit/${ID}-execute-2.jsonl`,
+      );
+      expect(resolveAttemptAuditPath(ID, HOPPER_HOME, "validate", 3)).toBe(
+        `/home/user/.hopper/audit/${ID}-validate-3.jsonl`,
+      );
     });
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { filterAndSortItems, formatItemList, itemTiming } from "./list-workflow.ts";
+import { filterAndSortItems, formatItemList, itemTiming, taskTypeBadge } from "./list-workflow.ts";
 import type { Item } from "./store.ts";
 
 function makeItem(overrides?: Partial<Item>): Item {
@@ -115,6 +115,44 @@ describe("filterAndSortItems", () => {
     }
   });
 
+  test("filters by task type (investigation)", () => {
+    const items = [
+      makeItem({ title: "Inv", type: "investigation" }),
+      makeItem({ title: "Eng", type: "engineering" }),
+      makeItem({ title: "Legacy" }),
+    ];
+
+    const result = filterAndSortItems(items, { mode: "default" }, undefined, [], "investigation");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]?.title).toBe("Inv");
+    }
+  });
+
+  test("filters by task type treats undefined as 'task' (legacy items)", () => {
+    const items = [
+      makeItem({ title: "Inv", type: "investigation" }),
+      makeItem({ title: "Legacy" }),
+    ];
+
+    const result = filterAndSortItems(items, { mode: "default" }, undefined, [], "task");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]?.title).toBe("Legacy");
+    }
+  });
+
+  test("rejects invalid type filter", () => {
+    const items = [makeItem()];
+    const result = filterAndSortItems(items, { mode: "default" }, undefined, [], "spike");
+
+    expect(result.ok).toBe(false);
+  });
+
   test("sorts by priority then creation time", () => {
     const older = makeItem({ priority: "normal", createdAt: "2025-01-01T00:00:00Z" });
     const newer = makeItem({ priority: "normal", createdAt: "2025-01-02T00:00:00Z" });
@@ -151,6 +189,38 @@ describe("formatItemList", () => {
 
     expect(output).toContain("...");
     expect(output).not.toContain("A".repeat(100));
+  });
+
+  test("renders [inv] badge for investigation items", () => {
+    const item = makeItem({ title: "My Task", type: "investigation" });
+    expect(formatItemList([item])).toContain("[inv]");
+  });
+
+  test("renders [eng] badge for engineering items", () => {
+    const item = makeItem({ title: "My Task", type: "engineering" });
+    expect(formatItemList([item])).toContain("[eng]");
+  });
+
+  test("omits type badge for legacy (undefined) items", () => {
+    const item = makeItem({ title: "My Task" });
+    const output = formatItemList([item]);
+    expect(output).not.toContain("[inv]");
+    expect(output).not.toContain("[eng]");
+  });
+});
+
+describe("taskTypeBadge", () => {
+  test("investigation -> [inv]", () => {
+    expect(taskTypeBadge("investigation")).toBe(" [inv]");
+  });
+  test("engineering -> [eng]", () => {
+    expect(taskTypeBadge("engineering")).toBe(" [eng]");
+  });
+  test("task -> empty", () => {
+    expect(taskTypeBadge("task")).toBe("");
+  });
+  test("undefined -> empty", () => {
+    expect(taskTypeBadge(undefined)).toBe("");
   });
 });
 

@@ -2,7 +2,7 @@
 name: hopper-coordinator
 description: Dispatch concrete, ready-to-execute work to background Claude Code agents via the hopper queue. Use this skill when the user wants to queue up substantive coding tasks for unattended processing in specific projects on their machine — not for planning, to-do tracking, or lightweight tasks.
 metadata:
-  version: "1.5.2"
+  version: "2.0.0"
   author: Stacey Vetzal
 ---
 
@@ -88,9 +88,12 @@ hopper add "<description>" --dir <project-path> --branch <branch-name>
 
 | Flag | Description |
 |------|-------------|
-| `--dir <path>` | Working directory for the task (requires `--branch` unless `--command` is set) |
-| `--branch <name>` | Git branch for the work (required with `--dir` unless `--command` is set) |
+| `--dir <path>` | Working directory for the task (requires `--branch` unless `--command` is set, or `--type investigation`) |
+| `--branch <name>` | Git branch for the work (required with `--dir` unless `--command` is set; not allowed with `--type investigation`) |
 | `--command <cmd>` | Shell command to run instead of Claude. Worker runs this command directly via `sh -c` |
+| `--type <type>` | Task type: `task` (default), `engineering` (phased: plan→execute→validate), `investigation` (read-only, markdown deliverable) |
+| `--agent <name>` | Force a specific craftsperson agent. For `--type engineering`, overrides auto-resolution; ignored for other types |
+| `--retries <n>` | Engineering-only: max execute→validate remediation attempts after an initial validate FAIL. Default 1, max 5, `0` disables remediation |
 | `--priority <level>` / `-p` | Set priority: `high`, `normal` (default), `low` |
 | `--tag <tag>` | Add a tag (repeatable: `--tag api --tag backend`) |
 | `--after <timespec>` | Schedule for later (e.g., `1h`, `30m`, `tomorrow 9am`) |
@@ -126,13 +129,47 @@ Since an autonomous agent will execute this work with no human oversight, descri
 2. **Work** — what specifically to do, with file paths and concrete details
 3. **Validation** — what commands must pass and what success looks like (e.g., "Run `bun test` and `bun run lint` — both must pass with zero errors")
 
-**Name a craftsperson agent when one fits naturally:**
+**Choosing a task type:**
 
-If the work maps cleanly to one of the language/framework craftsperson subagents (e.g. `uv-python-craftsperson` for a `uv`-managed Python project, `typescript-bun-cli-craftsperson` for a Bun CLI, `kotlin-android-craftsperson` for Android work, `elixir-phoenix-craftsperson` for Phoenix LiveView, etc.), include an instruction in the description telling the worker to use it — e.g. "Use the uv-python-craftsperson agent for implementation and the final quality-gate review." This gives the worker opinionated engineering standards (testing conventions, quality gates, documentation sync) for that stack.
+Hopper supports three task types, selected with `--type`:
 
-Do NOT force a craftsperson when none fits. Investigation-only items, shell-command items (`--command`), cross-cutting operational work, and tasks that don't match any available craftsperson should omit this entirely. A bad fit is worse than none.
+| `--type` | Use when | Deliverable | Branch / merge |
+|----------|----------|-------------|----------------|
+| `task` (default) | Standard coding work that fits in one Claude session | Merged commit on target branch | Worktree → commit → merge → push |
+| `engineering` | Work that benefits from explicit plan / execute / validate phases and a craftsperson agent | Merged commit on target branch, only after validate passes | `hopper-eng/<slug>-<prefix>` worktree → plan → execute → validate → commit → merge → push |
+| `investigation` | Open-ended questions where the deliverable is a written finding, not code | Markdown findings report stored as the item's `result` | No branch, no worktree — runs read-only in `--dir` |
 
-Quick heuristic: look at the project's primary language and runtime. If there's a craftsperson whose description matches the project's stack (Python/uv, Python/pip, TypeScript Bun CLI, TypeScript general, Kotlin Android, Kotlin server, Rust, Go, Java, C#, Swift, Ruby, Clojure, C++/Qt, Elixir, Elixir Phoenix) — name it. Otherwise, skip the instruction.
+Quick decision:
+- **Changing code** with a clear target branch → `task` or `engineering`. Use `engineering` when the work is substantial enough that plan→execute→validate genuinely pays off (complex refactors, non-trivial feature work, or when you want the extra safety of a dedicated validate phase). Use the default `task` for single-session work.
+- **Answering a question** with no code changes → `investigation`. Hopper won't create a worktree or branch; the agent runs with read-only tools and its final message becomes the `result`.
+
+**Engineering type specifics:**
+
+Engineering items run a multi-phase workflow with model assignments tuned per phase:
+
+1. **Plan** (opus, plan-mode, read-only tools) — emits a plan covering approach, files to touch, risks, and validation commands. Persisted to `~/.hopper/audit/<id>-plan.md` — never in the worktree.
+2. **Execute** (sonnet, with the resolved craftsperson agent, git mutations denied) — follows the plan and makes code changes.
+3. **Validate** (opus, read-only git, test/lint tools allowed) — runs the plan's validation commands, inspects the diff, emits `VALIDATE: PASS` or `VALIDATE: FAIL`.
+
+Hopper owns every git operation. The agent never commits, branches, or pushes — if validate passes, Hopper generates a commit message via Haiku from the diff summary and runs the commit / merge / push itself.
+
+**Remediation retries.** When validate reports `VALIDATE: FAIL`, Hopper loops back into execute with the prior execute summary and the validate failure inlined in the prompt, so the agent can target the regression rather than redoing working code. The cap is `--retries <n>` (default 1, max 5). `--retries 0` disables remediation — a first-pass validate FAIL terminates immediately with the worktree preserved. Each retry gets its own audit files: `<id>-execute-2.jsonl`, `<id>-validate-2.jsonl`, and so on; the first attempt keeps the legacy names (`<id>-execute.jsonl`, `<id>-validate.jsonl`).
+
+Per-phase audit files land under `~/.hopper/audit/<id>-{plan,execute,validate}.jsonl` alongside the usual `-result.md`. `hopper show <id>` renders a `Phases:` strip showing each attempt, e.g. `plan ✓ 34s / execute ✓ 2m11s / validate ✗ FAIL / execute ✓ 45s / validate ✓ 20s`.
+
+**Craftsperson agent auto-resolution:**
+
+When you add an engineering item with `--dir` but no `--agent`, Hopper probes the project for stack markers (`package.json`, `Cargo.toml`, `pyproject.toml`, etc.) and asks Haiku to pick the best-fitting craftsperson from `~/.claude/agents/` and `<project>/.claude/agents/`. The resolved name is stored on the item and visible in `hopper show`.
+
+Override the auto-pick with `--agent <name>` when you want a specific craftsperson. Pass `--agent` on a non-engineering item is a no-op — only the engineering execute phase consults it.
+
+If no craftsperson fits well, Hopper leaves `agent` unset and the execute phase runs with Claude's default — better no agent than a wrong one.
+
+**When to still hint a craftsperson in the description:**
+
+For `task`-type items the old guidance still applies: if the work maps cleanly to a craftsperson subagent (e.g. `uv-python-craftsperson` for a `uv`-managed Python project, `typescript-bun-cli-craftsperson` for a Bun CLI), include an instruction in the description telling the worker to use it. Engineering items resolve this automatically; `task` items don't.
+
+Do NOT force a craftsperson when none fits. Investigation items, shell-command items (`--command`), cross-cutting operational work, and tasks that don't match any available craftsperson should omit this entirely. A bad fit is worse than none.
 
 ### Listing Items
 
@@ -454,6 +491,53 @@ hopper add "Maintain hopper" \
 - Items targeting the same directory are serialized automatically — no chaining needed
 - Tag maintenance items consistently (e.g. `--tag maintenance`) for easy filtering
   with `hopper list --tag maintenance`
+
+### Engineering-type work (phased, auto-picked craftsperson)
+
+```bash
+# Hopper auto-picks the craftsperson from project markers + installed agents
+hopper add "Add a --quiet flag to the CLI that suppresses info-level output. \
+  Update src/cli.ts to accept the flag and thread it through to the logger. \
+  Add tests covering default and --quiet behaviours." \
+  --type engineering \
+  --dir ~/Work/Projects/Mojility/hopper \
+  --branch feat/quiet-flag
+
+# Force a specific craftsperson instead of auto-resolving
+hopper add "Refactor the request router to use a trie." \
+  --type engineering \
+  --agent rust-craftsperson \
+  --dir ~/Work/Projects/api \
+  --branch refactor/router-trie
+
+# Allow up to 3 remediation attempts on validate failure
+hopper add "Migrate the payment service from Moment to Temporal. Update date \
+  handling in src/payments.ts and all consumers; run tests and lint." \
+  --type engineering \
+  --dir ~/Work/Projects/api \
+  --branch refactor/temporal \
+  --retries 3
+
+# Strict single-shot — no remediation on validate failure
+hopper add "Bump lockfile and fix any resulting test breakage." \
+  --type engineering \
+  --dir ~/Work/Projects/api \
+  --branch chore/lockfile-bump \
+  --retries 0
+```
+
+Engineering items run plan → execute → validate; Hopper commits + merges only if validate reports `VALIDATE: PASS`. On failure the worktree + branch are preserved under `~/.hopper/worktrees/<id>` and `hopper-eng/<slug>-<prefix>` for inspection. Audit artefacts live at `~/.hopper/audit/<id>-{plan,execute,validate}.jsonl` plus `<id>-plan.md`.
+
+### Investigation-type work (read-only, markdown deliverable)
+
+```bash
+hopper add "Find every place in src/ that calls setTimeout without a paired clearTimeout, \
+  and summarise which look like real leaks vs. fire-and-forget timers." \
+  --type investigation \
+  --dir ~/Work/Projects/webapp
+```
+
+Investigation items never get a worktree or branch. The agent runs with read-only tools; its final markdown message becomes the item's `result` field, readable via `hopper show <id>`.
 
 ### Scheduled and recurring work
 

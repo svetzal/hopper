@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import type { Item } from "./store.ts";
+import type { Item, PhaseRecord } from "./store.ts";
 import {
   addTags,
+  appendPhase,
   cancel,
   claimNext,
   complete,
@@ -1033,5 +1034,106 @@ describe("prependItem", () => {
     prependItem(original, makeItem({ title: "New" }));
 
     expect(original).toHaveLength(1);
+  });
+});
+
+describe("appendPhase", () => {
+  function makePhase(overrides?: Partial<PhaseRecord>): PhaseRecord {
+    return {
+      name: "plan",
+      startedAt: "2026-04-12T10:00:00Z",
+      endedAt: "2026-04-12T10:00:30Z",
+      exitCode: 0,
+      ...overrides,
+    };
+  }
+
+  test("returns changed: false when the item is not found", () => {
+    const items = [makeItem()];
+    const result = appendPhase(items, "non-existent-id", makePhase());
+    expect(result.changed).toBe(false);
+    expect(result.items).toBe(items);
+  });
+
+  test("appends the first phase record to an item with no phases", () => {
+    const item = makeItem();
+    const phase = makePhase();
+    const result = appendPhase([item], item.id, phase);
+    expect(result.changed).toBe(true);
+    const updated = result.items.find((i) => i.id === item.id);
+    expect(updated?.phases).toEqual([phase]);
+  });
+
+  test("appends additional phases in insertion order", () => {
+    const item = makeItem();
+    const plan = makePhase({ name: "plan" });
+    const execute = makePhase({ name: "execute" });
+    const firstPass = appendPhase([item], item.id, plan);
+    const secondPass = appendPhase(firstPass.items, item.id, execute);
+
+    const updated = secondPass.items.find((i) => i.id === item.id);
+    expect(updated?.phases?.map((p) => p.name)).toEqual(["plan", "execute"]);
+  });
+
+  test("replaces an existing record when the same {name, attempt} is recorded again", () => {
+    const item = makeItem();
+    const first = makePhase({ name: "plan", exitCode: 1 });
+    const retry = makePhase({
+      name: "plan",
+      exitCode: 0,
+      startedAt: "2026-04-12T11:00:00Z",
+      endedAt: "2026-04-12T11:00:20Z",
+    });
+
+    const afterFirst = appendPhase([item], item.id, first);
+    const afterRetry = appendPhase(afterFirst.items, item.id, retry);
+
+    const updated = afterRetry.items.find((i) => i.id === item.id);
+    expect(updated?.phases).toHaveLength(1);
+    expect(updated?.phases?.[0]?.exitCode).toBe(0);
+    expect(updated?.phases?.[0]?.startedAt).toBe("2026-04-12T11:00:00Z");
+  });
+
+  test("keeps both records when same phase name is recorded at different attempts", () => {
+    const item = makeItem();
+    const first = makePhase({ name: "execute", attempt: 1, exitCode: 0 });
+    const second = makePhase({ name: "execute", attempt: 2, exitCode: 0 });
+
+    const afterFirst = appendPhase([item], item.id, first);
+    const afterSecond = appendPhase(afterFirst.items, item.id, second);
+
+    const updated = afterSecond.items.find((i) => i.id === item.id);
+    expect(updated?.phases).toHaveLength(2);
+    expect(updated?.phases?.map((p) => p.attempt)).toEqual([1, 2]);
+  });
+
+  test("treats missing attempt as attempt 1 for dedup purposes", () => {
+    const item = makeItem();
+    const implicit = makePhase({ name: "execute" }); // attempt implicitly 1
+    const explicit = makePhase({ name: "execute", attempt: 1, exitCode: 5 });
+
+    const afterFirst = appendPhase([item], item.id, implicit);
+    const afterSecond = appendPhase(afterFirst.items, item.id, explicit);
+
+    const updated = afterSecond.items.find((i) => i.id === item.id);
+    expect(updated?.phases).toHaveLength(1);
+    expect(updated?.phases?.[0]?.exitCode).toBe(5);
+  });
+
+  test("does not mutate the input items array", () => {
+    const item = makeItem();
+    const items = [item];
+    const original = [...items];
+    appendPhase(items, item.id, makePhase());
+    expect(items).toEqual(original);
+    expect(items[0]?.phases).toBeUndefined();
+  });
+
+  test("preserves other items in the array untouched", () => {
+    const a = makeItem({ title: "A" });
+    const b = makeItem({ title: "B" });
+    const result = appendPhase([a, b], b.id, makePhase());
+    expect(result.items.find((i) => i.id === a.id)).toBe(a);
+    expect(result.items.find((i) => i.id === b.id)?.phases).toHaveLength(1);
   });
 });

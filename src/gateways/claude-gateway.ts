@@ -1,8 +1,12 @@
 // Note: ClaudeGateway wraps the `claude` CLI process and is not unit-tested
 // directly, as doing so requires the claude binary to be installed. Its core
-// logic (JSONL result extraction) is tested via extract-result.test.ts, and
-// integration behaviour is covered by worker-workflow tests.
+// logic (JSONL result extraction and argv construction) is tested via
+// extract-result.test.ts and claude-argv.test.ts, and integration behaviour
+// is covered by worker-workflow tests.
 import { extractResult } from "../extract-result.ts";
+import { buildClaudeArgv, type ClaudeSessionOptions } from "./claude-argv.ts";
+
+export type { ClaudeSessionOptions };
 
 function resolveClaudeBin(): string {
   const resolved = Bun.which("claude");
@@ -19,8 +23,19 @@ export interface ClaudeGateway {
     prompt: string,
     cwd: string,
     auditFile: string,
-    options?: { append?: boolean },
+    options?: ClaudeSessionOptions,
   ): Promise<{ exitCode: number; result: string }>;
+  /**
+   * One-shot text generation via `claude --print` with no tools and no
+   * permissions. Intended for cheap Haiku calls where Hopper itself needs a
+   * string (branch slug, commit message, agent selection) — never for agentic
+   * work.
+   */
+  generateText(
+    prompt: string,
+    model: string,
+    options?: { cwd?: string; appendSystemPrompt?: string },
+  ): Promise<{ exitCode: number; text: string }>;
 }
 
 /**
@@ -76,23 +91,13 @@ async function runSession(
   prompt: string,
   cwd: string,
   auditFile: string,
-  { append = false }: { append?: boolean } = {},
+  options: ClaudeSessionOptions = {},
 ): Promise<{ exitCode: number; result: string }> {
-  const proc = Bun.spawn(
-    [
-      resolveClaudeBin(),
-      "--print",
-      "--verbose",
-      "--dangerously-skip-permissions",
-      "--output-format",
-      "stream-json",
-      prompt,
-    ],
-    { cwd, stdout: "pipe", stderr: "pipe" },
-  );
+  const argv = buildClaudeArgv(resolveClaudeBin(), prompt, options);
+  const proc = Bun.spawn(argv, { cwd, stdout: "pipe", stderr: "pipe" });
 
   let preamble = "";
-  if (append) {
+  if (options.append) {
     const existing = await Bun.file(auditFile)
       .text()
       .catch(() => "");
@@ -121,6 +126,41 @@ async function runSession(
   return { exitCode, result: extractResult(output) };
 }
 
+async function generateText(
+  prompt: string,
+  model: string,
+  options: { cwd?: string; appendSystemPrompt?: string } = {},
+): Promise<{ exitCode: number; text: string }> {
+  // Plain text output, no tools, no permissions. Just a model speaking to itself.
+  const argv = [
+    resolveClaudeBin(),
+    "--print",
+    "--dangerously-skip-permissions",
+    "--model",
+    model,
+    "--tools",
+    "",
+  ];
+  if (options.appendSystemPrompt) {
+    argv.push("--append-system-prompt", options.appendSystemPrompt);
+  }
+  argv.push(prompt);
+
+  const proc = Bun.spawn(argv, {
+    cwd: options.cwd ?? process.cwd(),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  const [stdout, _stderr] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+
+  const exitCode = await proc.exited;
+  return { exitCode, text: stdout.trim() };
+}
+
 export function createClaudeGateway(): ClaudeGateway {
-  return { runSession };
+  return { runSession, generateText };
 }

@@ -4,12 +4,14 @@ import {
   resolveDependencies,
   resolveScheduling,
   validateDirBranch,
+  validateRetries,
+  validateTaskType,
   validateTimesSpec,
 } from "../add-workflow.ts";
 import type { ParsedArgs } from "../cli.ts";
 import { stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
-import { Status } from "../constants.ts";
+import { Status, TaskType } from "../constants.ts";
 import { shortId } from "../format.ts";
 import { findPreset } from "../presets.ts";
 import type { Priority } from "../priority.ts";
@@ -18,10 +20,25 @@ import { addItem, loadItems } from "../store.ts";
 import { mergeTags, normalizeTags, tagBadge } from "../tags.ts";
 import type { TitleGenerator } from "../titler.ts";
 
+/**
+ * Optional callback that resolves a craftsperson agent for an engineering
+ * item. Called only when `--type engineering` is set, `--agent` is not, and
+ * the item has a working directory to probe for project markers.
+ *
+ * Returns `null` when no suitable agent exists — the item is then enqueued
+ * with no agent, and the worker runs the execute phase with Claude's default.
+ */
+export type AgentResolver = (input: {
+  title: string;
+  description: string;
+  workingDir: string;
+}) => Promise<string | null>;
+
 export async function addCommand(
   parsed: ParsedArgs,
   titler: TitleGenerator,
   readStdin: () => Promise<string> = () => new Response(Bun.stdin.stream()).text(),
+  resolveAgent?: AgentResolver,
 ): Promise<CommandResult> {
   // 1. Resolve preset (I/O)
   const presetName = stringFlag(parsed, "preset");
@@ -57,8 +74,37 @@ export async function addCommand(
   const branch = stringFlag(parsed, "branch") ?? preset?.branch;
   const command = stringFlag(parsed, "command") ?? preset?.command;
 
-  // 6. Validate dir/branch combination
-  const dirBranchError = validateDirBranch(dir, branch, command);
+  // 5a. Resolve and validate task type + agent
+  const typeResult = validateTaskType(stringFlag(parsed, "type") ?? preset?.type);
+  if ("error" in typeResult) {
+    return { status: "error", message: formatValidationError(typeResult.error) };
+  }
+  const type = typeResult.value;
+  let agent = stringFlag(parsed, "agent") ?? preset?.agent;
+
+  // Parse --retries. Preset fallback is an already-validated integer, so we
+  // only need to validate the CLI string form.
+  const retriesRaw = stringFlag(parsed, "retries");
+  const retriesResult = validateRetries(retriesRaw);
+  if ("error" in retriesResult) {
+    return { status: "error", message: formatValidationError(retriesResult.error) };
+  }
+  const retries = retriesResult.value ?? preset?.retries;
+
+  // Auto-resolve a craftsperson for engineering items when the caller didn't
+  // pin one explicitly. Failures are swallowed — a missing agent is always
+  // preferable to a wrong one, and the worker runs fine without.
+  if (!agent && type === TaskType.ENGINEERING && dir && resolveAgent) {
+    try {
+      const resolved = await resolveAgent({ title, description, workingDir: dir });
+      if (resolved) agent = resolved;
+    } catch {
+      // best-effort
+    }
+  }
+
+  // 6. Validate dir/branch combination (accounting for task type)
+  const dirBranchError = validateDirBranch(dir, branch, command, type);
   if (dirBranchError) {
     return { status: "error", message: formatValidationError(dirBranchError) };
   }
@@ -140,6 +186,9 @@ export async function addCommand(
     recurrence: schedulingResult.recurrence,
     dependsOn,
     tags,
+    type,
+    agent,
+    retries,
   });
 
   // 13. Save item (I/O)
