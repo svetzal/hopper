@@ -161,11 +161,17 @@ Shows all fields: description, status, timestamps, agent info, result, tags, dep
 
 When an item has been in-progress suspiciously long (or a user asks "how is task X doing?"), don't guess. Check the audit log *first*. Only then look at processes. An IN_PROGRESS status in `hopper show` does not tell you whether the worker is actively making progress — the audit log does.
 
+**How audit streaming works:**
+
+Hopper streams each JSONL line from the claude subprocess to the audit file immediately as it arrives — events appear on disk within seconds of being emitted, not at session end. This means you can watch the file grow in real time as a liveness signal.
+
+However, the audit file only reflects what the claude CLI itself has emitted. If Claude is thinking, waiting for a tool response, or processing a large response from a subagent, it may not emit events for minutes at a time even when healthy. Silence in the audit file during these periods is **not** proof of a hang — it is normal behavior. A genuine hang produces no new events for a sustained period (e.g., 10–15+ minutes) combined with a process in an unexpected state.
+
 **Key files per task:**
 
 | Path | Contents |
 |------|----------|
-| `~/.hopper/audit/<full-id>-audit.jsonl` | Every Claude session event: tool calls, thinking, user/assistant turns, hook runs. This is the primary signal. |
+| `~/.hopper/audit/<full-id>-audit.jsonl` | Every Claude session event: tool calls, thinking, user/assistant turns, hook runs. Events appear on disk as they stream from Claude — this is the primary liveness signal. |
 | `~/.hopper/audit/<full-id>-result.md` | Final result written by the worker on completion. Present even if session ended early — may say "see audit log for details". |
 | `~/.hopper/worktrees/<full-id>/` | Git worktree the worker operated in. Useful for finding partial changes. |
 | `~/.hopper/items.json` | Full queue state, one JSON array at top level (NOT `.items[]`). Query with `jq '.[] | select(.id | startswith("<prefix>"))'`. |
@@ -180,7 +186,7 @@ grep -o '"command":"[^"]*"' ~/.hopper/audit/<full-id>-audit.jsonl \
   | tail -10                                        # Last shell commands attempted
 ```
 
-A session with zero audit events hung before doing real work (startup/MCP/hook problem). A session with hundreds of events then silence usually hit a runaway tool output, a stuck subagent, or an oversized response mid-stream.
+A session with zero audit events (or an audit file that has not grown in 10–15+ minutes) hung before doing real work, or is stuck between events in Claude's internal processing. A session with hundreds of events then silence usually hit a runaway tool output, a stuck subagent, or an oversized response mid-stream.
 
 **Step 2 — decode the tail in context.**
 
