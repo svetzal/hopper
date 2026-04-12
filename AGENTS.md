@@ -104,7 +104,18 @@ To create a new release:
 5. Commit all changes with message: `Release vX.Y.Z`
 6. Tag the commit: `git tag vX.Y.Z`
 7. Push: `git push origin main --tags`
-8. Install locally without waiting for Homebrew: `bun run build && cp build/hopper /usr/local/bin/hopper`
+8. Install locally without waiting for Homebrew:
+
+   ```bash
+   bun run build
+   mkdir -p ~/.local/bin
+   cp build/hopper ~/.local/bin/hopper
+   codesign --force --sign - ~/.local/bin/hopper
+   ```
+
+   **Always install to `~/.local/bin/hopper`** — never to a Homebrew-managed path like `/opt/homebrew/bin/hopper` or `/usr/local/bin/hopper`, which would stomp on the brew-installed binary and break brew's state. Make sure `~/.local/bin` sits ahead of the Homebrew bin directory in your `PATH` so this install wins over the released version. `which hopper` should report `~/.local/bin/hopper`; if it reports a Homebrew path instead, fix your `PATH` ordering rather than installing elsewhere.
+
+   **The `codesign --force --sign -` step is required on macOS.** Bun's `--compile` embeds an ad-hoc signature that becomes invalid once the file is copied (macOS attaches a `com.apple.provenance` xattr on copy, which desyncs the embedded hash). Without an ad-hoc re-sign, the kernel SIGKILLs the process on launch with no useful error — you just see `[1] <pid> killed hopper ...`. Verify with `codesign --verify --verbose=2 ~/.local/bin/hopper`.
 
 CI does the rest automatically on tag push:
 - Runs tests and type-check
