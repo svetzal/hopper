@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Coordinator skill now includes guidance on naming craftsperson subagents in work item descriptions for stack-specific engineering standards
+- Revise failure-mode guidance: remove speculative frequency-ranked table, replace with signal-based bullet list
 
 ## [1.5.2] - 2026-04-11
 

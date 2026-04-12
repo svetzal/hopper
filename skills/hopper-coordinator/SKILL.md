@@ -212,15 +212,16 @@ pgrep -P <claude-pid>                                   # Children of the Claude
 
 **Do not over-interpret process state.** `S` and `S+` just mean "sleeping (foreground)" — this is the default state for almost any interactive process between ticks of work. It does NOT mean "hung". A normally-running Claude session looks exactly like a hung one in `ps`. **Always corroborate with the audit log before diagnosing a hang.** An active session writes new events every few seconds to minutes; a stuck session writes none for a long stretch despite elapsed runtime.
 
-**Common failure modes and what they look like:**
+**Signals to look for and possible interpretations:**
 
-| Signal | Likely cause |
-|--------|--------------|
-| Worktree exists, no audit file, no audit events, ~7+ hour elapsed | Claude binary itself failed to initialize — check hopper worker stdout for errors. Rare. |
-| Audit file exists with 5-20 events then silence, last event is `hook_response` or `init` | Startup hook or MCP server blocked post-init. Less common than people assume. |
-| Dozens-to-hundreds of events then silence, last event is a tool_use (often Bash with a large scan or a very long Read) | Tool output was too large, stream processing stalled. Most common real cause. |
-| Last event is `task_started` with no follow-up | Subagent (Task) hung. The subagent child of the Claude session is doing its own thing and got stuck there. |
-| Orphaned `npm exec` or `node` children with MCP in the command line, elapsed time matches session | MCP servers running but parent Claude is blocked elsewhere. Killing them won't unstick the parent unless MCP I/O was the blocker, which is rarely the case post-init. |
+These are possibilities to investigate, not rankings — I haven't measured how often each occurs. Let the evidence in the specific audit log guide diagnosis.
+
+- **No audit file exists at all** — the Claude binary didn't get far enough to write anything. Check the `hopper worker` parent process's stdout/stderr for errors.
+- **Audit file has only startup events** (`SessionStart`, `hook_response`, `init`) then silence — something blocked right after initialization. Could be a startup hook, an MCP server that couldn't complete its handshake, or the session failing to receive its first task prompt.
+- **Audit log has substantive work then goes quiet** — look at the last tool_use. If the `input` contains a potentially large operation (full-table scan, unbounded Glob, long Read of a binary/huge file), the response may have stalled stream processing. If the last event is a `system` of subtype `task_started` with no follow-up, a subagent (Task tool) may be the thing that's hung rather than the outer session.
+- **Orphaned MCP children (`npm exec`, `node`) with elapsed times matching the session** — the MCP servers are alive. Whether they're *the* blocker requires corroborating evidence in the audit log (e.g. a tool_use of an MCP tool with no tool_result). Killing MCP children without that evidence is speculative.
+
+Don't pattern-match too aggressively. Read the specific audit log, note what it tells you, and say what you see — not what you'd guess is typical.
 
 **Step 4 — report to the user with specifics, not guesses.**
 
