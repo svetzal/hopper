@@ -19,6 +19,7 @@ import { priorityBadge, safeParsePriority } from "../priority.ts";
 import { addItem, loadItems } from "../store.ts";
 import { mergeTags, normalizeTags, tagBadge } from "../tags.ts";
 import type { TitleGenerator } from "../titler.ts";
+import { withStoreError } from "./with-store-error.ts";
 
 /**
  * Optional callback that resolves a craftsperson agent for an engineering
@@ -40,6 +41,7 @@ export async function addCommand(
   readStdin: () => Promise<string> = () => new Response(Bun.stdin.stream()).text(),
   resolveAgent?: AgentResolver,
 ): Promise<CommandResult> {
+  return withStoreError(async () => {
   // 1. Resolve preset (I/O)
   const presetName = stringFlag(parsed, "preset");
   let preset: Awaited<ReturnType<typeof findPreset>>;
@@ -216,4 +218,5 @@ export async function addCommand(
     humanOutput,
     ...(warnings.length > 0 ? { warnings } : {}),
   };
+  });
 }
