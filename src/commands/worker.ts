@@ -537,6 +537,41 @@ export async function commitEngineeringChanges(
   return { dirty };
 }
 
+export async function teardownMergeAndComplete(
+  item: ClaimedItem,
+  agentName: string,
+  worktreePath: string,
+  workBranch: string,
+  dirty: boolean,
+  planText: string,
+  executeResults: readonly string[],
+  validateResults: readonly string[],
+  paths: EngineeringAuditPaths,
+  deps: { git: GitGateway; fs: FsGateway },
+  log: LogFn,
+): Promise<void> {
+  const { git, fs } = deps;
+  await teardownWorktree(git, item.workingDir as string, worktreePath, log);
+
+  let mergeNote = "";
+  if (dirty) {
+    mergeNote = await mergeAndPush(git, item, workBranch, log);
+  }
+
+  const combined = buildEngineeringTranscript(planText, executeResults, validateResults);
+  const finalResult = combined + mergeNote;
+  await fs.writeFile(paths.resultFile, finalResult);
+
+  log("Marking item complete...");
+  const { completed, recurred } = await completeItem(item.claimToken, agentName, finalResult);
+  log(`Completed: ${completed.title}`);
+  if (recurred) {
+    log(
+      `Re-queued: ${completed.title} (next run: ${recurred.scheduledAt ? new Date(recurred.scheduledAt).toLocaleString() : "unknown"})`,
+    );
+  }
+}
+
 async function processEngineeringItem(
   item: ClaimedItem,
   agentName: string,
@@ -610,31 +645,21 @@ async function processEngineeringItem(
     // --- Commit (Hopper + Haiku) -----------------------------------------
     const { dirty } = await commitEngineeringChanges(item, worktreePath, { git, claude }, log);
 
-    // --- Worktree teardown + merge/push ----------------------------------
-    await teardownWorktree(git, item.workingDir, worktreePath, log);
-    worktreeLivePath = undefined;
-
-    let mergeNote = "";
-    if (dirty) {
-      mergeNote = await mergeAndPush(git, item, workBranch, log);
-    }
-
-    const combined = buildEngineeringTranscript(
+    // --- Worktree teardown + merge/push + complete -----------------------
+    await teardownMergeAndComplete(
+      item,
+      agentName,
+      worktreePath,
+      workBranch,
+      dirty,
       planText,
       loopResult.executeResults,
       loopResult.validateResults,
+      paths,
+      { git, fs },
+      log,
     );
-    const finalResult = combined + mergeNote;
-    await fs.writeFile(paths.resultFile, finalResult);
-
-    log("Marking item complete...");
-    const { completed, recurred } = await completeItem(item.claimToken, agentName, finalResult);
-    log(`Completed: ${completed.title}`);
-    if (recurred) {
-      log(
-        `Re-queued: ${completed.title} (next run: ${recurred.scheduledAt ? new Date(recurred.scheduledAt).toLocaleString() : "unknown"})`,
-      );
-    }
+    worktreeLivePath = undefined;
   } finally {
     // Only tear down if the flow didn't already clean up the worktree. A live
     // path here means we aborted mid-flight; the worktree may be in an
