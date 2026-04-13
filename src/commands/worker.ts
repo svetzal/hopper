@@ -398,6 +398,124 @@ export async function runPlanPhase(
   return { planText };
 }
 
+interface ExecuteValidateResult {
+  passed: boolean;
+  reason: string;
+  executeResults: readonly string[];
+  validateResults: readonly string[];
+}
+
+export async function runExecuteValidateLoop(
+  item: ClaimedItem,
+  worktreePath: string,
+  planText: string,
+  paths: EngineeringAuditPaths,
+  hopperHome: string,
+  deps: { claude: ClaudeGateway; fs: FsGateway },
+  log: LogFn,
+): Promise<ExecuteValidateResult> {
+  const { claude, fs } = deps;
+  // One execute → validate attempt, then up to `maxRetries` remediation
+  // attempts when validate reports FAIL. Each attempt writes its own
+  // per-attempt audit file and records phase entries so `hopper show`
+  // reflects progress in real time.
+  const maxRetries = item.retries ?? 1;
+  const maxAttempts = 1 + maxRetries;
+  let attempt = 0;
+  let outcome: { passed: boolean; reason: string } = { passed: false, reason: "not run" };
+  const executeResults: string[] = [];
+  const validateResults: string[] = [];
+
+  while (attempt < maxAttempts) {
+    attempt += 1;
+
+    // --- Execute (initial or remediation) ---------------------------------
+    const executeAuditPath = resolveAttemptAuditPath(item.id, hopperHome, "execute", attempt);
+    const isRemediation = attempt > 1;
+    log(
+      `Execute phase attempt ${attempt}/${maxAttempts} (sonnet${
+        item.agent ? `, agent: ${item.agent}` : ""
+      }${isRemediation ? ", remediation" : ""})...\nAudit log: ${executeAuditPath}`,
+    );
+    const executePrompt = isRemediation
+      ? buildExecuteRemediationPrompt(
+          item,
+          planText,
+          executeResults[executeResults.length - 1] ?? "",
+          validateResults[validateResults.length - 1] ?? "",
+          attempt,
+        )
+      : buildExecutePrompt(item, planText);
+    const executeStartedAt = new Date().toISOString();
+    const executeRun = await claude.runSession(
+      executePrompt,
+      worktreePath,
+      executeAuditPath,
+      buildExecuteOptions(item.agent),
+    );
+    executeResults.push(executeRun.result);
+    await safeRecordPhase(item.id, {
+      name: "execute",
+      startedAt: executeStartedAt,
+      endedAt: new Date().toISOString(),
+      exitCode: executeRun.exitCode,
+      attempt,
+    });
+    if (executeRun.exitCode !== 0) {
+      const msg = `Execute phase attempt ${attempt} failed (exit ${executeRun.exitCode}); worktree + branch preserved.`;
+      log(msg);
+      await fs.writeFile(
+        paths.resultFile,
+        buildEngineeringFailureResult(planText, executeResults, validateResults, msg),
+      );
+      return { passed: false, reason: msg, executeResults, validateResults };
+    }
+
+    // --- Validate ----------------------------------------------------------
+    const validateAuditPath = resolveAttemptAuditPath(item.id, hopperHome, "validate", attempt);
+    log(
+      `Validate phase attempt ${attempt}/${maxAttempts} (opus, read-only git)...\nAudit log: ${validateAuditPath}`,
+    );
+    const validateStartedAt = new Date().toISOString();
+    const validateRun = await claude.runSession(
+      buildValidatePrompt(item, planText),
+      worktreePath,
+      validateAuditPath,
+      buildValidateOptions(),
+    );
+    validateResults.push(validateRun.result);
+    outcome = resolveValidateOutcome(validateRun.exitCode, validateRun.result);
+    await safeRecordPhase(item.id, {
+      name: "validate",
+      startedAt: validateStartedAt,
+      endedAt: new Date().toISOString(),
+      exitCode: validateRun.exitCode,
+      passed: outcome.passed,
+      attempt,
+    });
+
+    if (outcome.passed) break;
+
+    if (attempt < maxAttempts) {
+      log(
+        `Validate attempt ${attempt} did not pass (${outcome.reason}); remediating (attempt ${attempt + 1}/${maxAttempts})...`,
+      );
+    }
+  }
+
+  if (!outcome.passed) {
+    const msg = `Validate did not pass after ${attempt}/${maxAttempts} attempt(s) (${outcome.reason}); worktree + branch preserved.`;
+    log(msg);
+    await fs.writeFile(
+      paths.resultFile,
+      buildEngineeringFailureResult(planText, executeResults, validateResults, msg),
+    );
+    return { passed: false, reason: outcome.reason, executeResults, validateResults };
+  }
+
+  return { passed: true, reason: outcome.reason, executeResults, validateResults };
+}
+
 async function processEngineeringItem(
   item: ClaimedItem,
   agentName: string,
@@ -457,108 +575,16 @@ async function processEngineeringItem(
     const { planText } = planResult;
 
     // --- Execute / Validate loop ----------------------------------------
-    //
-    // One execute → validate attempt, then up to `maxRetries` remediation
-    // attempts when validate reports FAIL. Each attempt writes its own
-    // per-attempt audit file and records phase entries so `hopper show`
-    // reflects progress in real time.
-    const maxRetries = item.retries ?? 1;
-    const maxAttempts = 1 + maxRetries;
-    let attempt = 0;
-    let executeRun: { exitCode: number; result: string } = { exitCode: 0, result: "" };
-    let validateRun: { exitCode: number; result: string } = { exitCode: 0, result: "" };
-    let outcome: { passed: boolean; reason: string } = { passed: false, reason: "not run" };
-    // Transcript of every attempt, preserved for the result file + requeue
-    // reasoning. Remediation prompts consult only the most recent pair.
-    const executeResults: string[] = [];
-    const validateResults: string[] = [];
-
-    while (attempt < maxAttempts) {
-      attempt += 1;
-
-      // --- Execute (initial or remediation) -----------------------------
-      const executeAuditPath = resolveAttemptAuditPath(item.id, hopperHome, "execute", attempt);
-      const isRemediation = attempt > 1;
-      log(
-        `Execute phase attempt ${attempt}/${maxAttempts} (sonnet${
-          item.agent ? `, agent: ${item.agent}` : ""
-        }${isRemediation ? ", remediation" : ""})...\nAudit log: ${executeAuditPath}`,
-      );
-      const executePrompt = isRemediation
-        ? buildExecuteRemediationPrompt(
-            item,
-            planText,
-            executeResults[executeResults.length - 1] ?? "",
-            validateResults[validateResults.length - 1] ?? "",
-            attempt,
-          )
-        : buildExecutePrompt(item, planText);
-      const executeStartedAt = new Date().toISOString();
-      executeRun = await claude.runSession(
-        executePrompt,
-        worktreePath,
-        executeAuditPath,
-        buildExecuteOptions(item.agent),
-      );
-      executeResults.push(executeRun.result);
-      await safeRecordPhase(item.id, {
-        name: "execute",
-        startedAt: executeStartedAt,
-        endedAt: new Date().toISOString(),
-        exitCode: executeRun.exitCode,
-        attempt,
-      });
-      if (executeRun.exitCode !== 0) {
-        const msg = `Execute phase attempt ${attempt} failed (exit ${executeRun.exitCode}); worktree + branch preserved.`;
-        log(msg);
-        await fs.writeFile(
-          paths.resultFile,
-          buildEngineeringFailureResult(planText, executeResults, validateResults, msg),
-        );
-        return;
-      }
-
-      // --- Validate -----------------------------------------------------
-      const validateAuditPath = resolveAttemptAuditPath(item.id, hopperHome, "validate", attempt);
-      log(
-        `Validate phase attempt ${attempt}/${maxAttempts} (opus, read-only git)...\nAudit log: ${validateAuditPath}`,
-      );
-      const validateStartedAt = new Date().toISOString();
-      validateRun = await claude.runSession(
-        buildValidatePrompt(item, planText),
-        worktreePath,
-        validateAuditPath,
-        buildValidateOptions(),
-      );
-      validateResults.push(validateRun.result);
-      outcome = resolveValidateOutcome(validateRun.exitCode, validateRun.result);
-      await safeRecordPhase(item.id, {
-        name: "validate",
-        startedAt: validateStartedAt,
-        endedAt: new Date().toISOString(),
-        exitCode: validateRun.exitCode,
-        passed: outcome.passed,
-        attempt,
-      });
-
-      if (outcome.passed) break;
-
-      if (attempt < maxAttempts) {
-        log(
-          `Validate attempt ${attempt} did not pass (${outcome.reason}); remediating (attempt ${attempt + 1}/${maxAttempts})...`,
-        );
-      }
-    }
-
-    if (!outcome.passed) {
-      const msg = `Validate did not pass after ${attempt}/${maxAttempts} attempt(s) (${outcome.reason}); worktree + branch preserved.`;
-      log(msg);
-      await fs.writeFile(
-        paths.resultFile,
-        buildEngineeringFailureResult(planText, executeResults, validateResults, msg),
-      );
-      return;
-    }
+    const loopResult = await runExecuteValidateLoop(
+      item,
+      worktreePath,
+      planText,
+      paths,
+      hopperHome,
+      { claude, fs },
+      log,
+    );
+    if (!loopResult.passed) return;
 
     // --- Commit (Hopper + Haiku) -----------------------------------------
     const dirty = await git.isWorktreeDirty(worktreePath);
@@ -583,7 +609,11 @@ async function processEngineeringItem(
       mergeNote = await mergeAndPush(git, item, workBranch, log);
     }
 
-    const combined = buildEngineeringTranscript(planText, executeResults, validateResults);
+    const combined = buildEngineeringTranscript(
+      planText,
+      loopResult.executeResults,
+      loopResult.validateResults,
+    );
     const finalResult = combined + mergeNote;
     await fs.writeFile(paths.resultFile, finalResult);
 
