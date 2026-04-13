@@ -516,6 +516,27 @@ export async function runExecuteValidateLoop(
   return { passed: true, reason: outcome.reason, executeResults, validateResults };
 }
 
+export async function commitEngineeringChanges(
+  item: Item,
+  worktreePath: string,
+  deps: { git: GitGateway; claude: ClaudeGateway },
+  log: LogFn,
+): Promise<{ dirty: boolean }> {
+  const { git, claude } = deps;
+  const dirty = await git.isWorktreeDirty(worktreePath);
+  if (dirty) {
+    log("Generating commit message...");
+    const diff = await git.diffSummary(worktreePath);
+    const commitMsg = await resolveEngineeringCommitMessage(claude, item, diff);
+    log("Committing changes...");
+    await git.commitAll(worktreePath, commitMsg);
+    log("Committed.");
+  } else {
+    log("No worktree changes to commit.");
+  }
+  return { dirty };
+}
+
 async function processEngineeringItem(
   item: ClaimedItem,
   agentName: string,
@@ -587,18 +608,7 @@ async function processEngineeringItem(
     if (!loopResult.passed) return;
 
     // --- Commit (Hopper + Haiku) -----------------------------------------
-    const dirty = await git.isWorktreeDirty(worktreePath);
-    let commitMsg: string | undefined;
-    if (dirty) {
-      log("Generating commit message...");
-      const diff = await git.diffSummary(worktreePath);
-      commitMsg = await resolveEngineeringCommitMessage(claude, item, diff);
-      log("Committing changes...");
-      await git.commitAll(worktreePath, commitMsg);
-      log("Committed.");
-    } else {
-      log("No worktree changes to commit.");
-    }
+    const { dirty } = await commitEngineeringChanges(item, worktreePath, { git, claude }, log);
 
     // --- Worktree teardown + merge/push ----------------------------------
     await teardownWorktree(git, item.workingDir, worktreePath, log);
