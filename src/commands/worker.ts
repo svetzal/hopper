@@ -39,6 +39,7 @@ import {
 import {
   buildCommitMessage,
   buildTaskPrompt,
+  type EngineeringAuditPaths,
   resolveAttemptAuditPath,
   resolveAuditPaths,
   resolveAutoRequeue,
@@ -362,6 +363,41 @@ async function resolveEngineeringCommitMessage(
   return item.title;
 }
 
+export async function runPlanPhase(
+  item: Item,
+  worktreePath: string,
+  paths: EngineeringAuditPaths,
+  deps: { claude: ClaudeGateway; fs: FsGateway },
+  log: LogFn,
+): Promise<{ planText: string } | null> {
+  const { claude, fs } = deps;
+  log(`Plan phase (opus, plan mode, read-only)...\nAudit log: ${paths.planAuditFile}`);
+  const planPrompt = buildPlanPrompt(item);
+  const planStartedAt = new Date().toISOString();
+  const planRun = await claude.runSession(
+    planPrompt,
+    worktreePath,
+    paths.planAuditFile,
+    buildPlanOptions(),
+  );
+  const planText = planRun.result.trim();
+  await safeRecordPhase(item.id, {
+    name: "plan",
+    startedAt: planStartedAt,
+    endedAt: new Date().toISOString(),
+    exitCode: planRun.exitCode,
+  });
+  if (planRun.exitCode !== 0 || !planText) {
+    const msg = `Plan phase failed (exit ${planRun.exitCode}); worktree + branch preserved for inspection.`;
+    log(msg);
+    await fs.writeFile(paths.resultFile, `${planRun.result}\n\n${msg}`);
+    return null;
+  }
+  log("Persisting plan to audit directory...");
+  await fs.writeFile(paths.planFile, planText);
+  return { planText };
+}
+
 async function processEngineeringItem(
   item: ClaimedItem,
   agentName: string,
@@ -416,30 +452,9 @@ async function processEngineeringItem(
     worktreeLivePath = worktreePath;
 
     // --- Plan phase -------------------------------------------------------
-    log(`Plan phase (opus, plan mode, read-only)...\nAudit log: ${paths.planAuditFile}`);
-    const planPrompt = buildPlanPrompt(item);
-    const planStartedAt = new Date().toISOString();
-    const planRun = await claude.runSession(
-      planPrompt,
-      worktreePath,
-      paths.planAuditFile,
-      buildPlanOptions(),
-    );
-    const planText = planRun.result.trim();
-    await safeRecordPhase(item.id, {
-      name: "plan",
-      startedAt: planStartedAt,
-      endedAt: new Date().toISOString(),
-      exitCode: planRun.exitCode,
-    });
-    if (planRun.exitCode !== 0 || !planText) {
-      const msg = `Plan phase failed (exit ${planRun.exitCode}); worktree + branch preserved for inspection.`;
-      log(msg);
-      await fs.writeFile(paths.resultFile, `${planRun.result}\n\n${msg}`);
-      return;
-    }
-    log("Persisting plan to audit directory...");
-    await fs.writeFile(paths.planFile, planText);
+    const planResult = await runPlanPhase(item, worktreePath, paths, { claude, fs }, log);
+    if (!planResult) return;
+    const { planText } = planResult;
 
     // --- Execute / Validate loop ----------------------------------------
     //
