@@ -25,7 +25,7 @@ export async function listCommand(parsed: ParsedArgs): Promise<CommandResult> {
     return { status: "error", message: filterResult.error };
   }
 
-  const { items } = filterResult;
+  const items = filterResult.value;
 
   return {
     status: "success",

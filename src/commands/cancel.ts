@@ -6,7 +6,7 @@ import { withStoreError } from "./with-store-error.ts";
 
 export async function cancelCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const idArg = requirePositional(parsed, 0, "Usage: hopper cancel <item-id>");
-  if (!idArg.ok) return idArg.result;
+  if (!idArg.ok) return idArg.error;
 
   return withStoreError(async () => {
     const { item, blockedDependentCount } = await cancelItem(idArg.value);

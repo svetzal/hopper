@@ -14,7 +14,7 @@ async function tagAction(
   verb: string,
 ): Promise<CommandResult> {
   const idArg = requirePositional(parsed, 0, usage);
-  if (!idArg.ok) return idArg.result;
+  if (!idArg.ok) return idArg.error;
 
   const rawTags = parsed.positional.slice(1);
   if (rawTags.length === 0) {
@@ -23,7 +23,7 @@ async function tagAction(
 
   const tagResult = normalizeTags(rawTags);
   if (!tagResult.ok) return { status: "error", message: tagResult.error };
-  const tags = tagResult.tags;
+  const tags = tagResult.value;
 
   return withStoreError(async () => {
     const item = await storeFn(idArg.value, tags);

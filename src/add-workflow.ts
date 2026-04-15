@@ -1,6 +1,7 @@
 import { isTaskType, Status, TaskType } from "./constants.ts";
 import { parseDuration, parseTimeSpec } from "./parse-time.ts";
 import type { Priority } from "./priority.ts";
+import { err, ok, type Result } from "./result.ts";
 import type { Item } from "./store.ts";
 
 // ---------------------------------------------------------------------------
@@ -35,10 +36,10 @@ export type AddValidationError =
  */
 export function validateTaskType(
   raw: string | undefined,
-): { error: AddValidationError } | { value: TaskType | undefined } {
-  if (raw === undefined) return { value: undefined };
-  if (isTaskType(raw)) return { value: raw };
-  return { error: { code: "INVALID_TYPE", value: raw } };
+): Result<TaskType | undefined, AddValidationError> {
+  if (raw === undefined) return ok(undefined);
+  if (isTaskType(raw)) return ok(raw);
+  return err({ code: "INVALID_TYPE", value: raw });
 }
 
 // ---------------------------------------------------------------------------
@@ -54,16 +55,16 @@ export const MAX_RETRIES = 5;
  */
 export function validateRetries(
   raw: string | undefined,
-): { error: AddValidationError } | { value: number | undefined } {
-  if (raw === undefined) return { value: undefined };
+): Result<number | undefined, AddValidationError> {
+  if (raw === undefined) return ok(undefined);
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 0) {
-    return { error: { code: "RETRIES_INVALID", value: raw } };
+    return err({ code: "RETRIES_INVALID", value: raw });
   }
   if (n > MAX_RETRIES) {
-    return { error: { code: "RETRIES_TOO_HIGH", value: n, max: MAX_RETRIES } };
+    return err({ code: "RETRIES_TOO_HIGH", value: n, max: MAX_RETRIES });
   }
-  return { value: n };
+  return ok(n);
 }
 
 // ---------------------------------------------------------------------------
@@ -107,12 +108,12 @@ export function validateDirBranch(
 export function validateTimesSpec(
   timesSpec: string | undefined,
   everySpec: string | undefined,
-): { error: AddValidationError } | { value: number | undefined } {
-  if (timesSpec && !everySpec) return { error: { code: "TIMES_REQUIRES_EVERY" } };
-  if (!timesSpec) return { value: undefined };
+): Result<number | undefined, AddValidationError> {
+  if (timesSpec && !everySpec) return err({ code: "TIMES_REQUIRES_EVERY" });
+  if (!timesSpec) return ok(undefined);
   const n = parseInt(timesSpec, 10);
-  if (!Number.isInteger(n) || n < 1) return { error: { code: "TIMES_INVALID", value: timesSpec } };
-  return { value: n };
+  if (!Number.isInteger(n) || n < 1) return err({ code: "TIMES_INVALID", value: timesSpec });
+  return ok(n);
 }
 
 // ---------------------------------------------------------------------------
@@ -148,9 +149,9 @@ export function resolveScheduling(
   untilSpec: string | undefined,
   timesValue: number | undefined,
   now: Date,
-): RecurrenceResult | { error: AddValidationError } {
+): Result<RecurrenceResult, AddValidationError> {
   if (untilSpec && !everySpec) {
-    return { error: { code: "UNTIL_REQUIRES_EVERY" } };
+    return err({ code: "UNTIL_REQUIRES_EVERY" });
   }
 
   if (everySpec) {
@@ -158,11 +159,11 @@ export function resolveScheduling(
     try {
       intervalMs = parseDuration(everySpec);
     } catch {
-      return { error: { code: "EVERY_INVALID", value: everySpec } };
+      return err({ code: "EVERY_INVALID", value: everySpec });
     }
 
     if (intervalMs < MIN_INTERVAL_MS) {
-      return { error: { code: "EVERY_TOO_SHORT", minimumMinutes: MIN_INTERVAL_MS / 60_000 } };
+      return err({ code: "EVERY_TOO_SHORT", minimumMinutes: MIN_INTERVAL_MS / 60_000 });
     }
 
     let scheduledAt: string;
@@ -170,7 +171,7 @@ export function resolveScheduling(
       try {
         scheduledAt = parseTimeSpec(afterSpec).toISOString();
       } catch {
-        return { error: { code: "EVERY_INVALID", value: afterSpec } };
+        return err({ code: "EVERY_INVALID", value: afterSpec });
       }
     } else {
       scheduledAt = new Date(now.getTime() + intervalMs).toISOString();
@@ -187,15 +188,15 @@ export function resolveScheduling(
       try {
         untilDate = parseTimeSpec(untilSpec);
       } catch {
-        return { error: { code: "EVERY_INVALID", value: untilSpec } };
+        return err({ code: "EVERY_INVALID", value: untilSpec });
       }
       if (untilDate.getTime() <= new Date(scheduledAt).getTime()) {
-        return { error: { code: "UNTIL_BEFORE_START", until: untilSpec, start: scheduledAt } };
+        return err({ code: "UNTIL_BEFORE_START", until: untilSpec, start: scheduledAt });
       }
       recurrence.until = untilDate.toISOString();
     }
 
-    return { status: Status.SCHEDULED, scheduledAt, recurrence };
+    return ok({ status: Status.SCHEDULED, scheduledAt, recurrence });
   }
 
   if (afterSpec) {
@@ -203,12 +204,12 @@ export function resolveScheduling(
     try {
       scheduledAt = parseTimeSpec(afterSpec).toISOString();
     } catch {
-      return { error: { code: "EVERY_INVALID", value: afterSpec } };
+      return err({ code: "EVERY_INVALID", value: afterSpec });
     }
-    return { status: Status.SCHEDULED, scheduledAt };
+    return ok({ status: Status.SCHEDULED, scheduledAt });
   }
 
-  return { status: Status.QUEUED };
+  return ok({ status: Status.QUEUED });
 }
 
 // ---------------------------------------------------------------------------
@@ -253,9 +254,10 @@ export function hasCycle(depIds: string[], allItems: Item[]): boolean {
 // Dependency resolution
 // ---------------------------------------------------------------------------
 
-export type DepResolutionResult =
-  | { ok: true; resolvedIds: string[]; warnings: string[] }
-  | { ok: false; error: AddValidationError };
+export type DepResolutionResult = Result<
+  { resolvedIds: string[]; warnings: string[] },
+  AddValidationError
+>;
 
 /**
  * Resolve dependency ID prefixes to full item IDs.
@@ -275,10 +277,10 @@ export function resolveDependencies(idPrefixes: string[], allItems: Item[]): Dep
     const matches = allItems.filter((i) => i.id === idPrefix || i.id.startsWith(idPrefix));
 
     if (matches.length === 0) {
-      return { ok: false, error: { code: "DEP_NOT_FOUND", idPrefix } };
+      return err({ code: "DEP_NOT_FOUND", idPrefix });
     }
     if (matches.length > 1) {
-      return { ok: false, error: { code: "DEP_AMBIGUOUS", idPrefix, matchCount: matches.length } };
+      return err({ code: "DEP_AMBIGUOUS", idPrefix, matchCount: matches.length });
     }
 
     const dep = matches[0] as (typeof matches)[0];
@@ -289,10 +291,10 @@ export function resolveDependencies(idPrefixes: string[], allItems: Item[]): Dep
   }
 
   if (hasCycle(resolvedIds, allItems)) {
-    return { ok: false, error: { code: "CIRCULAR_DEPENDENCY" } };
+    return err({ code: "CIRCULAR_DEPENDENCY" });
   }
 
-  return { ok: true, resolvedIds, warnings };
+  return ok({ resolvedIds, warnings });
 }
 
 // ---------------------------------------------------------------------------

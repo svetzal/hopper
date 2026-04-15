@@ -1,3 +1,5 @@
+import type { Result } from "./result.ts";
+
 export type Priority = "high" | "normal" | "low";
 
 const PRIORITY_MAP: Record<string, Priority> = {
@@ -19,14 +21,12 @@ export function parsePriority(value: string): Priority {
   return normalized;
 }
 
-export function safeParsePriority(
-  value: string,
-): { ok: true; priority: Priority } | { ok: false; message: string } {
+export function safeParsePriority(value: string): Result<Priority> {
   const normalized = PRIORITY_MAP[value.toLowerCase()];
   if (!normalized) {
-    return { ok: false, message: `Invalid priority '${value}'. Use high, normal, or low.` };
+    return { ok: false, error: `Invalid priority '${value}'. Use high, normal, or low.` };
   }
-  return { ok: true, priority: normalized };
+  return { ok: true, value: normalized };
 }
 
 export function priorityBadge(priority: Priority | undefined): string {

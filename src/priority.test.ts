@@ -33,28 +33,28 @@ describe("parsePriority", () => {
 
 describe("safeParsePriority", () => {
   test("returns ok with priority for valid values", () => {
-    expect(safeParsePriority("high")).toEqual({ ok: true, priority: "high" });
-    expect(safeParsePriority("normal")).toEqual({ ok: true, priority: "normal" });
-    expect(safeParsePriority("low")).toEqual({ ok: true, priority: "low" });
+    expect(safeParsePriority("high")).toEqual({ ok: true, value: "high" });
+    expect(safeParsePriority("normal")).toEqual({ ok: true, value: "normal" });
+    expect(safeParsePriority("low")).toEqual({ ok: true, value: "low" });
   });
 
   test("returns ok with priority for shorthand values", () => {
-    expect(safeParsePriority("h")).toEqual({ ok: true, priority: "high" });
-    expect(safeParsePriority("hi")).toEqual({ ok: true, priority: "high" });
-    expect(safeParsePriority("n")).toEqual({ ok: true, priority: "normal" });
-    expect(safeParsePriority("l")).toEqual({ ok: true, priority: "low" });
-    expect(safeParsePriority("lo")).toEqual({ ok: true, priority: "low" });
+    expect(safeParsePriority("h")).toEqual({ ok: true, value: "high" });
+    expect(safeParsePriority("hi")).toEqual({ ok: true, value: "high" });
+    expect(safeParsePriority("n")).toEqual({ ok: true, value: "normal" });
+    expect(safeParsePriority("l")).toEqual({ ok: true, value: "low" });
+    expect(safeParsePriority("lo")).toEqual({ ok: true, value: "low" });
   });
 
   test("is case-insensitive", () => {
-    expect(safeParsePriority("HIGH")).toEqual({ ok: true, priority: "high" });
-    expect(safeParsePriority("Low")).toEqual({ ok: true, priority: "low" });
+    expect(safeParsePriority("HIGH")).toEqual({ ok: true, value: "high" });
+    expect(safeParsePriority("Low")).toEqual({ ok: true, value: "low" });
   });
 
-  test("returns ok: false with message for invalid values", () => {
+  test("returns ok: false with error for invalid values", () => {
     expect(safeParsePriority("urgent")).toEqual({
       ok: false,
-      message: "Invalid priority 'urgent'. Use high, normal, or low.",
+      error: "Invalid priority 'urgent'. Use high, normal, or low.",
     });
     expect(safeParsePriority("x")).toMatchObject({ ok: false });
     expect(safeParsePriority("")).toMatchObject({ ok: false });

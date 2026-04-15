@@ -96,29 +96,31 @@ describe("validateDirBranch", () => {
 
 describe("validateTaskType", () => {
   test("undefined input returns undefined value", () => {
-    expect(validateTaskType(undefined)).toEqual({ value: undefined });
+    expect(validateTaskType(undefined)).toEqual({ ok: true, value: undefined });
   });
 
   test("accepts investigation", () => {
-    expect(validateTaskType("investigation")).toEqual({ value: "investigation" });
+    expect(validateTaskType("investigation")).toEqual({ ok: true, value: "investigation" });
   });
 
   test("accepts engineering", () => {
-    expect(validateTaskType("engineering")).toEqual({ value: "engineering" });
+    expect(validateTaskType("engineering")).toEqual({ ok: true, value: "engineering" });
   });
 
   test("accepts task", () => {
-    expect(validateTaskType("task")).toEqual({ value: "task" });
+    expect(validateTaskType("task")).toEqual({ ok: true, value: "task" });
   });
 
   test("rejects unknown type with INVALID_TYPE", () => {
     expect(validateTaskType("spike")).toEqual({
+      ok: false,
       error: { code: "INVALID_TYPE", value: "spike" },
     });
   });
 
   test("rejects empty string", () => {
     expect(validateTaskType("")).toEqual({
+      ok: false,
       error: { code: "INVALID_TYPE", value: "" },
     });
   });
@@ -130,42 +132,46 @@ describe("validateTaskType", () => {
 
 describe("validateTimesSpec", () => {
   test("returns undefined value when timesSpec is undefined", () => {
-    expect(validateTimesSpec(undefined, undefined)).toEqual({ value: undefined });
-    expect(validateTimesSpec(undefined, "1h")).toEqual({ value: undefined });
+    expect(validateTimesSpec(undefined, undefined)).toEqual({ ok: true, value: undefined });
+    expect(validateTimesSpec(undefined, "1h")).toEqual({ ok: true, value: undefined });
   });
 
   test("TIMES_REQUIRES_EVERY when timesSpec is set but everySpec is not", () => {
     expect(validateTimesSpec("3", undefined)).toEqual({
+      ok: false,
       error: { code: "TIMES_REQUIRES_EVERY" },
     });
   });
 
   test("returns parsed value when both timesSpec and everySpec are set", () => {
-    expect(validateTimesSpec("3", "1h")).toEqual({ value: 3 });
-    expect(validateTimesSpec("1", "30m")).toEqual({ value: 1 });
+    expect(validateTimesSpec("3", "1h")).toEqual({ ok: true, value: 3 });
+    expect(validateTimesSpec("1", "30m")).toEqual({ ok: true, value: 1 });
   });
 
   test("TIMES_INVALID for non-integer string", () => {
     expect(validateTimesSpec("abc", "1h")).toEqual({
+      ok: false,
       error: { code: "TIMES_INVALID", value: "abc" },
     });
   });
 
   test("TIMES_INVALID for zero", () => {
     expect(validateTimesSpec("0", "1h")).toEqual({
+      ok: false,
       error: { code: "TIMES_INVALID", value: "0" },
     });
   });
 
   test("TIMES_INVALID for negative value", () => {
     expect(validateTimesSpec("-1", "1h")).toEqual({
+      ok: false,
       error: { code: "TIMES_INVALID", value: "-1" },
     });
   });
 
   test("decimal value is truncated to integer by parseInt (treated as valid)", () => {
     // parseInt("1.5", 10) === 1, which is a valid positive integer
-    expect(validateTimesSpec("1.5", "1h")).toEqual({ value: 1 });
+    expect(validateTimesSpec("1.5", "1h")).toEqual({ ok: true, value: 1 });
   });
 });
 
@@ -176,80 +182,80 @@ describe("validateTimesSpec", () => {
 describe("resolveScheduling", () => {
   test("returns queued status when no specs are given", () => {
     const result = resolveScheduling(undefined, undefined, undefined, undefined, NOW);
-    expect(result).toEqual({ status: "queued" });
+    expect(result).toEqual({ ok: true, value: { status: "queued" } });
   });
 
   test("returns scheduled status with scheduledAt when afterSpec only", () => {
     // Use an absolute ISO date so the result is deterministic
     const after = "2035-06-15T12:00:00Z";
     const result = resolveScheduling(undefined, after, undefined, undefined, NOW);
-    expect("error" in result).toBe(false);
-    if (!("error" in result)) {
-      expect(result.status).toBe("scheduled");
-      expect(result.scheduledAt).toBe("2035-06-15T12:00:00.000Z");
-      expect(result.recurrence).toBeUndefined();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.status).toBe("scheduled");
+      expect(result.value.scheduledAt).toBe("2035-06-15T12:00:00.000Z");
+      expect(result.value.recurrence).toBeUndefined();
     }
   });
 
   test("scheduledAt is approximately now + interval when afterSpec not given", () => {
     const result = resolveScheduling("1h", undefined, undefined, undefined, NOW);
-    expect("error" in result).toBe(false);
-    if (!("error" in result)) {
+    expect(result.ok).toBe(true);
+    if (result.ok) {
       const expected = new Date(NOW.getTime() + 3_600_000).toISOString();
-      expect(result.scheduledAt).toBe(expected);
+      expect(result.value.scheduledAt).toBe(expected);
     }
   });
 
   test("returns recurrence with interval and intervalMs", () => {
     const result = resolveScheduling("1h", undefined, undefined, undefined, NOW);
-    expect("error" in result).toBe(false);
-    if (!("error" in result)) {
-      expect(result.recurrence).toMatchObject({ interval: "1h", intervalMs: 3_600_000 });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.recurrence).toMatchObject({ interval: "1h", intervalMs: 3_600_000 });
     }
   });
 
   test("recurrence.remainingRuns is timesValue - 1", () => {
     const result = resolveScheduling("1h", undefined, undefined, 3, NOW);
-    expect("error" in result).toBe(false);
-    if (!("error" in result)) {
-      expect(result.recurrence?.remainingRuns).toBe(2);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.recurrence?.remainingRuns).toBe(2);
     }
   });
 
   test("recurrence.remainingRuns is 0 when timesValue is 1", () => {
     const result = resolveScheduling("1h", undefined, undefined, 1, NOW);
-    expect("error" in result).toBe(false);
-    if (!("error" in result)) {
-      expect(result.recurrence?.remainingRuns).toBe(0);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.recurrence?.remainingRuns).toBe(0);
     }
   });
 
   test("recurrence has no remainingRuns when timesValue is undefined", () => {
     const result = resolveScheduling("1h", undefined, undefined, undefined, NOW);
-    expect("error" in result).toBe(false);
-    if (!("error" in result)) {
-      expect(result.recurrence?.remainingRuns).toBeUndefined();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.recurrence?.remainingRuns).toBeUndefined();
     }
   });
 
   test("EVERY_INVALID when everySpec cannot be parsed as a duration", () => {
     const result = resolveScheduling("notaduration", undefined, undefined, undefined, NOW);
-    expect(result).toEqual({ error: { code: "EVERY_INVALID", value: "notaduration" } });
+    expect(result).toEqual({ ok: false, error: { code: "EVERY_INVALID", value: "notaduration" } });
   });
 
   test("EVERY_TOO_SHORT when interval is less than 5 minutes", () => {
     const result = resolveScheduling("4m", undefined, undefined, undefined, NOW);
-    expect(result).toEqual({ error: { code: "EVERY_TOO_SHORT", minimumMinutes: 5 } });
+    expect(result).toEqual({ ok: false, error: { code: "EVERY_TOO_SHORT", minimumMinutes: 5 } });
   });
 
   test("exactly 5 minutes passes the minimum check", () => {
     const result = resolveScheduling("5m", undefined, undefined, undefined, NOW);
-    expect("error" in result).toBe(false);
+    expect(result.ok).toBe(true);
   });
 
   test("UNTIL_REQUIRES_EVERY when untilSpec is set but everySpec is not", () => {
     const result = resolveScheduling(undefined, undefined, "1d", undefined, NOW);
-    expect(result).toEqual({ error: { code: "UNTIL_REQUIRES_EVERY" } });
+    expect(result).toEqual({ ok: false, error: { code: "UNTIL_REQUIRES_EVERY" } });
   });
 
   test("UNTIL_BEFORE_START when until is before or equal to scheduledAt", () => {
@@ -261,8 +267,8 @@ describe("resolveScheduling", () => {
       undefined,
       NOW,
     );
-    expect("error" in result).toBe(true);
-    if ("error" in result) {
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
       expect(result.error.code).toBe("UNTIL_BEFORE_START");
     }
   });
@@ -276,18 +282,18 @@ describe("resolveScheduling", () => {
       undefined,
       NOW,
     );
-    expect("error" in result).toBe(false);
-    if (!("error" in result)) {
-      expect(result.recurrence?.until).toBeDefined();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.recurrence?.until).toBeDefined();
     }
   });
 
   test("afterSpec (absolute date) is used as scheduledAt for recurring items", () => {
     // Use an absolute ISO date for afterSpec so the result is deterministic
     const result = resolveScheduling("1h", "2035-06-15T12:00:00Z", undefined, undefined, NOW);
-    expect("error" in result).toBe(false);
-    if (!("error" in result)) {
-      expect(result.scheduledAt).toBe("2035-06-15T12:00:00.000Z");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.scheduledAt).toBe("2035-06-15T12:00:00.000Z");
     }
   });
 });
@@ -350,8 +356,7 @@ describe("resolveDependencies", () => {
     const result = resolveDependencies(["aaaaaaaa-1111-0000-0000-000000000000"], items);
     expect(result).toEqual({
       ok: true,
-      resolvedIds: ["aaaaaaaa-1111-0000-0000-000000000000"],
-      warnings: [],
+      value: { resolvedIds: ["aaaaaaaa-1111-0000-0000-000000000000"], warnings: [] },
     });
   });
 
@@ -359,7 +364,7 @@ describe("resolveDependencies", () => {
     const result = resolveDependencies(["aaaaaaaa"], items);
     expect(result).toMatchObject({
       ok: true,
-      resolvedIds: ["aaaaaaaa-1111-0000-0000-000000000000"],
+      value: { resolvedIds: ["aaaaaaaa-1111-0000-0000-000000000000"] },
     });
   });
 
@@ -385,8 +390,8 @@ describe("resolveDependencies", () => {
     const result = resolveDependencies(["bbbbbbbb"], items);
     expect(result).toMatchObject({ ok: true });
     if (result.ok) {
-      expect(result.warnings).toHaveLength(1);
-      expect(result.warnings[0]).toContain("already completed");
+      expect(result.value.warnings).toHaveLength(1);
+      expect(result.value.warnings[0]).toContain("already completed");
     }
   });
 
@@ -394,7 +399,7 @@ describe("resolveDependencies", () => {
     const result = resolveDependencies(["aaaaaaaa"], items);
     expect(result).toMatchObject({ ok: true });
     if (result.ok) {
-      expect(result.warnings).toHaveLength(0);
+      expect(result.value.warnings).toHaveLength(0);
     }
   });
 
@@ -418,7 +423,7 @@ describe("resolveDependencies", () => {
 
   test("handles empty prefix list", () => {
     const result = resolveDependencies([], items);
-    expect(result).toEqual({ ok: true, resolvedIds: [], warnings: [] });
+    expect(result).toEqual({ ok: true, value: { resolvedIds: [], warnings: [] } });
   });
 });
 
@@ -563,31 +568,34 @@ describe("formatValidationError", () => {
 
 describe("validateRetries", () => {
   test("accepts undefined (no flag provided)", () => {
-    expect(validateRetries(undefined)).toEqual({ value: undefined });
+    expect(validateRetries(undefined)).toEqual({ ok: true, value: undefined });
   });
 
   test("accepts 0 (explicitly opt out of any retries)", () => {
-    expect(validateRetries("0")).toEqual({ value: 0 });
+    expect(validateRetries("0")).toEqual({ ok: true, value: 0 });
   });
 
   test("accepts the max cap value", () => {
-    expect(validateRetries(String(MAX_RETRIES))).toEqual({ value: MAX_RETRIES });
+    expect(validateRetries(String(MAX_RETRIES))).toEqual({ ok: true, value: MAX_RETRIES });
   });
 
   test("rejects negative integers", () => {
     expect(validateRetries("-1")).toEqual({
+      ok: false,
       error: { code: "RETRIES_INVALID", value: "-1" },
     });
   });
 
   test("rejects non-numeric input", () => {
     expect(validateRetries("lots")).toEqual({
+      ok: false,
       error: { code: "RETRIES_INVALID", value: "lots" },
     });
   });
 
   test("rejects decimals", () => {
     expect(validateRetries("1.5")).toEqual({
+      ok: false,
       error: { code: "RETRIES_INVALID", value: "1.5" },
     });
   });
@@ -595,6 +603,7 @@ describe("validateRetries", () => {
   test("rejects values above the cap", () => {
     const above = MAX_RETRIES + 1;
     expect(validateRetries(String(above))).toEqual({
+      ok: false,
       error: { code: "RETRIES_TOO_HIGH", value: above, max: MAX_RETRIES },
     });
   });

@@ -7,7 +7,7 @@ import { withStoreError } from "./with-store-error.ts";
 
 export async function completeCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const tokenArg = requirePositional(parsed, 0, "Usage: hopper complete <token>");
-  if (!tokenArg.ok) return tokenArg.result;
+  if (!tokenArg.ok) return tokenArg.error;
 
   const agent = stringFlag(parsed, "agent");
   const result = stringFlag(parsed, "result");

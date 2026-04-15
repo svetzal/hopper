@@ -53,12 +53,12 @@ async function presetAddCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const command = stringFlag(parsed, "command");
   const agent = stringFlag(parsed, "agent");
   const typeResult = validateTaskType(stringFlag(parsed, "type"));
-  if ("error" in typeResult) {
+  if (!typeResult.ok) {
     return { status: "error", message: formatValidationError(typeResult.error) };
   }
   const type = typeResult.value;
   const retriesResult = validateRetries(stringFlag(parsed, "retries"));
-  if ("error" in retriesResult) {
+  if (!retriesResult.ok) {
     return { status: "error", message: formatValidationError(retriesResult.error) };
   }
   const retries = retriesResult.value;
@@ -140,7 +140,7 @@ async function presetListCommand(_parsed: ParsedArgs): Promise<CommandResult> {
 
 async function presetRemoveCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const nameArg = requirePositional(parsed, 1, "Usage: hopper preset remove <name>");
-  if (!nameArg.ok) return nameArg.result;
+  if (!nameArg.ok) return nameArg.error;
   const name = nameArg.value;
 
   return withStoreError(async () => {
@@ -156,7 +156,7 @@ async function presetRemoveCommand(parsed: ParsedArgs): Promise<CommandResult> {
 
 async function presetShowCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const nameArg = requirePositional(parsed, 1, "Usage: hopper preset show <name>");
-  if (!nameArg.ok) return nameArg.result;
+  if (!nameArg.ok) return nameArg.error;
   const name = nameArg.value;
 
   return withStoreError(async () => {

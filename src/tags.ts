@@ -28,12 +28,11 @@ export function matchesTags(itemTags: string[] | undefined, filter: string[]): b
 }
 
 import { toErrorMessage } from "./error-utils.ts";
+import type { Result } from "./result.ts";
 
-export function normalizeTags(
-  raw: string[],
-): { ok: true; tags: string[] } | { ok: false; error: string } {
+export function normalizeTags(raw: string[]): Result<string[]> {
   try {
-    return { ok: true, tags: raw.map(normalizeTag) };
+    return { ok: true, value: raw.map(normalizeTag) };
   } catch (e) {
     return { ok: false, error: toErrorMessage(e) };
   }

@@ -6,7 +6,7 @@ import { withStoreError } from "./with-store-error.ts";
 
 export async function requeueCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const idArg = requirePositional(parsed, 0, 'Usage: hopper requeue <id> --reason "..."');
-  if (!idArg.ok) return idArg.result;
+  if (!idArg.ok) return idArg.error;
 
   const reason = parsed.flags.reason;
   if (typeof reason !== "string" || !reason) {

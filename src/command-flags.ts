@@ -1,5 +1,6 @@
 import type { ParsedArgs } from "./cli.ts";
 import type { CommandResult } from "./command-result.ts";
+import type { Result } from "./result.ts";
 
 /** Extract a string flag, returning undefined if it's boolean or missing. */
 export function stringFlag(parsed: ParsedArgs, name: string): string | undefined {
@@ -20,10 +21,10 @@ export function requirePositional(
   parsed: ParsedArgs,
   index: number,
   usage: string,
-): { ok: true; value: string } | { ok: false; result: CommandResult } {
+): Result<string, CommandResult> {
   const value = parsed.positional[index];
   if (!value) {
-    return { ok: false, result: { status: "error", message: usage } };
+    return { ok: false, error: { status: "error", message: usage } };
   }
   return { ok: true, value };
 }

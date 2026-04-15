@@ -28,8 +28,8 @@ describe("filterAndSortItems", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.items).toHaveLength(4);
-      expect(result.items.every((i) => i.status !== "completed" && i.status !== "cancelled")).toBe(
+      expect(result.value).toHaveLength(4);
+      expect(result.value.every((i) => i.status !== "completed" && i.status !== "cancelled")).toBe(
         true,
       );
     }
@@ -42,8 +42,8 @@ describe("filterAndSortItems", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.items).toHaveLength(1);
-      expect(result.items[0]?.status).toBe("completed");
+      expect(result.value).toHaveLength(1);
+      expect(result.value[0]?.status).toBe("completed");
     }
   });
 
@@ -57,8 +57,8 @@ describe("filterAndSortItems", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.items).toHaveLength(1);
-      expect(result.items[0]?.status).toBe("scheduled");
+      expect(result.value).toHaveLength(1);
+      expect(result.value[0]?.status).toBe("scheduled");
     }
   });
 
@@ -73,7 +73,7 @@ describe("filterAndSortItems", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.items).toHaveLength(3);
+      expect(result.value).toHaveLength(3);
     }
   });
 
@@ -98,8 +98,8 @@ describe("filterAndSortItems", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.items).toHaveLength(1);
-      expect(result.items[0]?.priority).toBe("high");
+      expect(result.value).toHaveLength(1);
+      expect(result.value[0]?.priority).toBe("high");
     }
   });
 
@@ -110,8 +110,8 @@ describe("filterAndSortItems", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.items).toHaveLength(1);
-      expect(result.items[0]?.tags).toContain("frontend");
+      expect(result.value).toHaveLength(1);
+      expect(result.value[0]?.tags).toContain("frontend");
     }
   });
 
@@ -126,8 +126,8 @@ describe("filterAndSortItems", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.items).toHaveLength(1);
-      expect(result.items[0]?.title).toBe("Inv");
+      expect(result.value).toHaveLength(1);
+      expect(result.value[0]?.title).toBe("Inv");
     }
   });
 
@@ -141,8 +141,8 @@ describe("filterAndSortItems", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.items).toHaveLength(1);
-      expect(result.items[0]?.title).toBe("Legacy");
+      expect(result.value).toHaveLength(1);
+      expect(result.value[0]?.title).toBe("Legacy");
     }
   });
 
@@ -162,9 +162,9 @@ describe("filterAndSortItems", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.items[0]?.priority).toBe("high");
-      expect(result.items[1]?.createdAt).toBe("2025-01-01T00:00:00Z");
-      expect(result.items[2]?.createdAt).toBe("2025-01-02T00:00:00Z");
+      expect(result.value[0]?.priority).toBe("high");
+      expect(result.value[1]?.createdAt).toBe("2025-01-01T00:00:00Z");
+      expect(result.value[2]?.createdAt).toBe("2025-01-02T00:00:00Z");
     }
   });
 });

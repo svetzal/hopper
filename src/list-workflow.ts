@@ -2,6 +2,7 @@ import { isTaskType, Status, type TaskType } from "./constants.ts";
 import { toErrorMessage } from "./error-utils.ts";
 import { formatDuration, relativeTime, relativeTimeFuture, shortId } from "./format.ts";
 import { comparePriority, parsePriority, priorityBadge } from "./priority.ts";
+import type { Result } from "./result.ts";
 import type { Item } from "./store.ts";
 import { matchesTags, normalizeTags, tagBadge } from "./tags.ts";
 
@@ -23,8 +24,6 @@ export type ListFilter =
   | { mode: "scheduled" }
   | { mode: "all" };
 
-export type FilterResult = { ok: true; items: Item[] } | { ok: false; error: string };
-
 /**
  * Filter and sort items based on the requested display mode, priority filter,
  * and tag filter. Returns an error string if any filter argument is invalid.
@@ -35,7 +34,7 @@ export function filterAndSortItems(
   priorityFilter: string | undefined,
   tagFilter: string[],
   typeFilter?: string,
-): FilterResult {
+): Result<Item[]> {
   let items: Item[];
 
   if (filter.mode === "completed") {
@@ -66,7 +65,7 @@ export function filterAndSortItems(
   if (tagFilter.length > 0) {
     const tagResult = normalizeTags(tagFilter);
     if (!tagResult.ok) return { ok: false, error: tagResult.error };
-    items = items.filter((i) => matchesTags(i.tags, tagResult.tags));
+    items = items.filter((i) => matchesTags(i.tags, tagResult.value));
   }
 
   if (typeFilter) {
@@ -85,7 +84,7 @@ export function filterAndSortItems(
     return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
   });
 
-  return { ok: true, items };
+  return { ok: true, value: items };
 }
 
 /** Format a single item timing annotation. */

@@ -23,7 +23,7 @@ describe("command-flags", () => {
       const parsed = makeParsed({}, []);
       expect(requirePositional(parsed, 0, "Usage: hopper show <id>")).toEqual({
         ok: false,
-        result: { status: "error", message: "Usage: hopper show <id>" },
+        error: { status: "error", message: "Usage: hopper show <id>" },
       });
     });
 
