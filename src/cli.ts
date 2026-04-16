@@ -12,7 +12,7 @@ import { reprioritizeCommand } from "./commands/reprioritize.ts";
 import { requeueCommand } from "./commands/requeue.ts";
 import { showCommand } from "./commands/show.ts";
 import { tagCommand, untagCommand } from "./commands/tag.ts";
-import { workerCommand } from "./commands/worker.ts";
+import { workerCommand } from "./commands/worker-loop.ts";
 import { VERSION } from "./constants.ts";
 import { createAgentsGateway } from "./gateways/agents-gateway.ts";
 import { createClaudeGateway } from "./gateways/claude-gateway.ts";

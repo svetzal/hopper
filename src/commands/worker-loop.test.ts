@@ -6,7 +6,7 @@ import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import type { ClaimedItem } from "../store.ts";
 import type { WorkerConfig } from "../worker-workflow.ts";
 import { makeClaimedItem } from "./test-helpers.ts";
-import { runWorkerLoop, type WorkerLoopDeps } from "./worker.ts";
+import { runWorkerLoop, type WorkerLoopDeps } from "./worker-loop.ts";
 
 const HOPPER_HOME = "/tmp/test-hopper";
 

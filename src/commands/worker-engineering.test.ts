@@ -6,7 +6,7 @@ import type { GitGateway } from "../gateways/git-gateway.ts";
 import * as store from "../store.ts";
 import type { EngineeringAuditPaths } from "../worker-workflow.ts";
 import { makeClaimedItem } from "./test-helpers.ts";
-import { commitEngineeringChanges, runExecuteValidateLoop, runPlanPhase } from "./worker.ts";
+import { commitEngineeringChanges, runExecuteValidateLoop, runPlanPhase } from "./worker-engineering.ts";
 
 mock.module("../store.ts", () => ({
   ...store,

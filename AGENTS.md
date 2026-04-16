@@ -39,6 +39,7 @@ A pre-push hook runs `bun run lint` and `bun test` automatically.
 | `src/titler.ts` | LLM title generation via OpenAI API (gpt-4.1-nano). Falls back to truncation if no `OPENAI_API_KEY` |
 | `src/extract-result.ts` | Pure JSONL parser that extracts the final result string from a Claude `stream-json` session |
 | `src/worker-workflow.ts` | Pure decision functions for the worker: work setup, prompt building, auto-commit, merge, completion decisions, worker config parsing, loop action resolution, and shutdown action |
+| `src/engineering-workflow.ts` | Pure functions for the engineering pipeline: `buildEngineeringTranscript`, `buildEngineeringFailureResult`, `resolveEngineeringCommitFallback` |
 | `src/list-workflow.ts` | Pure functions for the list command: `filterAndSortItems`, `formatItemList`, `itemTiming` |
 | `src/command-result.ts` | `CommandResult` discriminated union type returned by all commands |
 | `src/command-flags.ts` | `stringFlag` and `booleanFlag` helpers for typed flag extraction |
@@ -50,6 +51,10 @@ A pre-push hook runs `bun run lint` and `bun test` automatically.
 | `src/gateways/preset-gateway.ts` | `PresetGateway` interface + real implementation (thin wrapper around `Bun.file`/`Bun.write` for `~/.hopper/presets.json`) |
 | `src/gateways/llm-gateway.ts` | `LlmGateway` interface + real implementation (thin wrapper around OpenAI `fetch` for chat completions) |
 | `src/gateways/init-gateway.ts` | `InitGateway` interface + real implementation (thin wrapper around `Bun.file`, `Bun.write`, `mkdir`, and `rm` for skill file installation) |
+| `src/commands/worker.ts` | Generic-item flow (`handleCompletion`, `commitWorktreeChanges`, `executeWork`) + `processItem` dispatcher that delegates engineering items to `worker-engineering.ts` |
+| `src/commands/worker-engineering.ts` | Engineering pipeline imperative shell: `runPlanPhase`, `runExecuteValidateLoop`, `commitEngineeringChanges`, `teardownMergeAndComplete`, `processEngineeringItem` |
+| `src/commands/worker-loop.ts` | Worker loop entry point: `WorkerLoopDeps`, `runWorkerLoop`, `workerCommand` — the poll/claim/dispatch cycle and CLI entry |
+| `src/commands/worker-shared.ts` | Shared orchestration helpers used by both worker flows: `createLogger`, `orchestrateWorktreeSetup`, `orchestrateMerge`, `mergeAndPush`, `teardownWorktree` |
 | `src/commands/*.ts` | One file per CLI command, each returns `CommandResult` |
 | `src/text-imports.d.ts` | Type declaration for Bun's `*.md` text imports |
 
