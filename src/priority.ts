@@ -13,15 +13,7 @@ const PRIORITY_MAP: Record<string, Priority> = {
   lo: "low",
 };
 
-export function parsePriority(value: string): Priority {
-  const normalized = PRIORITY_MAP[value.toLowerCase()];
-  if (!normalized) {
-    throw new Error(`Invalid priority '${value}'. Use high, normal, or low.`);
-  }
-  return normalized;
-}
-
-export function safeParsePriority(value: string): Result<Priority> {
+export function parsePriority(value: string): Result<Priority> {
   const normalized = PRIORITY_MAP[value.toLowerCase()];
   if (!normalized) {
     return { ok: false, error: `Invalid priority '${value}'. Use high, normal, or low.` };

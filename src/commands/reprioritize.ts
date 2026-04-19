@@ -2,7 +2,7 @@ import type { ParsedArgs } from "../cli.ts";
 import { requirePositional } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
 import { shortId } from "../format.ts";
-import { safeParsePriority } from "../priority.ts";
+import { parsePriority } from "../priority.ts";
 import { reprioritizeItem } from "../store.ts";
 import { withStoreError } from "./with-store-error.ts";
 
@@ -14,7 +14,7 @@ export async function reprioritizeCommand(parsed: ParsedArgs): Promise<CommandRe
   const levelArg = requirePositional(parsed, 1, USAGE);
   if (!levelArg.ok) return levelArg.error;
 
-  const priorityResult = safeParsePriority(levelArg.value);
+  const priorityResult = parsePriority(levelArg.value);
   if (!priorityResult.ok) {
     return { status: "error", message: priorityResult.error };
   }

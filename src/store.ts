@@ -146,20 +146,24 @@ export async function completeItem(
 ): Promise<CompleteResult> {
   const items = await loadItems();
   const outcome = complete(items, token, agent, result, new Date(), crypto.randomUUID());
-  await saveItems(outcome.items);
-  return { completed: outcome.completed, recurred: outcome.recurred };
+  if (!outcome.ok) throw new Error(outcome.error);
+  await saveItems(outcome.value.items);
+  return { completed: outcome.value.completed, recurred: outcome.value.recurred };
 }
 
 export async function findItem(id: string): Promise<Item> {
   const items = await loadItems();
-  return resolveItem(items, id);
+  const result = resolveItem(items, id);
+  if (!result.ok) throw new Error(result.error);
+  return result.value;
 }
 
 export async function requeueItem(id: string, reason: string, agent?: string): Promise<Item> {
   const items = await loadItems();
   const outcome = requeue(items, id, reason, agent);
-  await saveItems(outcome.items);
-  return outcome.requeued;
+  if (!outcome.ok) throw new Error(outcome.error);
+  await saveItems(outcome.value.items);
+  return outcome.value.requeued;
 }
 
 export interface CancelResult {
@@ -170,22 +174,25 @@ export interface CancelResult {
 export async function cancelItem(id: string): Promise<CancelResult> {
   const items = await loadItems();
   const outcome = cancel(items, id, new Date());
-  await saveItems(outcome.items);
-  return { item: outcome.cancelled, blockedDependentCount: outcome.blockedDependentCount };
+  if (!outcome.ok) throw new Error(outcome.error);
+  await saveItems(outcome.value.items);
+  return { item: outcome.value.cancelled, blockedDependentCount: outcome.value.blockedDependentCount };
 }
 
 export async function updateItemTags(id: string, tags: string[]): Promise<Item> {
   const items = await loadItems();
   const outcome = addTags(items, id, tags);
-  await saveItems(outcome.items);
-  return outcome.item;
+  if (!outcome.ok) throw new Error(outcome.error);
+  await saveItems(outcome.value.items);
+  return outcome.value.item;
 }
 
 export async function removeItemTags(id: string, tags: string[]): Promise<Item> {
   const items = await loadItems();
   const outcome = removeTags(items, id, tags);
-  await saveItems(outcome.items);
-  return outcome.item;
+  if (!outcome.ok) throw new Error(outcome.error);
+  await saveItems(outcome.value.items);
+  return outcome.value.item;
 }
 
 export interface ReprioritizeResult {
@@ -199,8 +206,9 @@ export async function reprioritizeItem(
 ): Promise<ReprioritizeResult> {
   const items = await loadItems();
   const outcome = reprioritize(items, id, priority);
-  await saveItems(outcome.items);
-  return { item: outcome.item, oldPriority: outcome.oldPriority };
+  if (!outcome.ok) throw new Error(outcome.error);
+  await saveItems(outcome.value.items);
+  return { item: outcome.value.item, oldPriority: outcome.value.oldPriority };
 }
 
 /**

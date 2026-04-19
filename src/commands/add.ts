@@ -15,7 +15,7 @@ import { Status, TaskType } from "../constants.ts";
 import { shortId } from "../format.ts";
 import { findPreset } from "../presets.ts";
 import type { Priority } from "../priority.ts";
-import { priorityBadge, safeParsePriority } from "../priority.ts";
+import { parsePriority, priorityBadge } from "../priority.ts";
 import { addItem, loadItems } from "../store.ts";
 import { mergeTags, normalizeTags, tagBadge } from "../tags.ts";
 import type { TitleGenerator } from "../titler.ts";
@@ -115,7 +115,7 @@ export async function addCommand(
     let priority: Priority | undefined;
     const priorityFlag = stringFlag(parsed, "priority");
     if (priorityFlag) {
-      const priorityResult = safeParsePriority(priorityFlag);
+      const priorityResult = parsePriority(priorityFlag);
       if (!priorityResult.ok) {
         return { status: "error", message: priorityResult.error };
       }

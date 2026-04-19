@@ -1,3 +1,5 @@
+import { err, ok, type Result } from "./result.ts";
+
 const UNIT_MS: Record<string, number> = {
   s: 1000,
   m: 60_000,
@@ -6,11 +8,11 @@ const UNIT_MS: Record<string, number> = {
   w: 604_800_000,
 };
 
-export function parseDuration(input: string): number {
+export function parseDuration(input: string): Result<number> {
   const lower = input.trim().toLowerCase();
   const pattern = /^(\d+(?:\.\d+)?[smhdw])+$/;
   if (!pattern.test(lower)) {
-    throw new Error(`Cannot parse duration: "${input}"`);
+    return err(`Cannot parse duration: "${input}"`);
   }
 
   let totalMs = 0;
@@ -22,9 +24,9 @@ export function parseDuration(input: string): number {
   }
 
   if (totalMs === 0) {
-    throw new Error(`Cannot parse duration: "${input}"`);
+    return err(`Cannot parse duration: "${input}"`);
   }
-  return totalMs;
+  return ok(totalMs);
 }
 
 function parseRelativeDuration(input: string): Date | null {
@@ -114,22 +116,22 @@ function applyTimeOfDay(d: Date, timeStr: string): void {
   d.setHours(hours, minutes, 0, 0);
 }
 
-export function parseTimeSpec(input: string): Date {
+export function parseTimeSpec(input: string): Result<Date> {
   const trimmed = input.trim();
   if (!trimmed) {
-    throw new Error("Empty time specification");
+    return err("Empty time specification");
   }
 
   const relative = parseRelativeDuration(trimmed);
-  if (relative) return relative;
+  if (relative) return ok(relative);
 
   const absolute = parseAbsoluteTime(trimmed);
   if (absolute) {
     if (absolute.getTime() <= Date.now()) {
-      throw new Error(`Time is in the past: ${trimmed}`);
+      return err(`Time is in the past: ${trimmed}`);
     }
-    return absolute;
+    return ok(absolute);
   }
 
-  throw new Error(`Cannot parse time specification: "${trimmed}"`);
+  return err(`Cannot parse time specification: "${trimmed}"`);
 }

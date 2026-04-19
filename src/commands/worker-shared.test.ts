@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import { makeClaimedItem } from "./test-helpers.ts";
-import { createLogger, mergeAndPush, orchestrateMerge, orchestrateWorktreeSetup, teardownWorktree } from "./worker-shared.ts";
+import {
+  createLogger,
+  mergeAndPush,
+  orchestrateMerge,
+  orchestrateWorktreeSetup,
+  teardownWorktree,
+} from "./worker-shared.ts";
 
 const ITEM_ID = "aaaaaaaa-0000-0000-0000-000000000000";
 const REPO_DIR = "/repo";

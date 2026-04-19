@@ -410,44 +410,56 @@ describe("complete", () => {
     const item = makeInProgressItem();
     const result = complete([item], FIXED_UUID, "agent", undefined, FIXED_NOW, "new-uuid");
 
-    expect(result.completed.status).toBe("completed");
-    expect(result.completed.completedAt).toBe(FIXED_NOW.toISOString());
-    expect(result.completed.completedBy).toBe("agent");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.completed.status).toBe("completed");
+      expect(result.value.completed.completedAt).toBe(FIXED_NOW.toISOString());
+      expect(result.value.completed.completedBy).toBe("agent");
+    }
   });
 
-  test("throws on invalid token", () => {
+  test("returns error on invalid token", () => {
     const item = makeInProgressItem();
-    expect(() => complete([item], "bad-token", "agent", undefined, FIXED_NOW, "new-uuid")).toThrow(
-      "No in-progress item found",
-    );
+    const result = complete([item], "bad-token", "agent", undefined, FIXED_NOW, "new-uuid");
+
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("No in-progress item found") });
   });
 
-  test("throws when item is not in_progress", () => {
+  test("returns error when item is not in_progress", () => {
     const item = makeItem({ status: "queued", claimToken: FIXED_UUID });
-    expect(() => complete([item], FIXED_UUID, "agent", undefined, FIXED_NOW, "new-uuid")).toThrow(
-      "not in progress",
-    );
+    const result = complete([item], FIXED_UUID, "agent", undefined, FIXED_NOW, "new-uuid");
+
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("not in progress") });
   });
 
   test("stores result when provided", () => {
     const item = makeInProgressItem();
     const result = complete([item], FIXED_UUID, "agent", "Fixed the bug", FIXED_NOW, "new-uuid");
 
-    expect(result.completed.result).toBe("Fixed the bug");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.completed.result).toBe("Fixed the bug");
+    }
   });
 
   test("result is undefined when not provided", () => {
     const item = makeInProgressItem();
     const result = complete([item], FIXED_UUID, "agent", undefined, FIXED_NOW, "new-uuid");
 
-    expect(result.completed.result).toBeUndefined();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.completed.result).toBeUndefined();
+    }
   });
 
   test("clears claim token after completion", () => {
     const item = makeInProgressItem();
     const result = complete([item], FIXED_UUID, "agent", undefined, FIXED_NOW, "new-uuid");
 
-    expect(result.completed.claimToken).toBeUndefined();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.completed.claimToken).toBeUndefined();
+    }
   });
 
   test("unblocks single-dependency blocked item to queued", () => {
@@ -459,8 +471,11 @@ describe("complete", () => {
     });
     const result = complete([dep, blocked], FIXED_UUID, "agent", undefined, FIXED_NOW, "new-uuid");
 
-    const updatedBlocked = result.items.find((i) => i.id === blocked.id);
-    expect(updatedBlocked?.status).toBe("queued");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const updatedBlocked = result.value.items.find((i) => i.id === blocked.id);
+      expect(updatedBlocked?.status).toBe("queued");
+    }
   });
 
   test("unblocks blocked item with scheduledAt to scheduled", () => {
@@ -474,8 +489,11 @@ describe("complete", () => {
     });
     const result = complete([dep, blocked], FIXED_UUID, "agent", undefined, FIXED_NOW, "new-uuid");
 
-    const updatedBlocked = result.items.find((i) => i.id === blocked.id);
-    expect(updatedBlocked?.status).toBe("scheduled");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const updatedBlocked = result.value.items.find((i) => i.id === blocked.id);
+      expect(updatedBlocked?.status).toBe("scheduled");
+    }
   });
 
   test("multi-dependency: stays blocked until all deps complete", () => {
@@ -498,8 +516,11 @@ describe("complete", () => {
       "new-uuid",
     );
 
-    const updatedBlocked = result.items.find((i) => i.id === blocked.id);
-    expect(updatedBlocked?.status).toBe("blocked");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const updatedBlocked = result.value.items.find((i) => i.id === blocked.id);
+      expect(updatedBlocked?.status).toBe("blocked");
+    }
   });
 
   test("recurrence creates new scheduled item with decremented remainingRuns", () => {
@@ -509,10 +530,13 @@ describe("complete", () => {
     });
     const result = complete([item], FIXED_UUID, "agent", undefined, FIXED_NOW, "recurred-uuid");
 
-    expect(result.recurred).toBeDefined();
-    expect(result.recurred?.status).toBe("scheduled");
-    expect(result.recurred?.recurrence?.remainingRuns).toBe(1);
-    expect(result.recurred?.id).toBe("recurred-uuid");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.recurred).toBeDefined();
+      expect(result.value.recurred?.status).toBe("scheduled");
+      expect(result.value.recurred?.recurrence?.remainingRuns).toBe(1);
+      expect(result.value.recurred?.id).toBe("recurred-uuid");
+    }
   });
 
   test("recurrence stops when remainingRuns is 0", () => {
@@ -521,7 +545,10 @@ describe("complete", () => {
     });
     const result = complete([item], FIXED_UUID, "agent", undefined, FIXED_NOW, "recurred-uuid");
 
-    expect(result.recurred).toBeUndefined();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.recurred).toBeUndefined();
+    }
   });
 
   test("recurrence stops when until has passed", () => {
@@ -531,7 +558,10 @@ describe("complete", () => {
     });
     const result = complete([item], FIXED_UUID, "agent", undefined, FIXED_NOW, "recurred-uuid");
 
-    expect(result.recurred).toBeUndefined();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.recurred).toBeUndefined();
+    }
   });
 
   test("recurrence continues when remainingRuns is not set", () => {
@@ -540,8 +570,11 @@ describe("complete", () => {
     });
     const result = complete([item], FIXED_UUID, "agent", undefined, FIXED_NOW, "recurred-uuid");
 
-    expect(result.recurred).toBeDefined();
-    expect(result.recurred?.recurrence?.remainingRuns).toBeUndefined();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.recurred).toBeDefined();
+      expect(result.value.recurred?.recurrence?.remainingRuns).toBeUndefined();
+    }
   });
 
   test("recurred item preserves workingDir, branch, priority, command, tags", () => {
@@ -556,11 +589,14 @@ describe("complete", () => {
     });
     const result = complete([item], FIXED_UUID, "agent", undefined, FIXED_NOW, "recurred-uuid");
 
-    expect(result.recurred?.workingDir).toBe("/tmp/project");
-    expect(result.recurred?.branch).toBe("main");
-    expect(result.recurred?.priority).toBe("high");
-    expect(result.recurred?.command).toBe("make test");
-    expect(result.recurred?.tags).toEqual(["tag1", "tag2"]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.recurred?.workingDir).toBe("/tmp/project");
+      expect(result.value.recurred?.branch).toBe("main");
+      expect(result.value.recurred?.priority).toBe("high");
+      expect(result.value.recurred?.command).toBe("make test");
+      expect(result.value.recurred?.tags).toEqual(["tag1", "tag2"]);
+    }
   });
 
   test("recurred item preserves type, agent, and retries", () => {
@@ -572,9 +608,12 @@ describe("complete", () => {
     });
     const result = complete([item], FIXED_UUID, "agent", undefined, FIXED_NOW, "recurred-uuid");
 
-    expect(result.recurred?.type).toBe("engineering");
-    expect(result.recurred?.agent).toBe("typescript-craftsperson");
-    expect(result.recurred?.retries).toBe(3);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.recurred?.type).toBe("engineering");
+      expect(result.value.recurred?.agent).toBe("typescript-craftsperson");
+      expect(result.value.recurred?.retries).toBe(3);
+    }
   });
 
   test("recurred item has scheduledAt = now + intervalMs", () => {
@@ -583,8 +622,11 @@ describe("complete", () => {
     });
     const result = complete([item], FIXED_UUID, "agent", undefined, FIXED_NOW, "recurred-uuid");
 
-    const expectedScheduledAt = new Date(FIXED_NOW.getTime() + 4 * 3_600_000).toISOString();
-    expect(result.recurred?.scheduledAt).toBe(expectedScheduledAt);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const expectedScheduledAt = new Date(FIXED_NOW.getTime() + 4 * 3_600_000).toISOString();
+      expect(result.value.recurred?.scheduledAt).toBe(expectedScheduledAt);
+    }
   });
 
   test("recurred item is prepended to the items array", () => {
@@ -593,8 +635,11 @@ describe("complete", () => {
     });
     const result = complete([item], FIXED_UUID, "agent", undefined, FIXED_NOW, "recurred-uuid");
 
-    expect(result.items[0]?.id).toBe("recurred-uuid");
-    expect(result.items).toHaveLength(2);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.items[0]?.id).toBe("recurred-uuid");
+      expect(result.value.items).toHaveLength(2);
+    }
   });
 
   test("does not mutate the original item or items array", () => {
@@ -612,8 +657,11 @@ describe("complete", () => {
     const items = [item];
     const result = complete(items, FIXED_UUID, "agent", undefined, FIXED_NOW, "new-uuid");
 
-    expect(result.items).not.toBe(items);
-    expect(result.items[0]?.status).toBe("completed");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.items).not.toBe(items);
+      expect(result.value.items[0]?.status).toBe("completed");
+    }
   });
 });
 
@@ -631,9 +679,12 @@ describe("requeue", () => {
     });
     const result = requeue([item], item.id, "needs more info", "agent");
 
-    expect(result.requeued.status).toBe("queued");
-    expect(result.requeued.requeueReason).toBe("needs more info");
-    expect(result.requeued.requeuedBy).toBe("agent");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.requeued.status).toBe("queued");
+      expect(result.value.requeued.requeueReason).toBe("needs more info");
+      expect(result.value.requeued.requeuedBy).toBe("agent");
+    }
   });
 
   test("clears claim fields after requeue", () => {
@@ -645,25 +696,34 @@ describe("requeue", () => {
     });
     const result = requeue([item], item.id, "blocked", "agent");
 
-    expect(result.requeued.claimedAt).toBeUndefined();
-    expect(result.requeued.claimedBy).toBeUndefined();
-    expect(result.requeued.claimToken).toBeUndefined();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.requeued.claimedAt).toBeUndefined();
+      expect(result.value.requeued.claimedBy).toBeUndefined();
+      expect(result.value.requeued.claimToken).toBeUndefined();
+    }
   });
 
-  test("rejects non-in_progress items", () => {
+  test("returns error for non-in_progress items", () => {
     const item = makeItem({ status: "queued" });
-    expect(() => requeue([item], item.id, "reason", undefined)).toThrow("not in progress");
+    const result = requeue([item], item.id, "reason", undefined);
+
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("not in progress") });
   });
 
-  test("throws on no match", () => {
+  test("returns error on no match", () => {
     const item = makeItem();
-    expect(() => requeue([item], "nonexistent", "reason", undefined)).toThrow("No item found");
+    const result = requeue([item], "nonexistent", "reason", undefined);
+
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("No item found") });
   });
 
-  test("throws on ambiguous prefix", () => {
+  test("returns error on ambiguous prefix", () => {
     const a = makeItem({ id: "abcd0000-0000-0000-0000-000000000000", status: "in_progress" });
     const b = makeItem({ id: "abcd1111-0000-0000-0000-000000000000", status: "in_progress" });
-    expect(() => requeue([a, b], "abcd", "reason", undefined)).toThrow("Ambiguous id prefix");
+    const result = requeue([a, b], "abcd", "reason", undefined);
+
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("Ambiguous id prefix") });
   });
 
   test("preserves createdAt", () => {
@@ -675,7 +735,10 @@ describe("requeue", () => {
     });
     const result = requeue([item], item.id, "reason", undefined);
 
-    expect(result.requeued.createdAt).toBe(originalCreatedAt);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.requeued.createdAt).toBe(originalCreatedAt);
+    }
   });
 
   test("returns new items array (does not mutate input)", () => {
@@ -683,8 +746,11 @@ describe("requeue", () => {
     const items = [item];
     const result = requeue(items, item.id, "reason", undefined);
 
-    expect(result.items).not.toBe(items);
-    expect(result.items[0]?.status).toBe("queued");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.items).not.toBe(items);
+      expect(result.value.items[0]?.status).toBe("queued");
+    }
   });
 
   test("does not mutate the original item or items array", () => {
@@ -706,9 +772,12 @@ describe("cancel", () => {
     const item = makeItem({ title: "To cancel", status: "queued" });
     const result = cancel([item], item.id, FIXED_NOW);
 
-    expect(result.cancelled.status).toBe("cancelled");
-    expect(result.cancelled.cancelledAt).toBe(FIXED_NOW.toISOString());
-    expect(result.cancelled.title).toBe("To cancel");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.cancelled.status).toBe("cancelled");
+      expect(result.value.cancelled.cancelledAt).toBe(FIXED_NOW.toISOString());
+      expect(result.value.cancelled.title).toBe("To cancel");
+    }
   });
 
   test("cancels a scheduled item", () => {
@@ -716,7 +785,10 @@ describe("cancel", () => {
     const item = makeItem({ status: "scheduled", scheduledAt: futureDate });
     const result = cancel([item], item.id, FIXED_NOW);
 
-    expect(result.cancelled.status).toBe("cancelled");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.cancelled.status).toBe("cancelled");
+    }
   });
 
   test("cancels a blocked item", () => {
@@ -727,19 +799,24 @@ describe("cancel", () => {
     });
     const result = cancel([dep, blocked], blocked.id, FIXED_NOW);
 
-    expect(result.cancelled.status).toBe("cancelled");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.cancelled.status).toBe("cancelled");
+    }
   });
 
-  test("rejects in_progress items", () => {
+  test("returns error for in_progress items", () => {
     const item = makeItem({ status: "in_progress", claimedAt: FIXED_NOW.toISOString() });
-    expect(() => cancel([item], item.id, FIXED_NOW)).toThrow("Cannot cancel item");
+    const result = cancel([item], item.id, FIXED_NOW);
+
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("Cannot cancel item") });
   });
 
-  test("rejects completed items", () => {
+  test("returns error for completed items", () => {
     const item = makeItem({ status: "completed", completedAt: FIXED_NOW.toISOString() });
-    expect(() => cancel([item], item.id, FIXED_NOW)).toThrow(
-      "Only queued, scheduled, or blocked items can be cancelled",
-    );
+    const result = cancel([item], item.id, FIXED_NOW);
+
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("Only queued, scheduled, or blocked items can be cancelled") });
   });
 
   test("returns correct blocked dependent count", () => {
@@ -754,33 +831,46 @@ describe("cancel", () => {
     });
     const result = cancel([dep, blocked1, blocked2], dep.id, FIXED_NOW);
 
-    expect(result.blockedDependentCount).toBe(2);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.blockedDependentCount).toBe(2);
+    }
   });
 
   test("returns 0 blocked dependent count when none", () => {
     const item = makeItem({ status: "queued" });
     const result = cancel([item], item.id, FIXED_NOW);
 
-    expect(result.blockedDependentCount).toBe(0);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.blockedDependentCount).toBe(0);
+    }
   });
 
   test("prefix matching works", () => {
     const item = makeItem({ id: "abcd1234-cancel-0000-0000-000000000000", title: "Cancel me" });
     const result = cancel([item], "abcd1234", FIXED_NOW);
 
-    expect(result.cancelled.title).toBe("Cancel me");
-    expect(result.cancelled.status).toBe("cancelled");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.cancelled.title).toBe("Cancel me");
+      expect(result.value.cancelled.status).toBe("cancelled");
+    }
   });
 
-  test("throws on no match", () => {
+  test("returns error on no match", () => {
     const item = makeItem();
-    expect(() => cancel([item], "nonexistent", FIXED_NOW)).toThrow("No item found");
+    const result = cancel([item], "nonexistent", FIXED_NOW);
+
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("No item found") });
   });
 
-  test("throws on ambiguous prefix", () => {
+  test("returns error on ambiguous prefix", () => {
     const a = makeItem({ id: "abcd0000-cancel-0000-0000-000000000000" });
     const b = makeItem({ id: "abcd1111-cancel-0000-0000-000000000000" });
-    expect(() => cancel([a, b], "abcd", FIXED_NOW)).toThrow("Ambiguous id prefix");
+    const result = cancel([a, b], "abcd", FIXED_NOW);
+
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("Ambiguous id prefix") });
   });
 
   test("does not mutate the original item or items array", () => {
@@ -797,8 +887,11 @@ describe("cancel", () => {
     const items = [item];
     const result = cancel(items, item.id, FIXED_NOW);
 
-    expect(result.items).not.toBe(items);
-    expect(result.items[0]?.status).toBe("cancelled");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.items).not.toBe(items);
+      expect(result.value.items[0]?.status).toBe("cancelled");
+    }
   });
 });
 
@@ -811,8 +904,11 @@ describe("reprioritize", () => {
     const item = makeItem({ status: "queued" });
     const result = reprioritize([item], item.id, "high");
 
-    expect(result.item.priority).toBe("high");
-    expect(result.oldPriority).toBe("normal");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.item.priority).toBe("high");
+      expect(result.value.oldPriority).toBe("normal");
+    }
   });
 
   test("changes priority on a scheduled item", () => {
@@ -822,42 +918,59 @@ describe("reprioritize", () => {
     });
     const result = reprioritize([item], item.id, "low");
 
-    expect(result.item.priority).toBe("low");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.item.priority).toBe("low");
+    }
   });
 
   test("returns correct oldPriority when item had explicit priority", () => {
     const item = makeItem({ status: "queued", priority: "high" });
     const result = reprioritize([item], item.id, "low");
 
-    expect(result.oldPriority).toBe("high");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.oldPriority).toBe("high");
+    }
   });
 
   test("oldPriority defaults to normal when item had no priority set", () => {
     const item = makeItem({ status: "queued" });
     const result = reprioritize([item], item.id, "low");
 
-    expect(result.oldPriority).toBe("normal");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.oldPriority).toBe("normal");
+    }
   });
 
-  test("rejects in_progress items", () => {
+  test("returns error for in_progress items", () => {
     const item = makeItem({ status: "in_progress", claimedAt: FIXED_NOW.toISOString() });
-    expect(() => reprioritize([item], item.id, "high")).toThrow("Cannot reprioritize item");
+    const result = reprioritize([item], item.id, "high");
+
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("Cannot reprioritize item") });
   });
 
-  test("rejects completed items", () => {
+  test("returns error for completed items", () => {
     const item = makeItem({ status: "completed", completedAt: FIXED_NOW.toISOString() });
-    expect(() => reprioritize([item], item.id, "high")).toThrow("Cannot reprioritize item");
+    const result = reprioritize([item], item.id, "high");
+
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("Cannot reprioritize item") });
   });
 
-  test("throws on no match", () => {
+  test("returns error on no match", () => {
     const item = makeItem();
-    expect(() => reprioritize([item], "nonexistent", "high")).toThrow("No item found");
+    const result = reprioritize([item], "nonexistent", "high");
+
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("No item found") });
   });
 
-  test("throws on ambiguous prefix", () => {
+  test("returns error on ambiguous prefix", () => {
     const a = makeItem({ id: "abcd0000-repri-0000-0000-000000000000", status: "queued" });
     const b = makeItem({ id: "abcd1111-repri-0000-0000-000000000000", status: "queued" });
-    expect(() => reprioritize([a, b], "abcd", "high")).toThrow("Ambiguous id prefix");
+    const result = reprioritize([a, b], "abcd", "high");
+
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("Ambiguous id prefix") });
   });
 
   test("returns new items array (does not mutate input)", () => {
@@ -865,8 +978,11 @@ describe("reprioritize", () => {
     const items = [item];
     const result = reprioritize(items, item.id, "low");
 
-    expect(result.items).not.toBe(items);
-    expect(result.items[0]?.priority).toBe("low");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.items).not.toBe(items);
+      expect(result.value.items[0]?.priority).toBe("low");
+    }
   });
 
   test("does not mutate the original item or items array", () => {
@@ -888,33 +1004,47 @@ describe("addTags", () => {
     const item = makeItem();
     const result = addTags([item], item.id, ["alpha", "beta"]);
 
-    expect(result.item.tags).toEqual(["alpha", "beta"]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.item.tags).toEqual(["alpha", "beta"]);
+    }
   });
 
   test("merges new tags with existing tags", () => {
     const item = makeItem({ tags: ["existing"] });
     const result = addTags([item], item.id, ["new"]);
 
-    expect(result.item.tags).toEqual(["existing", "new"]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.item.tags).toEqual(["existing", "new"]);
+    }
   });
 
   test("deduplicates tags", () => {
     const item = makeItem({ tags: ["dup"] });
     const result = addTags([item], item.id, ["dup", "new"]);
 
-    expect(result.item.tags).toEqual(["dup", "new"]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.item.tags).toEqual(["dup", "new"]);
+    }
   });
 
   test("sorts tags alphabetically", () => {
     const item = makeItem({ tags: ["zebra"] });
     const result = addTags([item], item.id, ["apple"]);
 
-    expect(result.item.tags).toEqual(["apple", "zebra"]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.item.tags).toEqual(["apple", "zebra"]);
+    }
   });
 
-  test("throws on no match", () => {
+  test("returns error on no match", () => {
     const item = makeItem();
-    expect(() => addTags([item], "nonexistent", ["tag"])).toThrow("No item found");
+    const result = addTags([item], "nonexistent", ["tag"]);
+
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("No item found") });
   });
 
   test("does not mutate the original item or items array", () => {
@@ -931,7 +1061,10 @@ describe("addTags", () => {
     const items = [item];
     const result = addTags(items, item.id, ["tag"]);
 
-    expect(result.items).not.toBe(items);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.items).not.toBe(items);
+    }
   });
 });
 
@@ -944,33 +1077,47 @@ describe("removeTags", () => {
     const item = makeItem({ tags: ["keep", "remove"] });
     const result = removeTags([item], item.id, ["remove"]);
 
-    expect(result.item.tags).toEqual(["keep"]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.item.tags).toEqual(["keep"]);
+    }
   });
 
   test("sets tags to undefined when all tags are removed", () => {
     const item = makeItem({ tags: ["only"] });
     const result = removeTags([item], item.id, ["only"]);
 
-    expect(result.item.tags).toBeUndefined();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.item.tags).toBeUndefined();
+    }
   });
 
   test("ignores tags not present on the item", () => {
     const item = makeItem({ tags: ["keep"] });
     const result = removeTags([item], item.id, ["nonexistent"]);
 
-    expect(result.item.tags).toEqual(["keep"]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.item.tags).toEqual(["keep"]);
+    }
   });
 
   test("handles item with no tags gracefully", () => {
     const item = makeItem();
     const result = removeTags([item], item.id, ["whatever"]);
 
-    expect(result.item.tags).toBeUndefined();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.item.tags).toBeUndefined();
+    }
   });
 
-  test("throws on no match", () => {
+  test("returns error on no match", () => {
     const item = makeItem();
-    expect(() => removeTags([item], "nonexistent", ["tag"])).toThrow("No item found");
+    const result = removeTags([item], "nonexistent", ["tag"]);
+
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("No item found") });
   });
 
   test("does not mutate the original item or items array", () => {
@@ -987,7 +1134,10 @@ describe("removeTags", () => {
     const items = [item];
     const result = removeTags(items, item.id, ["tag"]);
 
-    expect(result.items).not.toBe(items);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.items).not.toBe(items);
+    }
   });
 });
 

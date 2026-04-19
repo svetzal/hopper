@@ -82,11 +82,9 @@ async function createTrackingBranch(
   branch: string,
   remoteRef: string,
 ): Promise<void> {
-  const { exitCode, stderr } = await spawnGit(
-    ["branch", "--track", branch, remoteRef],
-    repoDir,
-    { stderr: true },
-  );
+  const { exitCode, stderr } = await spawnGit(["branch", "--track", branch, remoteRef], repoDir, {
+    stderr: true,
+  });
   if (exitCode !== 0) {
     throw new Error(
       `Failed to create tracking branch "${branch}" from ${remoteRef}: ${stderr.trim()}`,

@@ -1,20 +1,22 @@
+import { err, ok, type Result } from "./result.ts";
+
 const TAG_PATTERN = /^[a-z0-9_-]+$/;
 const MAX_TAG_LENGTH = 32;
 
-export function normalizeTag(input: string): string {
+export function normalizeTag(input: string): Result<string> {
   const trimmed = input.trim().toLowerCase().replace(/\s+/g, "-");
   if (trimmed.length === 0) {
-    throw new Error("Tag cannot be empty.");
+    return err("Tag cannot be empty.");
   }
   if (trimmed.length > MAX_TAG_LENGTH) {
-    throw new Error(`Invalid tag '${input}'. Tags must be ${MAX_TAG_LENGTH} characters or fewer.`);
+    return err(`Invalid tag '${input}'. Tags must be ${MAX_TAG_LENGTH} characters or fewer.`);
   }
   if (!TAG_PATTERN.test(trimmed)) {
-    throw new Error(
+    return err(
       `Invalid tag '${input}'. Tags may contain letters, numbers, hyphens, and underscores.`,
     );
   }
-  return trimmed;
+  return ok(trimmed);
 }
 
 export function mergeTags(existing: string[], additions: string[]): string[] {
@@ -27,15 +29,14 @@ export function matchesTags(itemTags: string[] | undefined, filter: string[]): b
   return filter.some((tag) => itemTags.includes(tag));
 }
 
-import { toErrorMessage } from "./error-utils.ts";
-import type { Result } from "./result.ts";
-
 export function normalizeTags(raw: string[]): Result<string[]> {
-  try {
-    return { ok: true, value: raw.map(normalizeTag) };
-  } catch (e) {
-    return { ok: false, error: toErrorMessage(e) };
+  const values: string[] = [];
+  for (const r of raw) {
+    const result = normalizeTag(r);
+    if (!result.ok) return result;
+    values.push(result.value);
   }
+  return ok(values);
 }
 
 export function tagBadge(tags: string[] | undefined): string {

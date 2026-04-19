@@ -169,7 +169,10 @@ describe("presets", () => {
   test("addPreset overwrites with --force", async () => {
     const result1 = await addPreset(makePreset({ name: "overwrite", description: "original" }));
     expect(result1.ok).toBe(true);
-    const result2 = await addPreset(makePreset({ name: "overwrite", description: "updated" }), true);
+    const result2 = await addPreset(
+      makePreset({ name: "overwrite", description: "updated" }),
+      true,
+    );
     expect(result2.ok).toBe(true);
 
     const presets = await loadPresets();

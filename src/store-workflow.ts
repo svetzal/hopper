@@ -1,5 +1,6 @@
 import { Status } from "./constants.ts";
 import { comparePriority } from "./priority.ts";
+import { err, ok, type Result } from "./result.ts";
 import type { ClaimedItem, Item, PhaseRecord } from "./store.ts";
 
 // ---------------------------------------------------------------------------
@@ -132,14 +133,14 @@ export function complete(
   result: string | undefined,
   now: Date,
   newUUID: string,
-): WorkflowCompleteResult {
+): Result<WorkflowCompleteResult> {
   const item = items.find((i) => i.claimToken === token);
 
   if (!item) {
-    throw new Error(`No in-progress item found with token: ${token}`);
+    return err(`No in-progress item found with token: ${token}`);
   }
   if (item.status !== Status.IN_PROGRESS) {
-    throw new Error(`Item is not in progress (status: ${item.status})`);
+    return err(`Item is not in progress (status: ${item.status})`);
   }
 
   const completedItem: Item = {
@@ -196,7 +197,7 @@ export function complete(
     }
   }
 
-  return { items: updatedItems, completed: completedItem, recurred: recurredItem };
+  return ok({ items: updatedItems, completed: completedItem, recurred: recurredItem });
 }
 
 // ---------------------------------------------------------------------------
@@ -218,10 +219,12 @@ export function requeue(
   id: string,
   reason: string,
   agent: string | undefined,
-): RequeueResult {
-  const item = resolveItem(items, id);
+): Result<RequeueResult> {
+  const itemResult = resolveItem(items, id);
+  if (!itemResult.ok) return itemResult;
+  const item = itemResult.value;
   if (item.status !== Status.IN_PROGRESS) {
-    throw new Error(`Item is not in progress (status: ${item.status})`);
+    return err(`Item is not in progress (status: ${item.status})`);
   }
 
   const requeued: Item = {
@@ -234,7 +237,7 @@ export function requeue(
     requeuedBy: agent,
   };
   const updatedItems = replaceItem(items, item.id, requeued);
-  return { items: updatedItems, requeued };
+  return ok({ items: updatedItems, requeued });
 }
 
 // ---------------------------------------------------------------------------
@@ -252,14 +255,16 @@ export interface CancelWorkflowResult {
  * Counts how many blocked items depended on the cancelled item.
  * Returns a new items array — the input is never mutated.
  */
-export function cancel(items: Item[], id: string, now: Date): CancelWorkflowResult {
-  const item = resolveItem(items, id);
+export function cancel(items: Item[], id: string, now: Date): Result<CancelWorkflowResult> {
+  const itemResult = resolveItem(items, id);
+  if (!itemResult.ok) return itemResult;
+  const item = itemResult.value;
   if (
     item.status !== Status.QUEUED &&
     item.status !== Status.SCHEDULED &&
     item.status !== Status.BLOCKED
   ) {
-    throw new Error(
+    return err(
       `Cannot cancel item — status is "${item.status}". Only queued, scheduled, or blocked items can be cancelled.`,
     );
   }
@@ -275,7 +280,7 @@ export function cancel(items: Item[], id: string, now: Date): CancelWorkflowResu
     (i) => i.status === Status.BLOCKED && (i.dependsOn ?? []).includes(item.id),
   ).length;
 
-  return { items: updatedItems, cancelled, blockedDependentCount };
+  return ok({ items: updatedItems, cancelled, blockedDependentCount });
 }
 
 // ---------------------------------------------------------------------------
@@ -296,10 +301,12 @@ export function reprioritize(
   items: Item[],
   id: string,
   priority: "high" | "normal" | "low",
-): ReprioritizeWorkflowResult {
-  const item = resolveItem(items, id);
+): Result<ReprioritizeWorkflowResult> {
+  const itemResult = resolveItem(items, id);
+  if (!itemResult.ok) return itemResult;
+  const item = itemResult.value;
   if (item.status !== Status.QUEUED && item.status !== Status.SCHEDULED) {
-    throw new Error(
+    return err(
       `Cannot reprioritize item — status is "${item.status}". Only queued or scheduled items can be reprioritized.`,
     );
   }
@@ -307,7 +314,7 @@ export function reprioritize(
   const oldPriority = item.priority ?? "normal";
   const updated: Item = { ...item, priority };
   const updatedItems = replaceItem(items, item.id, updated);
-  return { items: updatedItems, item: updated, oldPriority };
+  return ok({ items: updatedItems, item: updated, oldPriority });
 }
 
 // ---------------------------------------------------------------------------
@@ -323,12 +330,14 @@ export interface TagResult {
  * Merge tags into an item (deduplicates and sorts).
  * Returns a new items array — the input is never mutated.
  */
-export function addTags(items: Item[], id: string, tags: string[]): TagResult {
-  const item = resolveItem(items, id);
+export function addTags(items: Item[], id: string, tags: string[]): Result<TagResult> {
+  const itemResult = resolveItem(items, id);
+  if (!itemResult.ok) return itemResult;
+  const item = itemResult.value;
   const merged = [...new Set([...(item.tags ?? []), ...tags])].sort();
   const updated: Item = { ...item, tags: merged };
   const updatedItems = replaceItem(items, item.id, updated);
-  return { items: updatedItems, item: updated };
+  return ok({ items: updatedItems, item: updated });
 }
 
 /**
@@ -336,13 +345,15 @@ export function addTags(items: Item[], id: string, tags: string[]): TagResult {
  * Clears the tags field entirely if no tags remain.
  * Returns a new items array — the input is never mutated.
  */
-export function removeTags(items: Item[], id: string, tags: string[]): TagResult {
-  const item = resolveItem(items, id);
+export function removeTags(items: Item[], id: string, tags: string[]): Result<TagResult> {
+  const itemResult = resolveItem(items, id);
+  if (!itemResult.ok) return itemResult;
+  const item = itemResult.value;
   const tagSet = new Set(tags);
   const remaining = (item.tags ?? []).filter((t) => !tagSet.has(t));
   const updated: Item = { ...item, tags: remaining.length > 0 ? remaining : undefined };
   const updatedItems = replaceItem(items, item.id, updated);
-  return { items: updatedItems, item: updated };
+  return ok({ items: updatedItems, item: updated });
 }
 
 // ---------------------------------------------------------------------------
@@ -413,19 +424,19 @@ export function ensureDefaults(raw: Record<string, unknown>): Item {
 
 /**
  * Resolve an item by exact ID or unique ID prefix.
- * Throws if no match is found or if the prefix is ambiguous.
+ * Returns error result if no match is found or if the prefix is ambiguous.
  */
-export function resolveItem(items: Item[], id: string): Item {
+export function resolveItem(items: Item[], id: string): Result<Item> {
   const matches = items.filter((i) => i.id === id || i.id.startsWith(id));
 
   if (matches.length === 0) {
-    throw new Error(`No item found with id: ${id}`);
+    return err(`No item found with id: ${id}`);
   }
   if (matches.length > 1) {
-    throw new Error(
+    return err(
       `Ambiguous id prefix "${id}" matches ${matches.length} items. Use a longer prefix.`,
     );
   }
 
-  return matches[0] as Item;
+  return ok(matches[0] as Item);
 }

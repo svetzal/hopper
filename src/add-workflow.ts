@@ -155,12 +155,9 @@ export function resolveScheduling(
   }
 
   if (everySpec) {
-    let intervalMs: number;
-    try {
-      intervalMs = parseDuration(everySpec);
-    } catch {
-      return err({ code: "EVERY_INVALID", value: everySpec });
-    }
+    const durResult = parseDuration(everySpec);
+    if (!durResult.ok) return err({ code: "EVERY_INVALID", value: everySpec });
+    const intervalMs = durResult.value;
 
     if (intervalMs < MIN_INTERVAL_MS) {
       return err({ code: "EVERY_TOO_SHORT", minimumMinutes: MIN_INTERVAL_MS / 60_000 });
@@ -168,11 +165,9 @@ export function resolveScheduling(
 
     let scheduledAt: string;
     if (afterSpec) {
-      try {
-        scheduledAt = parseTimeSpec(afterSpec).toISOString();
-      } catch {
-        return err({ code: "EVERY_INVALID", value: afterSpec });
-      }
+      const afterResult = parseTimeSpec(afterSpec);
+      if (!afterResult.ok) return err({ code: "EVERY_INVALID", value: afterSpec });
+      scheduledAt = afterResult.value.toISOString();
     } else {
       scheduledAt = new Date(now.getTime() + intervalMs).toISOString();
     }
@@ -184,12 +179,9 @@ export function resolveScheduling(
     }
 
     if (untilSpec) {
-      let untilDate: Date;
-      try {
-        untilDate = parseTimeSpec(untilSpec);
-      } catch {
-        return err({ code: "EVERY_INVALID", value: untilSpec });
-      }
+      const untilResult = parseTimeSpec(untilSpec);
+      if (!untilResult.ok) return err({ code: "EVERY_INVALID", value: untilSpec });
+      const untilDate = untilResult.value;
       if (untilDate.getTime() <= new Date(scheduledAt).getTime()) {
         return err({ code: "UNTIL_BEFORE_START", until: untilSpec, start: scheduledAt });
       }
@@ -200,12 +192,9 @@ export function resolveScheduling(
   }
 
   if (afterSpec) {
-    let scheduledAt: string;
-    try {
-      scheduledAt = parseTimeSpec(afterSpec).toISOString();
-    } catch {
-      return err({ code: "EVERY_INVALID", value: afterSpec });
-    }
+    const afterOnlyResult = parseTimeSpec(afterSpec);
+    if (!afterOnlyResult.ok) return err({ code: "EVERY_INVALID", value: afterSpec });
+    const scheduledAt = afterOnlyResult.value.toISOString();
     return ok({ status: Status.SCHEDULED, scheduledAt });
   }
 

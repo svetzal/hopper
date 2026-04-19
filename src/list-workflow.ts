@@ -1,5 +1,4 @@
 import { isTaskType, Status, type TaskType } from "./constants.ts";
-import { toErrorMessage } from "./error-utils.ts";
 import { formatDuration, relativeTime, relativeTimeFuture, shortId } from "./format.ts";
 import { comparePriority, parsePriority, priorityBadge } from "./priority.ts";
 import type { Result } from "./result.ts";
@@ -54,12 +53,9 @@ export function filterAndSortItems(
   }
 
   if (priorityFilter) {
-    try {
-      const p = parsePriority(priorityFilter);
-      items = items.filter((i) => (i.priority ?? "normal") === p);
-    } catch (e) {
-      return { ok: false, error: toErrorMessage(e) };
-    }
+    const p = parsePriority(priorityFilter);
+    if (!p.ok) return { ok: false, error: p.error };
+    items = items.filter((i) => (i.priority ?? "normal") === p.value);
   }
 
   if (tagFilter.length > 0) {

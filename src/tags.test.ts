@@ -3,34 +3,52 @@ import { matchesTags, mergeTags, normalizeTag } from "./tags.ts";
 
 describe("normalizeTag", () => {
   test("lowercases input", () => {
-    expect(normalizeTag("MailCtl")).toBe("mailctl");
+    expect(normalizeTag("MailCtl")).toEqual({ ok: true, value: "mailctl" });
   });
 
   test("replaces spaces with hyphens", () => {
-    expect(normalizeTag("bug fix")).toBe("bug-fix");
+    expect(normalizeTag("bug fix")).toEqual({ ok: true, value: "bug-fix" });
   });
 
   test("trims whitespace", () => {
-    expect(normalizeTag("  hello  ")).toBe("hello");
+    expect(normalizeTag("  hello  ")).toEqual({ ok: true, value: "hello" });
   });
 
   test("rejects special characters", () => {
-    expect(() => normalizeTag("foo@bar")).toThrow("Invalid tag");
-    expect(() => normalizeTag("a.b")).toThrow("Invalid tag");
-    expect(() => normalizeTag("tag!")).toThrow("Invalid tag");
+    expect(normalizeTag("foo@bar")).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Invalid tag"),
+    });
+    expect(normalizeTag("a.b")).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Invalid tag"),
+    });
+    expect(normalizeTag("tag!")).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Invalid tag"),
+    });
   });
 
   test("rejects empty string", () => {
-    expect(() => normalizeTag("")).toThrow("Tag cannot be empty");
-    expect(() => normalizeTag("   ")).toThrow("Tag cannot be empty");
+    expect(normalizeTag("")).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Tag cannot be empty"),
+    });
+    expect(normalizeTag("   ")).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Tag cannot be empty"),
+    });
   });
 
   test("rejects tags longer than 32 characters", () => {
-    expect(() => normalizeTag("a".repeat(33))).toThrow("32 characters");
+    expect(normalizeTag("a".repeat(33))).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("32 characters"),
+    });
   });
 
   test("allows hyphens and underscores", () => {
-    expect(normalizeTag("my-tag_1")).toBe("my-tag_1");
+    expect(normalizeTag("my-tag_1")).toEqual({ ok: true, value: "my-tag_1" });
   });
 });
 
