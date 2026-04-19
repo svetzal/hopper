@@ -433,9 +433,7 @@ export function resolveItem(items: Item[], id: string): Result<Item> {
     return err(`No item found with id: ${id}`);
   }
   if (matches.length > 1) {
-    return err(
-      `Ambiguous id prefix "${id}" matches ${matches.length} items. Use a longer prefix.`,
-    );
+    return err(`Ambiguous id prefix "${id}" matches ${matches.length} items. Use a longer prefix.`);
   }
 
   return ok(matches[0] as Item);

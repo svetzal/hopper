@@ -422,7 +422,10 @@ describe("complete", () => {
     const item = makeInProgressItem();
     const result = complete([item], "bad-token", "agent", undefined, FIXED_NOW, "new-uuid");
 
-    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("No in-progress item found") });
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("No in-progress item found"),
+    });
   });
 
   test("returns error when item is not in_progress", () => {
@@ -723,7 +726,10 @@ describe("requeue", () => {
     const b = makeItem({ id: "abcd1111-0000-0000-0000-000000000000", status: "in_progress" });
     const result = requeue([a, b], "abcd", "reason", undefined);
 
-    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("Ambiguous id prefix") });
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Ambiguous id prefix"),
+    });
   });
 
   test("preserves createdAt", () => {
@@ -809,14 +815,20 @@ describe("cancel", () => {
     const item = makeItem({ status: "in_progress", claimedAt: FIXED_NOW.toISOString() });
     const result = cancel([item], item.id, FIXED_NOW);
 
-    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("Cannot cancel item") });
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Cannot cancel item"),
+    });
   });
 
   test("returns error for completed items", () => {
     const item = makeItem({ status: "completed", completedAt: FIXED_NOW.toISOString() });
     const result = cancel([item], item.id, FIXED_NOW);
 
-    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("Only queued, scheduled, or blocked items can be cancelled") });
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Only queued, scheduled, or blocked items can be cancelled"),
+    });
   });
 
   test("returns correct blocked dependent count", () => {
@@ -870,7 +882,10 @@ describe("cancel", () => {
     const b = makeItem({ id: "abcd1111-cancel-0000-0000-000000000000" });
     const result = cancel([a, b], "abcd", FIXED_NOW);
 
-    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("Ambiguous id prefix") });
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Ambiguous id prefix"),
+    });
   });
 
   test("does not mutate the original item or items array", () => {
@@ -948,14 +963,20 @@ describe("reprioritize", () => {
     const item = makeItem({ status: "in_progress", claimedAt: FIXED_NOW.toISOString() });
     const result = reprioritize([item], item.id, "high");
 
-    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("Cannot reprioritize item") });
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Cannot reprioritize item"),
+    });
   });
 
   test("returns error for completed items", () => {
     const item = makeItem({ status: "completed", completedAt: FIXED_NOW.toISOString() });
     const result = reprioritize([item], item.id, "high");
 
-    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("Cannot reprioritize item") });
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Cannot reprioritize item"),
+    });
   });
 
   test("returns error on no match", () => {
@@ -970,7 +991,10 @@ describe("reprioritize", () => {
     const b = makeItem({ id: "abcd1111-repri-0000-0000-000000000000", status: "queued" });
     const result = reprioritize([a, b], "abcd", "high");
 
-    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("Ambiguous id prefix") });
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Ambiguous id prefix"),
+    });
   });
 
   test("returns new items array (does not mutate input)", () => {

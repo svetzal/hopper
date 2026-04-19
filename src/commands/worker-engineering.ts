@@ -30,8 +30,8 @@ import {
   resolveEngineeringAuditPaths,
 } from "../worker-workflow.ts";
 import {
-  type LogFn,
   createLogger,
+  type LogFn,
   mergeAndPush,
   orchestrateWorktreeSetup,
   teardownWorktree,

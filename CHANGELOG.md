@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.6] - 2026-04-19
+
+### Added
+
+- **`hopper integrate <id>` command.** Automates the manual `cd <repo> && git checkout main && git merge hopper/<branch> --no-edit` cycle that previously had to be done by hand after each completed item. Resolves items by prefix, validates status (`completed` or `in_progress` with a worktree on disk), runs the merge, then removes the worker branch and hopper worktree by default. Flags: `--dry-run` (print commands, no execution), `--keep-worktree` (skip cleanup), `--json`.
+- **Monitor-tool guidance in the coordinator skill.** New callout in "Investigating In-Progress Tasks" explains that the `Monitor` tool streams each stdout line as a notification and is preferable to repeated `pgrep -f X` + `tail /tmp/<log>` polling when watching a long-running background process.
+
 ## [2.0.5] - 2026-04-12
 
 ### Changed

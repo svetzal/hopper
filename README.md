@@ -58,6 +58,7 @@ Binaries are standalone — no runtime needed on the target machine.
 | `claim` | Claim the next queued item (FIFO) |
 | `complete <token>` | Mark a claimed item as completed |
 | `requeue <id>` | Return an in-progress item to the queue |
+| `integrate <id>` | Merge item's branch into main of workingDir and clean up worktree/branch |
 | `cancel <id>` | Cancel a queued item |
 | `init` | Install Claude Code skill files into the current repo |
 
@@ -74,6 +75,8 @@ Binaries are standalone — no runtime needed on the target machine.
 - `--until <timespec>` — End date for recurrence, requires `--every` (`add`)
 - `--all` — Include completed items (`list`)
 - `--completed` — Show only completed items (`list`)
+- `--dry-run` — Print the git commands without executing them (`integrate`)
+- `--keep-worktree` — Leave worktree and branch in place after merge (`integrate`)
 
 ## How It Works
 

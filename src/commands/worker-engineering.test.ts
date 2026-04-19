@@ -57,6 +57,7 @@ function makeMockGit(overrides?: Partial<GitGateway>): GitGateway {
     mergeFastForward: mock(async () => 0),
     mergeCommit: mock(async () => 0),
     mergeAbort: mock(async () => {}),
+    mergeNoEdit: mock(async () => ({ exitCode: 0, stderr: "" })),
     deleteBranch: mock(async () => {}),
     push: mock(async () => ({ success: true, message: "Pushed." })),
     pushTags: mock(async () => ({ success: true, message: "Tags pushed." })),

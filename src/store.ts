@@ -176,7 +176,10 @@ export async function cancelItem(id: string): Promise<CancelResult> {
   const outcome = cancel(items, id, new Date());
   if (!outcome.ok) throw new Error(outcome.error);
   await saveItems(outcome.value.items);
-  return { item: outcome.value.cancelled, blockedDependentCount: outcome.value.blockedDependentCount };
+  return {
+    item: outcome.value.cancelled,
+    blockedDependentCount: outcome.value.blockedDependentCount,
+  };
 }
 
 export async function updateItemTags(id: string, tags: string[]): Promise<Item> {

@@ -51,6 +51,7 @@ export interface GitGateway {
   mergeFastForward(repoDir: string, branch: string): Promise<number>;
   mergeCommit(repoDir: string, branch: string): Promise<number>;
   mergeAbort(repoDir: string): Promise<void>;
+  mergeNoEdit(repoDir: string, branch: string): Promise<{ exitCode: number; stderr: string }>;
   deleteBranch(repoDir: string, branch: string): Promise<void>;
   push(repoDir: string, branch: string): Promise<{ success: boolean; message: string }>;
   pushTags(repoDir: string): Promise<{ success: boolean; message: string }>;
@@ -164,6 +165,16 @@ async function mergeAbort(repoDir: string): Promise<void> {
   await spawnGit(["merge", "--abort"], repoDir);
 }
 
+async function mergeNoEdit(
+  repoDir: string,
+  branch: string,
+): Promise<{ exitCode: number; stderr: string }> {
+  const { exitCode, stderr } = await spawnGit(["merge", branch, "--no-edit"], repoDir, {
+    stderr: true,
+  });
+  return { exitCode, stderr };
+}
+
 async function deleteBranch(repoDir: string, branch: string): Promise<void> {
   await spawnGit(["branch", "-d", branch], repoDir);
 }
@@ -220,6 +231,7 @@ export function createGitGateway(): GitGateway {
     mergeFastForward,
     mergeCommit,
     mergeAbort,
+    mergeNoEdit,
     deleteBranch,
     push,
     pushTags,

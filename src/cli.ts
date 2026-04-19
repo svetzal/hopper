@@ -6,6 +6,7 @@ import { createAgentResolver } from "./commands/add-agent-resolver.ts";
 import { cancelCommand } from "./commands/cancel.ts";
 import { claimCommand } from "./commands/claim.ts";
 import { completeCommand } from "./commands/complete.ts";
+import { integrateCommand } from "./commands/integrate.ts";
 import { listCommand } from "./commands/list.ts";
 import { presetCommand } from "./commands/preset.ts";
 import { reprioritizeCommand } from "./commands/reprioritize.ts";
@@ -16,6 +17,7 @@ import { workerCommand } from "./commands/worker-loop.ts";
 import { VERSION } from "./constants.ts";
 import { createAgentsGateway } from "./gateways/agents-gateway.ts";
 import { createClaudeGateway } from "./gateways/claude-gateway.ts";
+import { createGitGateway } from "./gateways/git-gateway.ts";
 import { createLlmGateway } from "./gateways/llm-gateway.ts";
 import { createTitleGenerator } from "./titler.ts";
 
@@ -104,6 +106,9 @@ Usage:
   hopper complete <token>            Complete a claimed item
   hopper complete <token> --result "…" Attach a result summary
   hopper cancel <id>                 Cancel a queued item
+  hopper integrate <id>              Merge item's branch into main and clean up worktree
+  hopper integrate <id> --dry-run    Show commands without executing them
+  hopper integrate <id> --keep-worktree  Leave worktree and branch after merge
   hopper requeue <id> --reason "…"   Return an in-progress item to queue
   hopper reprioritize <id> <level>   Change priority of a queued/scheduled item
   hopper tag <id> <tag> [<tag>...]   Add tags to an existing item
@@ -131,6 +136,8 @@ Options:
   --branch    Git branch for the task (add command, required with --dir unless --command is set)
   --type      Task type: investigation, engineering, task (add command)
   --agent     Agent for claim/complete/worker; or craftsperson override (add command)
+  --dry-run         Print commands without executing them (integrate)
+  --keep-worktree   Skip worktree and branch cleanup after merge (integrate)
   --json      Output as JSON
   --help      Show this help
   --version   Show version`);
@@ -177,6 +184,11 @@ async function main(): Promise<void> {
     case "reprioritize":
       await runCommand(reprioritizeCommand, parsed);
       break;
+    case "integrate": {
+      const git = createGitGateway();
+      await runCommand((p) => integrateCommand(p, git), parsed);
+      break;
+    }
     case "show":
       await runCommand(showCommand, parsed);
       break;

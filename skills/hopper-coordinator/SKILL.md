@@ -2,7 +2,7 @@
 name: hopper-coordinator
 description: Dispatch concrete, ready-to-execute work to background Claude Code agents via the hopper queue. Use this skill when the user wants to queue up substantive coding tasks for unattended processing in specific projects on their machine — not for planning, to-do tracking, or lightweight tasks.
 metadata:
-  version: "2.0.5"
+  version: "2.0.6"
   author: Stacey Vetzal
 ---
 
@@ -206,6 +206,8 @@ Hopper streams each JSONL line from the claude subprocess to the audit file imme
 
 However, the audit file only reflects what the claude CLI itself has emitted. If Claude is thinking, waiting for a tool response, or processing a large response from a subagent, it may not emit events for minutes at a time even when healthy. Silence in the audit file during these periods is **not** proof of a hang — it is normal behavior. A genuine hang produces no new events for a sustained period (e.g., 10–15+ minutes) combined with a process in an unexpected state.
 
+**Monitoring background work.** When watching a long-running background process or tailing a log, use the `Monitor` tool (streams each new stdout line as a notification) instead of polling with `pgrep -f X` + `tail /tmp/<log>`. Monitor lets you continue other work and get pinged when output appears — no repeated status checks burning context.
+
 **Key files per task:**
 
 | Path | Contents |
@@ -303,6 +305,17 @@ hopper requeue <id> --reason "..." --agent <name> --json
 ```
 
 Returns an IN_PROGRESS item back to QUEUED status. The `--reason` flag is required — it records why the work couldn't be completed. Only works on IN_PROGRESS items.
+
+### Integrating Completed Work
+
+```bash
+hopper integrate <id>                   # Merge branch into main, remove worktree and branch
+hopper integrate <id> --keep-worktree   # Merge but leave worktree and branch in place
+hopper integrate <id> --dry-run         # Print the git commands that would run, exit 0
+hopper integrate <id> --json            # Machine-readable output
+```
+
+Checks out `main` in the item's `workingDir`, merges the item's worker branch with `--no-edit`, then deletes the branch and worktree by default. Only works on `completed` or `in_progress` items that have a `workingDir` and `branch`. On merge conflict, hopper surfaces the git stderr and leaves the repository state intact for manual resolution.
 
 ### Reprioritizing Items
 
