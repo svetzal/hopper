@@ -2,7 +2,6 @@ import { formatValidationError, validateRetries, validateTaskType } from "../add
 import type { ParsedArgs } from "../cli.ts";
 import { requirePositional, stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
-import { toErrorMessage } from "../error-utils.ts";
 import {
   addPreset,
   findPreset,
@@ -41,12 +40,9 @@ async function presetAddCommand(parsed: ParsedArgs): Promise<CommandResult> {
     };
   }
 
-  let name: string;
-  try {
-    name = validatePresetName(rawName);
-  } catch (err) {
-    return { status: "error", message: toErrorMessage(err) };
-  }
+  const nameResult = validatePresetName(rawName);
+  if (!nameResult.ok) return { status: "error", message: nameResult.error };
+  const name = nameResult.value;
 
   const dir = stringFlag(parsed, "dir");
   const branch = stringFlag(parsed, "branch");
@@ -65,24 +61,21 @@ async function presetAddCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const force = parsed.flags.force === true;
 
   return withStoreError(async () => {
-    try {
-      await addPreset(
-        {
-          name,
-          description,
-          ...(dir ? { workingDir: dir } : {}),
-          ...(branch ? { branch } : {}),
-          ...(command ? { command } : {}),
-          ...(type ? { type } : {}),
-          ...(agent ? { agent } : {}),
-          ...(retries !== undefined ? { retries } : {}),
-          createdAt: new Date().toISOString(),
-        },
-        force,
-      );
-    } catch (err) {
-      return { status: "error", message: toErrorMessage(err) };
-    }
+    const addResult = await addPreset(
+      {
+        name,
+        description,
+        ...(dir ? { workingDir: dir } : {}),
+        ...(branch ? { branch } : {}),
+        ...(command ? { command } : {}),
+        ...(type ? { type } : {}),
+        ...(agent ? { agent } : {}),
+        ...(retries !== undefined ? { retries } : {}),
+        createdAt: new Date().toISOString(),
+      },
+      force,
+    );
+    if (!addResult.ok) return { status: "error", message: addResult.error };
 
     const preset = await findPreset(name);
 
@@ -144,7 +137,8 @@ async function presetRemoveCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const name = nameArg.value;
 
   return withStoreError(async () => {
-    await removePreset(name);
+    const removeResult = await removePreset(name);
+    if (!removeResult.ok) return { status: "error", message: removeResult.error };
 
     return {
       status: "success",

@@ -41,7 +41,8 @@ describe("presets", () => {
 
   test("addPreset stores correctly", async () => {
     const preset = makePreset({ name: "hone-mailctl" });
-    await addPreset(preset);
+    const result = await addPreset(preset);
+    expect(result.ok).toBe(true);
 
     const presets = await loadPresets();
     expect(presets).toHaveLength(1);
@@ -55,7 +56,8 @@ describe("presets", () => {
       workingDir: "/tmp/project",
       branch: "main",
     });
-    await addPreset(preset);
+    const result = await addPreset(preset);
+    expect(result.ok).toBe(true);
 
     const presets = await loadPresets();
     expect(presets[0]?.workingDir).toBe("/tmp/project");
@@ -68,7 +70,8 @@ describe("presets", () => {
       type: "engineering",
       agent: "typescript-bun-cli-craftsperson",
     });
-    await addPreset(preset);
+    const result = await addPreset(preset);
+    expect(result.ok).toBe(true);
 
     const presets = await loadPresets();
     expect(presets[0]?.type).toBe("engineering");
@@ -93,59 +96,81 @@ describe("presets", () => {
   test("removePreset removes and returns the preset", async () => {
     await addPreset(makePreset({ name: "to-remove" }));
 
-    const removed = await removePreset("to-remove");
-    expect(removed.name).toBe("to-remove");
+    const result = await removePreset("to-remove");
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.name).toBe("to-remove");
 
     const presets = await loadPresets();
     expect(presets).toHaveLength(0);
   });
 
   test("removePreset throws for missing", async () => {
-    await expect(removePreset("nonexistent")).rejects.toThrow(
-      "No preset found with name: nonexistent",
-    );
+    const result = await removePreset("nonexistent");
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("No preset found with name: nonexistent"),
+    });
   });
 
   test("validatePresetName rejects empty name", () => {
-    expect(() => validatePresetName("")).toThrow("cannot be empty");
+    expect(validatePresetName("")).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("cannot be empty"),
+    });
   });
 
   test("validatePresetName rejects names with spaces", () => {
-    expect(() => validatePresetName("my preset")).toThrow(
-      "alphanumeric characters, hyphens, and underscores",
-    );
+    expect(validatePresetName("my preset")).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("alphanumeric characters, hyphens, and underscores"),
+    });
   });
 
   test("validatePresetName rejects special characters", () => {
-    expect(() => validatePresetName("my@preset!")).toThrow(
-      "alphanumeric characters, hyphens, and underscores",
-    );
+    expect(validatePresetName("my@preset!")).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("alphanumeric characters, hyphens, and underscores"),
+    });
   });
 
   test("validatePresetName rejects names over 64 characters", () => {
     const longName = "a".repeat(65);
-    expect(() => validatePresetName(longName)).toThrow("64 characters or fewer");
+    expect(validatePresetName(longName)).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("64 characters or fewer"),
+    });
   });
 
   test("validatePresetName normalizes to lowercase", () => {
-    expect(validatePresetName("My-Preset")).toBe("my-preset");
+    expect(validatePresetName("My-Preset")).toEqual({
+      ok: true,
+      value: "my-preset",
+    });
   });
 
   test("validatePresetName accepts valid names", () => {
-    expect(validatePresetName("hone-mailctl_v2")).toBe("hone-mailctl_v2");
+    expect(validatePresetName("hone-mailctl_v2")).toEqual({
+      ok: true,
+      value: "hone-mailctl_v2",
+    });
   });
 
   test("addPreset rejects duplicate names without --force", async () => {
-    await addPreset(makePreset({ name: "duplicate" }));
+    const firstResult = await addPreset(makePreset({ name: "duplicate" }));
+    expect(firstResult.ok).toBe(true);
 
-    await expect(
-      addPreset(makePreset({ name: "duplicate", description: "new desc" })),
-    ).rejects.toThrow('Preset "duplicate" already exists');
+    const result = await addPreset(makePreset({ name: "duplicate", description: "new desc" }));
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('Preset "duplicate" already exists'),
+    });
   });
 
   test("addPreset overwrites with --force", async () => {
-    await addPreset(makePreset({ name: "overwrite", description: "original" }));
-    await addPreset(makePreset({ name: "overwrite", description: "updated" }), true);
+    const result1 = await addPreset(makePreset({ name: "overwrite", description: "original" }));
+    expect(result1.ok).toBe(true);
+    const result2 = await addPreset(makePreset({ name: "overwrite", description: "updated" }), true);
+    expect(result2.ok).toBe(true);
 
     const presets = await loadPresets();
     expect(presets).toHaveLength(1);
