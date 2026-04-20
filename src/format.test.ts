@@ -241,56 +241,58 @@ describe("formatItemDetail — engineering audit paths", () => {
 
 describe("format", () => {
   describe("relativeTime", () => {
+    const now = Date.now();
+
     test("returns 'just now' for recent timestamps", () => {
-      const now = new Date().toISOString();
-      expect(relativeTime(now)).toBe("just now");
+      expect(relativeTime(new Date(now).toISOString(), now)).toBe("just now");
     });
 
     test("returns minutes ago", () => {
-      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-      expect(relativeTime(fiveMinAgo)).toBe("5m ago");
+      const fiveMinAgo = new Date(now - 5 * 60 * 1000).toISOString();
+      expect(relativeTime(fiveMinAgo, now)).toBe("5m ago");
     });
 
     test("returns hours ago", () => {
-      const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
-      expect(relativeTime(threeHoursAgo)).toBe("3h ago");
+      const threeHoursAgo = new Date(now - 3 * 60 * 60 * 1000).toISOString();
+      expect(relativeTime(threeHoursAgo, now)).toBe("3h ago");
     });
 
     test("returns days ago", () => {
-      const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
-      expect(relativeTime(twoDaysAgo)).toBe("2d ago");
+      const twoDaysAgo = new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString();
+      expect(relativeTime(twoDaysAgo, now)).toBe("2d ago");
     });
   });
 
   describe("relativeTimeFuture", () => {
+    const now = Date.now();
+
     test("returns 'now' for timestamps in the past", () => {
-      const oneSecondAgo = new Date(Date.now() - 1000).toISOString();
-      expect(relativeTimeFuture(oneSecondAgo)).toBe("now");
+      const oneSecondAgo = new Date(now - 1000).toISOString();
+      expect(relativeTimeFuture(oneSecondAgo, now)).toBe("now");
     });
 
     test("returns 'now' for the current timestamp", () => {
-      const now = new Date(Date.now()).toISOString();
-      expect(relativeTimeFuture(now)).toBe("now");
+      expect(relativeTimeFuture(new Date(now).toISOString(), now)).toBe("now");
     });
 
     test("returns seconds for near-future timestamps", () => {
-      const thirtySecondsAhead = new Date(Date.now() + 30 * 1000).toISOString();
-      expect(relativeTimeFuture(thirtySecondsAhead)).toBe("in 30s");
+      const thirtySecondsAhead = new Date(now + 30 * 1000).toISOString();
+      expect(relativeTimeFuture(thirtySecondsAhead, now)).toBe("in 30s");
     });
 
     test("returns minutes for future timestamps under an hour", () => {
-      const fiveMinutesAhead = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-      expect(relativeTimeFuture(fiveMinutesAhead)).toBe("in 5m");
+      const fiveMinutesAhead = new Date(now + 5 * 60 * 1000).toISOString();
+      expect(relativeTimeFuture(fiveMinutesAhead, now)).toBe("in 5m");
     });
 
     test("returns hours for future timestamps under a day", () => {
-      const threeHoursAhead = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
-      expect(relativeTimeFuture(threeHoursAhead)).toBe("in 3h");
+      const threeHoursAhead = new Date(now + 3 * 60 * 60 * 1000).toISOString();
+      expect(relativeTimeFuture(threeHoursAhead, now)).toBe("in 3h");
     });
 
     test("returns days for future timestamps over a day", () => {
-      const twoDaysAhead = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
-      expect(relativeTimeFuture(twoDaysAhead)).toBe("in 2d");
+      const twoDaysAhead = new Date(now + 2 * 24 * 60 * 60 * 1000).toISOString();
+      expect(relativeTimeFuture(twoDaysAhead, now)).toBe("in 2d");
     });
   });
 

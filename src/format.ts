@@ -1,7 +1,6 @@
-export function relativeTime(iso: string): string {
-  const now = Date.now();
+export function relativeTime(iso: string, nowMs: number = Date.now()): string {
   const then = new Date(iso).getTime();
-  const diffMs = now - then;
+  const diffMs = nowMs - then;
   const diffSec = Math.floor(diffMs / 1000);
 
   if (diffSec < 60) return "just now";
@@ -13,10 +12,9 @@ export function relativeTime(iso: string): string {
   return `${diffDay}d ago`;
 }
 
-export function relativeTimeFuture(iso: string): string {
-  const now = Date.now();
+export function relativeTimeFuture(iso: string, nowMs: number = Date.now()): string {
   const then = new Date(iso).getTime();
-  const diffMs = then - now;
+  const diffMs = then - nowMs;
 
   if (diffMs <= 0) return "now";
   const diffSec = Math.floor(diffMs / 1000);
