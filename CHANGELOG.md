@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.7] - 2026-04-19
+
+### Fixed
+
+- **Flaky relative-time tests resolved by injecting clock.** `relativeTime` and `relativeTimeFuture` now accept an optional `nowMs` parameter so tests can pin the reference clock, eliminating intermittent failures caused by drift between two `Date.now()` calls under system load.
+- **Engineering worker branch consistency and claim safety.** Cached the engineering branch slug to prevent non-deterministic collisions, made worktree setup tolerant of orphaned branches, and guaranteed requeue on pre-spawn failures before the Claude session starts.
+
 ## [2.0.6] - 2026-04-19
 
 ### Added
@@ -310,7 +317,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Release workflow: use macos-14 for x64 builds
 
-[Unreleased]: https://github.com/svetzal/hopper/compare/v2.0.6...HEAD
+[Unreleased]: https://github.com/svetzal/hopper/compare/v2.0.7...HEAD
+[2.0.7]: https://github.com/svetzal/hopper/compare/v2.0.6...v2.0.7
 [2.0.6]: https://github.com/svetzal/hopper/compare/v2.0.5...v2.0.6
 [2.0.5]: https://github.com/svetzal/hopper/compare/v2.0.4...v2.0.5
 [2.0.4]: https://github.com/svetzal/hopper/compare/v2.0.3...v2.0.4
