@@ -30,6 +30,9 @@ describe("integrateCommand", () => {
       push: mock(async () => ({ success: true, message: "Pushed." })),
       pushTags: mock(async () => ({ success: true, message: "Tags pushed." })),
       diffSummary: mock(async () => "src/foo.ts | 2 +-"),
+      branchIsAncestorOf: mock(async () => true),
+      listWorktreesForBranch: mock(async () => []),
+      forceDeleteBranch: mock(async () => {}),
       ...overrides,
     };
   }

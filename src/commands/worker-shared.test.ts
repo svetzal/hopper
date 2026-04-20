@@ -6,6 +6,7 @@ import {
   mergeAndPush,
   orchestrateMerge,
   orchestrateWorktreeSetup,
+  StaleEngineeringBranchError,
   teardownWorktree,
 } from "./worker-shared.ts";
 
@@ -35,6 +36,9 @@ function makeMockGit(overrides?: Partial<GitGateway>): GitGateway {
     push: mock(async () => ({ success: true, message: "Pushed." })),
     pushTags: mock(async () => ({ success: true, message: "Tags pushed." })),
     diffSummary: mock(async () => "src/foo.ts | 2 +-"),
+    branchIsAncestorOf: mock(async () => true),
+    listWorktreesForBranch: mock(async () => []),
+    forceDeleteBranch: mock(async () => {}),
     ...overrides,
   };
 }
@@ -157,6 +161,83 @@ describe("orchestrateWorktreeSetup", () => {
     );
 
     expect(result).toBe("hopper/aaaaaaaa");
+  });
+
+  // Branch-collision tolerance cases ----------------------------------------
+
+  test("work branch absent → no forceDeleteBranch call, createWorktree called normally", async () => {
+    // Target branch exists locally; work branch does NOT exist
+    const git = makeMockGit({
+      branchExists: mock(async (_, branch) => branch === TARGET_BRANCH),
+    });
+    const override = "hopper-eng/my-slug-aaaaaaaa";
+
+    await orchestrateWorktreeSetup(git, REPO_DIR, TARGET_BRANCH, WORKTREE_PATH, ITEM_ID, override);
+
+    expect(git.forceDeleteBranch).not.toHaveBeenCalled();
+    expect(git.createWorktree).toHaveBeenCalledWith(
+      REPO_DIR,
+      WORKTREE_PATH,
+      override,
+      TARGET_BRANCH,
+    );
+  });
+
+  test("work branch exists, no worktrees, safe orphan → forceDeleteBranch called then createWorktree", async () => {
+    const workBranch = "hopper-eng/my-slug-aaaaaaaa";
+    // Every branch "exists"; no worktrees for the work branch; target IS ancestor
+    const git = makeMockGit({
+      branchExists: mock(async () => true),
+      listWorktreesForBranch: mock(async () => []),
+      branchIsAncestorOf: mock(async () => true),
+    });
+
+    await orchestrateWorktreeSetup(
+      git,
+      REPO_DIR,
+      TARGET_BRANCH,
+      WORKTREE_PATH,
+      ITEM_ID,
+      workBranch,
+    );
+
+    expect(git.forceDeleteBranch).toHaveBeenCalledWith(REPO_DIR, workBranch);
+    expect(git.createWorktree).toHaveBeenCalledWith(
+      REPO_DIR,
+      WORKTREE_PATH,
+      workBranch,
+      TARGET_BRANCH,
+    );
+  });
+
+  test("work branch exists, no worktrees, diverged → throws StaleEngineeringBranchError, createWorktree NOT called", async () => {
+    const workBranch = "hopper-eng/my-slug-aaaaaaaa";
+    const git = makeMockGit({
+      branchExists: mock(async () => true),
+      listWorktreesForBranch: mock(async () => []),
+      branchIsAncestorOf: mock(async () => false), // target NOT ancestor → diverged
+    });
+
+    await expect(
+      orchestrateWorktreeSetup(git, REPO_DIR, TARGET_BRANCH, WORKTREE_PATH, ITEM_ID, workBranch),
+    ).rejects.toBeInstanceOf(StaleEngineeringBranchError);
+    expect(git.createWorktree).not.toHaveBeenCalled();
+    expect(git.forceDeleteBranch).not.toHaveBeenCalled();
+  });
+
+  test("work branch exists with active worktrees → throws StaleEngineeringBranchError, createWorktree NOT called", async () => {
+    const workBranch = "hopper-eng/my-slug-aaaaaaaa";
+    const git = makeMockGit({
+      branchExists: mock(async () => true),
+      listWorktreesForBranch: mock(async () => ["/worktrees/active"]),
+    });
+
+    await expect(
+      orchestrateWorktreeSetup(git, REPO_DIR, TARGET_BRANCH, WORKTREE_PATH, ITEM_ID, workBranch),
+    ).rejects.toBeInstanceOf(StaleEngineeringBranchError);
+    expect(git.createWorktree).not.toHaveBeenCalled();
+    // branchIsAncestorOf should NOT have been called (worktrees check short-circuits)
+    expect(git.branchIsAncestorOf).not.toHaveBeenCalled();
   });
 });
 

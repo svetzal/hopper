@@ -9,7 +9,12 @@ import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import { buildEngineeringBranchName } from "../git-workflow.ts";
 import type { ClaimedItem, Item, PhaseRecord } from "../store.ts";
-import { completeItem, recordItemPhase } from "../store.ts";
+import {
+  completeItem,
+  recordItemPhase,
+  requeueItem,
+  setItemEngineeringBranchSlug,
+} from "../store.ts";
 import {
   buildBranchSlugPrompt,
   buildCommitMessagePrompt,
@@ -34,6 +39,7 @@ import {
   type LogFn,
   mergeAndPush,
   orchestrateWorktreeSetup,
+  StaleEngineeringBranchError,
   teardownWorktree,
 } from "./worker-shared.ts";
 
@@ -322,11 +328,32 @@ export async function processEngineeringItem(
   const worktreePath = join(hopperHome, "worktrees", item.id);
   await fs.ensureDir(join(hopperHome, "worktrees"));
 
-  log("Generating branch slug...");
-  const slug = await resolveEngineeringBranchSlug(claude, item);
+  // Resolve branch slug — use cached value when available so re-claims always
+  // produce the same work-branch name regardless of LLM non-determinism.
+  let slug: string | null;
+  if (item.engineeringBranchSlug) {
+    slug = item.engineeringBranchSlug;
+    log(`Using cached branch slug: ${slug}`);
+  } else {
+    log("Generating branch slug...");
+    slug = await resolveEngineeringBranchSlug(claude, item);
+    if (slug) {
+      // Persist for future retries — best-effort, must not crash the run.
+      try {
+        await setItemEngineeringBranchSlug(item.id, slug);
+      } catch {
+        // intentional: slug persistence is a resilience aid, not critical path
+      }
+    }
+  }
   const workBranch = buildEngineeringBranchName(item.id, slug);
   log(`Work branch: ${workBranch}`);
 
+  // Track whether a Claude session has started. Pre-spawn failures (worktree
+  // setup, audit-dir creation) auto-requeue the item so it doesn't get stuck
+  // in `in_progress`. Post-session failures are handled by the worker loop's
+  // last-resort safety net.
+  let claudeSessionStarted = false;
   let worktreeLivePath: string | undefined;
   try {
     log(`Setting up worktree at ${worktreePath}...`);
@@ -339,6 +366,11 @@ export async function processEngineeringItem(
       workBranch,
     );
     worktreeLivePath = worktreePath;
+
+    // All pre-spawn setup is complete. Mark the session boundary before the
+    // first Claude invocation so the catch block below knows which regime
+    // we are in.
+    claudeSessionStarted = true;
 
     // --- Plan phase -------------------------------------------------------
     const planResult = await runPlanPhase(item, worktreePath, paths, { claude, fs }, log);
@@ -375,6 +407,23 @@ export async function processEngineeringItem(
       log,
     );
     worktreeLivePath = undefined;
+  } catch (err) {
+    if (!claudeSessionStarted) {
+      // Pre-spawn failure: release the claim so the item can be retried.
+      const reason =
+        err instanceof StaleEngineeringBranchError
+          ? `Stale branch: ${err.message}`
+          : `Worktree setup failed: ${(err as Error).message}`;
+      log(`Pre-spawn failure — auto-requeueing: ${reason}`);
+      try {
+        await requeueItem(item.id, reason, agentName);
+      } catch {
+        // Best-effort: if the item has already moved (e.g., cancelled), skip.
+      }
+    } else {
+      // Post-session failure: let the worker loop's last-resort handler decide.
+      throw err;
+    }
   } finally {
     // Only tear down if the flow didn't already clean up the worktree. A live
     // path here means we aborted mid-flight; the worktree may be in an

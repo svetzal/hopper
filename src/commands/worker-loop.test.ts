@@ -8,6 +8,8 @@ import type { WorkerConfig } from "../worker-workflow.ts";
 import { makeClaimedItem } from "./test-helpers.ts";
 import { runWorkerLoop, type WorkerLoopDeps } from "./worker-loop.ts";
 
+const noop = mock(async () => {});
+
 const HOPPER_HOME = "/tmp/test-hopper";
 
 function makeGatewayDeps(): {
@@ -53,6 +55,7 @@ describe("runWorkerLoop", () => {
       sleep: mock(async () => ({ cancelled: false })),
       log: (msg) => logs.push(msg),
       onSignal: mock(() => {}),
+      requeueIfStillClaimed: noop,
     };
 
     await runWorkerLoop(makeRunOnceConfig(), HOPPER_HOME, makeGatewayDeps(), loopDeps);
@@ -71,6 +74,7 @@ describe("runWorkerLoop", () => {
       sleep: mock(async () => ({ cancelled: false })),
       log: (msg) => logs.push(msg),
       onSignal: mock(() => {}),
+      requeueIfStillClaimed: noop,
     };
 
     await runWorkerLoop(makeRunOnceConfig(), HOPPER_HOME, makeGatewayDeps(), loopDeps);
@@ -96,6 +100,7 @@ describe("runWorkerLoop", () => {
       onSignal: mock((_signal: "SIGINT" | "SIGTERM", handler: () => void) => {
         shutdownHandler = handler;
       }),
+      requeueIfStillClaimed: noop,
     };
 
     await runWorkerLoop(
@@ -132,6 +137,7 @@ describe("runWorkerLoop", () => {
       onSignal: mock((_signal: "SIGINT" | "SIGTERM", handler: () => void) => {
         shutdownHandler = handler;
       }),
+      requeueIfStillClaimed: noop,
     };
 
     const loopPromise = runWorkerLoop(
@@ -163,5 +169,56 @@ describe("runWorkerLoop", () => {
     expect(loopDeps.processItem).toHaveBeenCalledTimes(1);
     const shutdownLog = logs.find((l) => l.includes("Shutting down"));
     expect(shutdownLog).toBeDefined();
+  });
+
+  test("processItem rejects → requeueIfStillClaimed called with item id and error reason; loop continues", async () => {
+    const item = makeClaimedItem();
+    const requeueIfStillClaimed = mock(async () => {});
+    const logs: string[] = [];
+
+    const loopDeps: WorkerLoopDeps = {
+      claimNext: mock(async () => item),
+      processItem: mock(async () => {
+        throw new Error("process exploded");
+      }),
+      sleep: mock(async () => ({ cancelled: false })),
+      log: (msg) => logs.push(msg),
+      onSignal: mock(() => {}),
+      requeueIfStillClaimed,
+    };
+
+    await runWorkerLoop(makeRunOnceConfig(), HOPPER_HOME, makeGatewayDeps(), loopDeps);
+
+    expect(requeueIfStillClaimed).toHaveBeenCalledTimes(1);
+    const [calledId, reason] = requeueIfStillClaimed.mock.calls[0] as unknown as [
+      string,
+      string,
+      string,
+    ];
+    expect(calledId).toBe(item.id);
+    expect(reason).toContain("process exploded");
+  });
+
+  test("requeueIfStillClaimed rejects → loop logs the failure and does NOT crash", async () => {
+    const item = makeClaimedItem();
+    const logs: string[] = [];
+
+    const loopDeps: WorkerLoopDeps = {
+      claimNext: mock(async () => item),
+      processItem: mock(async () => {
+        throw new Error("initial error");
+      }),
+      sleep: mock(async () => ({ cancelled: false })),
+      log: (msg) => logs.push(msg),
+      onSignal: mock(() => {}),
+      requeueIfStillClaimed: mock(async () => {
+        throw new Error("requeue itself failed");
+      }),
+    };
+
+    // Should resolve without throwing even though requeueIfStillClaimed throws
+    await expect(
+      runWorkerLoop(makeRunOnceConfig(), HOPPER_HOME, makeGatewayDeps(), loopDeps),
+    ).resolves.toBeUndefined();
   });
 });

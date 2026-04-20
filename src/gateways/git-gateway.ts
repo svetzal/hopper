@@ -26,8 +26,10 @@ async function spawnGit(
     stdout: pipes.stdout ? "pipe" : "ignore",
     stderr: pipes.stderr ? "pipe" : "ignore",
   });
-  const stdoutText = pipes.stdout ? new Response(proc.stdout!).text() : Promise.resolve("");
-  const stderrText = pipes.stderr ? new Response(proc.stderr!).text() : Promise.resolve("");
+  const stdoutText =
+    pipes.stdout && proc.stdout != null ? new Response(proc.stdout).text() : Promise.resolve("");
+  const stderrText =
+    pipes.stderr && proc.stderr != null ? new Response(proc.stderr).text() : Promise.resolve("");
   const [exitCode, stdout, stderr] = await Promise.all([proc.exited, stdoutText, stderrText]);
   return { exitCode, stdout, stderr };
 }
@@ -63,6 +65,21 @@ export interface GitGateway {
    * refactor).
    */
   diffSummary(worktreePath: string): Promise<string>;
+  /**
+   * Check whether `ancestor` is an ancestor of `ref` (inclusive — a ref is
+   * its own ancestor). Returns true on exit 0, false on exit 1, throws on any
+   * other exit code (ref does not exist, etc.).
+   */
+  branchIsAncestorOf(repoDir: string, ancestor: string, ref: string): Promise<boolean>;
+  /**
+   * Return the absolute paths of all worktrees currently checked out on
+   * `branch`. An empty array means no active worktree references the branch.
+   */
+  listWorktreesForBranch(repoDir: string, branch: string): Promise<string[]>;
+  /**
+   * Force-delete a local branch (`git branch -D`). Throws on non-zero exit.
+   */
+  forceDeleteBranch(repoDir: string, branch: string): Promise<void>;
 }
 
 async function branchExists(repoDir: string, branch: string): Promise<boolean> {
@@ -216,6 +233,50 @@ async function pushTags(repoDir: string): Promise<{ success: boolean; message: s
   return { success: true, message: "Pushed tags to origin." };
 }
 
+async function branchIsAncestorOf(
+  repoDir: string,
+  ancestor: string,
+  ref: string,
+): Promise<boolean> {
+  const { exitCode } = await spawnGit(["merge-base", "--is-ancestor", ancestor, ref], repoDir);
+  if (exitCode === 0) return true;
+  if (exitCode === 1) return false;
+  throw new Error(
+    `git merge-base --is-ancestor "${ancestor}" "${ref}" failed with exit code ${exitCode}`,
+  );
+}
+
+async function listWorktreesForBranch(repoDir: string, branch: string): Promise<string[]> {
+  const { stdout } = await spawnGit(["worktree", "list", "--porcelain"], repoDir, {
+    stdout: true,
+  });
+  const paths: string[] = [];
+  const lines = stdout.split("\n");
+  let currentPath: string | undefined;
+  for (const line of lines) {
+    if (line.startsWith("worktree ")) {
+      currentPath = line.slice("worktree ".length).trim();
+    } else if (line.startsWith("branch refs/heads/")) {
+      const branchName = line.slice("branch refs/heads/".length).trim();
+      if (branchName === branch && currentPath !== undefined) {
+        paths.push(currentPath);
+      }
+    } else if (line === "") {
+      currentPath = undefined;
+    }
+  }
+  return paths;
+}
+
+async function forceDeleteBranch(repoDir: string, branch: string): Promise<void> {
+  const { exitCode, stderr } = await spawnGit(["branch", "-D", branch], repoDir, {
+    stderr: true,
+  });
+  if (exitCode !== 0) {
+    throw new Error(`Failed to force-delete branch "${branch}": ${stderr.trim()}`);
+  }
+}
+
 export function createGitGateway(): GitGateway {
   return {
     branchExists,
@@ -236,5 +297,8 @@ export function createGitGateway(): GitGateway {
     push,
     pushTags,
     diffSummary,
+    branchIsAncestorOf,
+    listWorktreesForBranch,
+    forceDeleteBranch,
   };
 }

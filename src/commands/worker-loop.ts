@@ -11,7 +11,7 @@ import { createGitGateway } from "../gateways/git-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import { createShellGateway } from "../gateways/shell-gateway.ts";
 import type { ClaimedItem } from "../store.ts";
-import { claimNextItem } from "../store.ts";
+import { claimNextItem, findItem, requeueItem } from "../store.ts";
 import {
   resolveLoopAction,
   resolvePostClaimLoopAction,
@@ -33,6 +33,12 @@ export interface WorkerLoopDeps {
   sleep: (ms: number) => Promise<{ cancelled: boolean }>;
   log: (message: string) => void;
   onSignal: (signal: "SIGINT" | "SIGTERM", handler: () => void) => void;
+  /**
+   * Last-resort safety net: re-read the item's status and, if it is still
+   * `in_progress`, requeue it with the given reason. Any error is swallowed
+   * and logged — this must never crash the worker loop.
+   */
+  requeueIfStillClaimed: (itemId: string, reason: string, agentName: string) => Promise<void>;
 }
 
 function createCancellableSleep(): {
@@ -107,8 +113,19 @@ export async function runWorkerLoop(
         if (!item) break;
         claimedAny = true;
         const task = doProcessItem(item, agentName, hopperHome, gatewayDeps, concurrency)
-          .catch((err) => {
+          .catch(async (err) => {
             console.error(`Error processing item ${shortId(item.id)}: ${err}`);
+            try {
+              await loopDeps.requeueIfStillClaimed(
+                item.id,
+                `Worker crashed before completion: ${(err as Error).message ?? err}`,
+                agentName,
+              );
+            } catch (requeueErr) {
+              console.error(
+                `Warning: last-resort requeue for ${shortId(item.id)} failed: ${requeueErr}`,
+              );
+            }
           })
           .finally(() => activeTasks.delete(item.id));
         activeTasks.set(item.id, task);
@@ -173,6 +190,16 @@ export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Prom
         cancel();
         handler();
       }),
+    requeueIfStillClaimed: async (itemId, reason, agentName) => {
+      try {
+        const item = await findItem(itemId);
+        if (item.status === "in_progress") {
+          await requeueItem(itemId, reason, agentName);
+        }
+      } catch (err) {
+        console.error(`Warning: last-resort requeue for ${shortId(itemId)} failed: ${err}`);
+      }
+    },
   };
 
   await runWorkerLoop(config, hopperHome, { git, claude, fs, shell }, loopDeps);

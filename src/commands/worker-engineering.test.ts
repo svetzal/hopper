@@ -1,25 +1,44 @@
-import { describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 // Mock the store module so tests don't touch real ~/.hopper/items.json
 import * as store from "../store.ts";
 import type { EngineeringAuditPaths } from "../worker-workflow.ts";
-import { makeClaimedItem } from "./test-helpers.ts";
+import { makeClaimedItem, setupTempStoreDir } from "./test-helpers.ts";
 import {
   commitEngineeringChanges,
+  processEngineeringItem,
   runExecuteValidateLoop,
   runPlanPhase,
 } from "./worker-engineering.ts";
 
+// Capture the real requeueItem BEFORE mock.module rewires the module registry.
+// The pass-through below lets tests spy on calls while still exercising the
+// real store transition — matching the pattern used in worker.test.ts.
+const realRequeueItem = store.requeueItem;
+
+const mockCompleteItem = mock(async () => ({
+  completed: { title: "done" },
+  recurred: undefined,
+}));
+const mockRecordItemPhase = mock(async () => {});
+const mockSetItemEngineeringBranchSlug = mock(async () => {});
+
 mock.module("../store.ts", () => ({
   ...store,
-  completeItem: mock(async () => ({
-    completed: { title: "done" },
-    recurred: undefined,
-  })),
-  recordItemPhase: mock(async () => {}),
+  completeItem: mockCompleteItem,
+  recordItemPhase: mockRecordItemPhase,
+  requeueItem: mock(async (id: string, reason: string, agent?: string) =>
+    realRequeueItem(id, reason, agent),
+  ),
+  setItemEngineeringBranchSlug: mockSetItemEngineeringBranchSlug,
 }));
+
+// Grab the mock reference after mock.module has installed it so tests can spy
+// on calls and assert arguments.
+const { requeueItem } = await import("../store.ts");
+const requeueItemMock = requeueItem as ReturnType<typeof mock>;
 
 const HOPPER_HOME = "/tmp/test-hopper-eng";
 const ITEM_ID = "aaaaaaaa-0000-0000-0000-000000000000";
@@ -62,6 +81,9 @@ function makeMockGit(overrides?: Partial<GitGateway>): GitGateway {
     push: mock(async () => ({ success: true, message: "Pushed." })),
     pushTags: mock(async () => ({ success: true, message: "Tags pushed." })),
     diffSummary: mock(async () => "src/foo.ts | 2 +-"),
+    branchIsAncestorOf: mock(async () => true),
+    listWorktreesForBranch: mock(async () => []),
+    forceDeleteBranch: mock(async () => {}),
     ...overrides,
   };
 }
@@ -362,5 +384,129 @@ describe("commitEngineeringChanges", () => {
     expect(result.dirty).toBe(false);
     expect(git.commitAll).not.toHaveBeenCalled();
     expect(git.diffSummary).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// processEngineeringItem
+// ---------------------------------------------------------------------------
+
+describe("processEngineeringItem", () => {
+  const AGENT_NAME = "test-agent";
+
+  // Isolate the store so the pass-through requeueItem can find and transition
+  // items without touching the user's real ~/.hopper/items.json.
+  const storeDir = setupTempStoreDir("hopper-eng-test-");
+
+  beforeEach(async () => {
+    await storeDir.beforeEach();
+    requeueItemMock.mockClear();
+    mockSetItemEngineeringBranchSlug.mockClear();
+  });
+
+  afterEach(storeDir.afterEach);
+
+  function makeFullDeps(gitOverrides?: Partial<GitGateway>): {
+    git: GitGateway;
+    claude: ClaudeGateway;
+    fs: FsGateway;
+  } {
+    return {
+      git: makeMockGit(gitOverrides),
+      claude: {
+        runSession: mock(async () => ({ exitCode: 0, result: "VALIDATE: PASS" })),
+        generateText: mock(async () => ({ exitCode: 0, text: "my-slug" })),
+      },
+      fs: makeMockFs(),
+    };
+  }
+
+  test("createWorktree failure → requeueItem called with setup reason, claude.runSession never called", async () => {
+    const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
+    // Seed the temp store with the claimed item so the pass-through requeueItem can find it
+    await store.saveItems([item]);
+    const deps = makeFullDeps({
+      createWorktree: mock(async () => {
+        throw new Error("git worktree add failed: branch already exists");
+      }),
+    });
+
+    await processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps);
+
+    expect(requeueItemMock).toHaveBeenCalledTimes(1);
+    const [calledId, reason] = requeueItemMock.mock.calls[0] as [string, string, string];
+    expect(calledId).toBe(ITEM_ID);
+    expect(reason).toContain("Worktree setup failed");
+    // Verify the real store was actually updated
+    const reloaded = await store.findItem(ITEM_ID);
+    expect(reloaded.status).toBe("queued");
+    expect(reloaded.requeueReason).toContain("Worktree setup failed");
+    expect(deps.claude.runSession).not.toHaveBeenCalled();
+  });
+
+  test("StaleEngineeringBranchError → requeueItem called with stale branch reason", async () => {
+    const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
+    // Seed the temp store with the claimed item so the pass-through requeueItem can find it
+    await store.saveItems([item]);
+    // branchExists=true, no worktrees, ancestor=false → orchestrateWorktreeSetup throws StaleEngineeringBranchError
+    const deps = makeFullDeps({
+      branchExists: mock(async () => true),
+      listWorktreesForBranch: mock(async () => []),
+      branchIsAncestorOf: mock(async () => false),
+    });
+
+    await processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps);
+
+    expect(requeueItemMock).toHaveBeenCalledTimes(1);
+    const [, reason] = requeueItemMock.mock.calls[0] as [string, string, string];
+    expect(reason).toContain("Stale branch");
+    // Verify the real store was actually updated
+    const reloaded = await store.findItem(ITEM_ID);
+    expect(reloaded.status).toBe("queued");
+    expect(reloaded.requeueReason).toContain("Stale branch");
+    expect(deps.claude.runSession).not.toHaveBeenCalled();
+  });
+
+  test("item with cached engineeringBranchSlug → generateText NOT called; cached slug used in createWorktree arg", async () => {
+    const item = makeClaimedItem({
+      id: ITEM_ID,
+      workingDir: "/repo",
+      branch: "main",
+      engineeringBranchSlug: "cached-slug",
+    });
+    const deps = makeFullDeps();
+
+    await processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps);
+
+    expect(deps.claude.generateText).not.toHaveBeenCalled();
+    // Slug should NOT be re-persisted when already cached
+    expect(mockSetItemEngineeringBranchSlug).not.toHaveBeenCalled();
+    // The work branch passed to createWorktree should contain the cached slug
+    const createWorktreeCalls = (deps.git.createWorktree as ReturnType<typeof mock>).mock
+      .calls as string[][];
+    expect(createWorktreeCalls[0]?.[2]).toContain("cached-slug");
+  });
+
+  test("item without slug → generateText called once and setItemEngineeringBranchSlug called with persisted value", async () => {
+    const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
+    // generateText returns a fresh slug
+    const deps = makeFullDeps();
+    (deps.claude.generateText as ReturnType<typeof mock>).mockImplementation(async () => ({
+      exitCode: 0,
+      text: "fresh-slug",
+    }));
+
+    await processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps);
+
+    expect(deps.claude.generateText).toHaveBeenCalledTimes(1);
+    expect(mockSetItemEngineeringBranchSlug).toHaveBeenCalledTimes(1);
+    const [persistedId, persistedSlug] = mockSetItemEngineeringBranchSlug.mock
+      .calls[0] as unknown as [string, string];
+    expect(persistedId).toBe(ITEM_ID);
+    expect(persistedSlug).toBe("fresh-slug");
+    // Work branch should include the persisted slug
+    const createWorktreeCalls = (deps.git.createWorktree as ReturnType<typeof mock>).mock
+      .calls as string[][];
+    expect(createWorktreeCalls[0]?.[2]).toContain("fresh-slug");
   });
 });

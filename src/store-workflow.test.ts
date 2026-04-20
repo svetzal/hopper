@@ -13,6 +13,7 @@ import {
   removeTags,
   reprioritize,
   requeue,
+  setEngineeringBranchSlug,
 } from "./store-workflow.ts";
 
 // ---------------------------------------------------------------------------
@@ -1323,5 +1324,59 @@ describe("appendPhase", () => {
     const result = appendPhase([a, b], b.id, makePhase());
     expect(result.items.find((i) => i.id === a.id)).toBe(a);
     expect(result.items.find((i) => i.id === b.id)?.phases).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setEngineeringBranchSlug
+// ---------------------------------------------------------------------------
+
+describe("setEngineeringBranchSlug", () => {
+  test("returns changed: false when the item is not found", () => {
+    const items = [makeItem()];
+    const result = setEngineeringBranchSlug(items, "non-existent-id", "my-feature");
+    expect(result.changed).toBe(false);
+    expect(result.items).toBe(items);
+  });
+
+  test("sets the slug on first call and returns changed: true", () => {
+    const item = makeItem();
+    const result = setEngineeringBranchSlug([item], item.id, "my-feature");
+    expect(result.changed).toBe(true);
+    const updated = result.items.find((i) => i.id === item.id);
+    expect(updated?.engineeringBranchSlug).toBe("my-feature");
+  });
+
+  test("returns changed: false when slug already equals the new value (idempotent)", () => {
+    const item = makeItem({ engineeringBranchSlug: "cached-slug" });
+    const items = [item];
+    const result = setEngineeringBranchSlug(items, item.id, "cached-slug");
+    expect(result.changed).toBe(false);
+    expect(result.items).toBe(items);
+  });
+
+  test("replaces an existing slug with a new value", () => {
+    const item = makeItem({ engineeringBranchSlug: "old-slug" });
+    const result = setEngineeringBranchSlug([item], item.id, "new-slug");
+    expect(result.changed).toBe(true);
+    const updated = result.items.find((i) => i.id === item.id);
+    expect(updated?.engineeringBranchSlug).toBe("new-slug");
+  });
+
+  test("does not mutate the input items array", () => {
+    const item = makeItem();
+    const items = [item];
+    const original = [...items];
+    setEngineeringBranchSlug(items, item.id, "my-feature");
+    expect(items).toEqual(original);
+    expect(items[0]?.engineeringBranchSlug).toBeUndefined();
+  });
+
+  test("preserves other items in the array untouched", () => {
+    const a = makeItem({ title: "A" });
+    const b = makeItem({ title: "B" });
+    const result = setEngineeringBranchSlug([a, b], b.id, "slug-for-b");
+    expect(result.items.find((i) => i.id === a.id)).toBe(a);
+    expect(result.items.find((i) => i.id === b.id)?.engineeringBranchSlug).toBe("slug-for-b");
   });
 });

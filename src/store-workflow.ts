@@ -404,6 +404,37 @@ export function appendPhase(items: Item[], itemId: string, record: PhaseRecord):
 }
 
 // ---------------------------------------------------------------------------
+// setEngineeringBranchSlug
+// ---------------------------------------------------------------------------
+
+export interface SetEngineeringBranchSlugResult {
+  items: Item[];
+  changed: boolean;
+}
+
+/**
+ * Persist the Haiku-generated branch slug onto an engineering item so that
+ * subsequent re-claims (after a failed attempt) always produce the same
+ * `hopper-eng/<slug>-<id-prefix>` work-branch name.
+ *
+ * Returns `changed: false` when:
+ *   - The item is not found (stale id — safe no-op).
+ *   - The slug is already set to the same value (idempotent re-set).
+ */
+export function setEngineeringBranchSlug(
+  items: Item[],
+  itemId: string,
+  slug: string,
+): SetEngineeringBranchSlugResult {
+  const target = items.find((i) => i.id === itemId);
+  if (!target) return { items, changed: false };
+  if (target.engineeringBranchSlug === slug) return { items, changed: false };
+
+  const updated: Item = { ...target, engineeringBranchSlug: slug };
+  return { items: replaceItem(items, itemId, updated), changed: true };
+}
+
+// ---------------------------------------------------------------------------
 // ensureDefaults
 // ---------------------------------------------------------------------------
 

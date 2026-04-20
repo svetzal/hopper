@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createGitGateway } from "./git-gateway.ts";
@@ -96,5 +96,106 @@ describe("GitGateway", () => {
 
     // Clean up
     await gateway.worktreeRemove(repoDir, worktreePath);
+  });
+
+  // -------------------------------------------------------------------------
+  // branchIsAncestorOf
+  // -------------------------------------------------------------------------
+
+  test("branchIsAncestorOf returns true when ancestor equals ref (same commit)", async () => {
+    const repoDir = await setup();
+    // main and main are at the same commit — main is trivially its own ancestor
+    const result = await gateway.branchIsAncestorOf(repoDir, "main", "main");
+    expect(result).toBe(true);
+  });
+
+  test("branchIsAncestorOf returns true when ancestor is behind ref (ref has new commits)", async () => {
+    const repoDir = await setup();
+    // Create work branch from main and check it out so commits land on it
+    await gateway.createBranch(repoDir, "work-branch");
+    await gateway.checkout(repoDir, "work-branch");
+    // Commit something so work-branch is ahead of main
+    await writeFile(join(repoDir, "extra.txt"), "extra");
+    await gateway.commitAll(repoDir, "extra commit");
+    // main (behind) should be an ancestor of work-branch (ahead)
+    const result = await gateway.branchIsAncestorOf(repoDir, "main", "work-branch");
+    expect(result).toBe(true);
+    // Restore main for cleanup
+    await gateway.checkout(repoDir, "main");
+  });
+
+  test("branchIsAncestorOf returns false when ancestor is ahead of ref", async () => {
+    const repoDir = await setup();
+    // Create feature branch from main (same commit — they share HEAD)
+    await gateway.createBranch(repoDir, "feature");
+    // Add a commit to main so main is now ahead of feature
+    await writeFile(join(repoDir, "main-only.txt"), "main");
+    await gateway.commitAll(repoDir, "main advance");
+    // main (ahead) is NOT an ancestor of feature (which is behind / diverged)
+    const result = await gateway.branchIsAncestorOf(repoDir, "main", "feature");
+    expect(result).toBe(false);
+  });
+
+  // -------------------------------------------------------------------------
+  // listWorktreesForBranch
+  // -------------------------------------------------------------------------
+
+  test("listWorktreesForBranch returns empty array when no worktree is on that branch", async () => {
+    const repoDir = await setup();
+    const paths = await gateway.listWorktreesForBranch(repoDir, "no-such-branch");
+    expect(paths).toEqual([]);
+  });
+
+  test("listWorktreesForBranch returns the worktree path when one is checked out on that branch", async () => {
+    const repoDir = await setup();
+    // Use a path INSIDE the temp repo dir so afterEach cleans it up automatically
+    const worktreePath = join(repoDir, "wt-for-list-test");
+    await gateway.createWorktree(repoDir, worktreePath, "wt-branch", "main");
+
+    const paths = await gateway.listWorktreesForBranch(repoDir, "wt-branch");
+    expect(paths.length).toBe(1);
+    // Resolve symlinks before comparing (macOS /var → /private/var)
+    const resolvedExpected = await realpath(worktreePath);
+    expect(paths[0]).toBe(resolvedExpected);
+
+    // Clean up worktree registration before afterEach removes the directory
+    await gateway.worktreeRemove(repoDir, worktreePath);
+  });
+
+  test("listWorktreesForBranch does not match partial branch names", async () => {
+    const repoDir = await setup();
+    const worktreePath = join(repoDir, "wt-partial-test");
+    await gateway.createWorktree(repoDir, worktreePath, "hopper-eng/my-feature-abcd1234", "main");
+
+    // Searching for just "my-feature" should NOT match the full branch name
+    const paths = await gateway.listWorktreesForBranch(repoDir, "my-feature");
+    expect(paths).toEqual([]);
+
+    // Exact match should work
+    const exact = await gateway.listWorktreesForBranch(repoDir, "hopper-eng/my-feature-abcd1234");
+    expect(exact.length).toBe(1);
+
+    // Clean up worktree registration before afterEach removes the directory
+    await gateway.worktreeRemove(repoDir, worktreePath);
+  });
+
+  // -------------------------------------------------------------------------
+  // forceDeleteBranch
+  // -------------------------------------------------------------------------
+
+  test("forceDeleteBranch deletes an unmerged branch without error", async () => {
+    const repoDir = await setup();
+    await gateway.createBranch(repoDir, "to-delete");
+    // Verify it exists
+    expect(await gateway.branchExists(repoDir, "to-delete")).toBe(true);
+
+    await gateway.forceDeleteBranch(repoDir, "to-delete");
+
+    expect(await gateway.branchExists(repoDir, "to-delete")).toBe(false);
+  });
+
+  test("forceDeleteBranch throws when the branch does not exist", async () => {
+    const repoDir = await setup();
+    await expect(gateway.forceDeleteBranch(repoDir, "ghost-branch")).rejects.toThrow();
   });
 });

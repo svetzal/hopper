@@ -11,6 +11,32 @@ import type { Item } from "../store.ts";
 
 export type LogFn = (message: string) => void;
 
+/**
+ * Thrown by `orchestrateWorktreeSetup` when the computed work branch already
+ * exists and cannot be safely reclaimed.
+ *
+ * Two cases trigger this:
+ * 1. The branch is still checked out in an active worktree.
+ * 2. The branch has diverged from the target branch (its tip is not descended
+ *    from the target branch HEAD), meaning it may contain real work.
+ *
+ * The caller should requeue the item with an explanatory reason so the
+ * operator can inspect and resolve the stale branch manually.
+ */
+export class StaleEngineeringBranchError extends Error {
+  constructor(
+    public readonly branch: string,
+    public readonly worktreePaths: string[],
+  ) {
+    super(
+      worktreePaths.length > 0
+        ? `Work branch "${branch}" is still referenced by active worktrees: ${worktreePaths.join(", ")}.`
+        : `Work branch "${branch}" already exists but has diverged from the target branch; cannot safely reclaim.`,
+    );
+    this.name = "StaleEngineeringBranchError";
+  }
+}
+
 export function createLogger(itemId: string, concurrency: number): LogFn {
   if (concurrency > 1) {
     const prefix = `[${shortId(itemId)}]`;
@@ -43,6 +69,28 @@ export async function orchestrateWorktreeSetup(
   }
 
   const workBranch = workBranchOverride ?? buildWorkBranchName(itemId);
+
+  // Guard against orphaned work branches left by prior failed attempts.
+  const workBranchExists = await git.branchExists(repoDir, workBranch);
+  if (workBranchExists) {
+    const worktreePaths = await git.listWorktreesForBranch(repoDir, workBranch);
+    if (worktreePaths.length > 0) {
+      // Branch still checked out in an active worktree — unsafe to touch.
+      throw new StaleEngineeringBranchError(workBranch, worktreePaths);
+    }
+    // No active worktrees. Safe to reclaim only if the work branch tip is
+    // descended from the current target branch HEAD (i.e. target is an
+    // ancestor of the work branch). This covers the common orphan case where
+    // the branch was created but no commits landed before the worker crashed.
+    const isSafeOrphan = await git.branchIsAncestorOf(repoDir, branch, workBranch);
+    if (!isSafeOrphan) {
+      // Branch has diverged — may contain real work; leave it for inspection.
+      throw new StaleEngineeringBranchError(workBranch, []);
+    }
+    // Safe orphan: delete the stale branch so `git worktree add -b` succeeds.
+    await git.forceDeleteBranch(repoDir, workBranch);
+  }
+
   await git.createWorktree(repoDir, worktreePath, workBranch, branch);
   return workBranch;
 }

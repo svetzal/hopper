@@ -13,6 +13,7 @@ import {
   reprioritize,
   requeue,
   resolveItem,
+  setEngineeringBranchSlug,
 } from "./store-workflow.ts";
 
 /**
@@ -88,6 +89,13 @@ export interface Item {
    * engineering items consult this; defaults to 1 when unset.
    */
   retries?: number;
+  /**
+   * Cached branch slug for engineering items, generated once per item-lifetime
+   * and persisted here so re-claims always produce the same
+   * `hopper-eng/<slug>-<id-prefix>` work-branch name regardless of LLM
+   * non-determinism.
+   */
+  engineeringBranchSlug?: string;
 }
 
 export type ClaimedItem = Item & {
@@ -223,6 +231,19 @@ export async function reprioritizeItem(
 export async function recordItemPhase(id: string, record: PhaseRecord): Promise<void> {
   const items = await loadItems();
   const outcome = appendPhase(items, id, record);
+  if (outcome.changed) {
+    await saveItems(outcome.items);
+  }
+}
+
+/**
+ * Persist the Haiku-generated branch slug onto an engineering item so that
+ * subsequent re-claims always produce the same work-branch name. Best-effort
+ * — callers should wrap in try/catch and swallow failures.
+ */
+export async function setItemEngineeringBranchSlug(id: string, slug: string): Promise<void> {
+  const items = await loadItems();
+  const outcome = setEngineeringBranchSlug(items, id, slug);
   if (outcome.changed) {
     await saveItems(outcome.items);
   }

@@ -55,6 +55,9 @@ function makeMockGit(overrides?: Partial<GitGateway>): GitGateway {
     diffSummary: mock(
       async () => " src/foo.ts | 2 +-\n\ndiff --git a/src/foo.ts b/src/foo.ts\n+changed line",
     ),
+    branchIsAncestorOf: mock(async () => true),
+    listWorktreesForBranch: mock(async () => []),
+    forceDeleteBranch: mock(async () => {}),
     ...overrides,
   };
 }
