@@ -114,7 +114,7 @@ export async function runWorkerLoop(
         claimedAny = true;
         const task = doProcessItem(item, agentName, hopperHome, gatewayDeps, concurrency)
           .catch(async (err) => {
-            console.error(`Error processing item ${shortId(item.id)}: ${err}`);
+            log(`Error processing item ${shortId(item.id)}: ${err}`);
             try {
               await loopDeps.requeueIfStillClaimed(
                 item.id,
@@ -122,9 +122,7 @@ export async function runWorkerLoop(
                 agentName,
               );
             } catch (requeueErr) {
-              console.error(
-                `Warning: last-resort requeue for ${shortId(item.id)} failed: ${requeueErr}`,
-              );
+              log(`Warning: last-resort requeue for ${shortId(item.id)} failed: ${requeueErr}`);
             }
           })
           .finally(() => activeTasks.delete(item.id));
@@ -180,11 +178,13 @@ export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Prom
   const hopperHome = join(homedir(), ".hopper");
   const { sleep, cancel } = createCancellableSleep();
 
+  const log = (msg: string) => console.log(msg);
+
   const loopDeps: WorkerLoopDeps = {
     claimNext: claimNextItem,
     processItem,
     sleep,
-    log: (msg) => console.log(msg),
+    log,
     onSignal: (signal, handler) =>
       process.on(signal, () => {
         cancel();
@@ -197,7 +197,7 @@ export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Prom
           await requeueItem(itemId, reason, agentName);
         }
       } catch (err) {
-        console.error(`Warning: last-resort requeue for ${shortId(itemId)} failed: ${err}`);
+        log(`Warning: last-resort requeue for ${shortId(itemId)} failed: ${err}`);
       }
     },
   };

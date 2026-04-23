@@ -45,8 +45,8 @@ export function createTitleGenerator(llm?: LlmGateway): TitleGenerator {
             return parsed.title;
           }
         }
-      } catch (e) {
-        console.error("Title generation failed, using fallback:", String(e));
+      } catch {
+        // fallback below
       }
 
       return description.slice(0, FALLBACK_TITLE_LENGTH).trim();
