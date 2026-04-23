@@ -48,24 +48,26 @@ import {
  * not a correctness-critical path — a transient I/O blip mid-flight must not
  * take down an otherwise-healthy engineering run.
  */
-async function safeRecordPhase(itemId: string, record: PhaseRecord): Promise<void> {
+async function safeRecordPhase(itemId: string, record: PhaseRecord, log?: LogFn): Promise<void> {
   try {
     await recordItemPhase(itemId, record);
-  } catch {
-    // intentional: phase recording is best-effort
+  } catch (e) {
+    log?.("Phase recording failed: " + String(e));
   }
 }
 
 async function resolveEngineeringBranchSlug(
   claude: ClaudeGateway,
   item: Item,
+  log?: LogFn,
 ): Promise<string | null> {
   try {
     const prompt = buildBranchSlugPrompt(item.title, item.description);
     const { exitCode, text } = await claude.generateText(prompt, "haiku");
     if (exitCode !== 0) return null;
     return normaliseBranchSlug(text);
-  } catch {
+  } catch (e) {
+    log?.("Branch slug generation failed: " + String(e));
     return null;
   }
 }
@@ -74,12 +76,14 @@ async function resolveEngineeringCommitMessage(
   claude: ClaudeGateway,
   item: Item,
   diffSummary: string,
+  log?: LogFn,
 ): Promise<string> {
   try {
     const prompt = buildCommitMessagePrompt(item.title, item.description, diffSummary);
     const { exitCode, text } = await claude.generateText(prompt, "haiku");
     return resolveEngineeringCommitFallback(item, text, exitCode);
-  } catch {
+  } catch (e) {
+    log?.("Commit message generation failed, using title: " + String(e));
     return item.title;
   }
 }
@@ -102,12 +106,16 @@ export async function runPlanPhase(
     buildPlanOptions(),
   );
   const planText = planRun.result.trim();
-  await safeRecordPhase(item.id, {
-    name: "plan",
-    startedAt: planStartedAt,
-    endedAt: new Date().toISOString(),
-    exitCode: planRun.exitCode,
-  });
+  await safeRecordPhase(
+    item.id,
+    {
+      name: "plan",
+      startedAt: planStartedAt,
+      endedAt: new Date().toISOString(),
+      exitCode: planRun.exitCode,
+    },
+    log,
+  );
   if (planRun.exitCode !== 0 || !planText) {
     const msg = `Plan phase failed (exit ${planRun.exitCode}); worktree + branch preserved for inspection.`;
     log(msg);
@@ -175,13 +183,17 @@ export async function runExecuteValidateLoop(
       buildExecuteOptions(item.agent),
     );
     executeResults.push(executeRun.result);
-    await safeRecordPhase(item.id, {
-      name: "execute",
-      startedAt: executeStartedAt,
-      endedAt: new Date().toISOString(),
-      exitCode: executeRun.exitCode,
-      attempt,
-    });
+    await safeRecordPhase(
+      item.id,
+      {
+        name: "execute",
+        startedAt: executeStartedAt,
+        endedAt: new Date().toISOString(),
+        exitCode: executeRun.exitCode,
+        attempt,
+      },
+      log,
+    );
     if (executeRun.exitCode !== 0) {
       const msg = `Execute phase attempt ${attempt} failed (exit ${executeRun.exitCode}); worktree + branch preserved.`;
       log(msg);
@@ -206,14 +218,18 @@ export async function runExecuteValidateLoop(
     );
     validateResults.push(validateRun.result);
     outcome = resolveValidateOutcome(validateRun.exitCode, validateRun.result);
-    await safeRecordPhase(item.id, {
-      name: "validate",
-      startedAt: validateStartedAt,
-      endedAt: new Date().toISOString(),
-      exitCode: validateRun.exitCode,
-      passed: outcome.passed,
-      attempt,
-    });
+    await safeRecordPhase(
+      item.id,
+      {
+        name: "validate",
+        startedAt: validateStartedAt,
+        endedAt: new Date().toISOString(),
+        exitCode: validateRun.exitCode,
+        passed: outcome.passed,
+        attempt,
+      },
+      log,
+    );
 
     if (outcome.passed) break;
 
@@ -248,7 +264,7 @@ export async function commitEngineeringChanges(
   if (dirty) {
     log("Generating commit message...");
     const diff = await git.diffSummary(worktreePath);
-    const commitMsg = await resolveEngineeringCommitMessage(claude, item, diff);
+    const commitMsg = await resolveEngineeringCommitMessage(claude, item, diff, log);
     log("Committing changes...");
     await git.commitAll(worktreePath, commitMsg);
     log("Committed.");
@@ -336,13 +352,13 @@ export async function processEngineeringItem(
     log(`Using cached branch slug: ${slug}`);
   } else {
     log("Generating branch slug...");
-    slug = await resolveEngineeringBranchSlug(claude, item);
+    slug = await resolveEngineeringBranchSlug(claude, item, log);
     if (slug) {
       // Persist for future retries — best-effort, must not crash the run.
       try {
         await setItemEngineeringBranchSlug(item.id, slug);
-      } catch {
-        // intentional: slug persistence is a resilience aid, not critical path
+      } catch (e) {
+        log("Slug persistence failed: " + String(e));
       }
     }
   }
@@ -417,8 +433,8 @@ export async function processEngineeringItem(
       log(`Pre-spawn failure — auto-requeueing: ${reason}`);
       try {
         await requeueItem(item.id, reason, agentName);
-      } catch {
-        // Best-effort: if the item has already moved (e.g., cancelled), skip.
+      } catch (e) {
+        log("Requeue after pre-spawn failure failed: " + String(e));
       }
     } else {
       // Post-session failure: let the worker loop's last-resort handler decide.

@@ -38,7 +38,8 @@ export function createAgentResolver(agents: AgentsGateway, claude: ClaudeGateway
       if (exitCode !== 0) return null;
 
       return parseSelectionResponse(text, candidates);
-    } catch {
+    } catch (e) {
+      console.error("Agent selection failed:", String(e));
       return null;
     }
   };

@@ -100,8 +100,8 @@ export async function addCommand(
       try {
         const resolved = await resolveAgent({ title, description, workingDir: dir });
         if (resolved) agent = resolved;
-      } catch {
-        // best-effort
+      } catch (e) {
+        console.error("Agent auto-detection failed:", String(e));
       }
     }
 
