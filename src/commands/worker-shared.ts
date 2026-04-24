@@ -52,6 +52,7 @@ export async function orchestrateWorktreeSetup(
   worktreePath: string,
   itemId: string,
   workBranchOverride?: string,
+  log?: LogFn,
 ): Promise<string> {
   const localExists = await git.branchExists(repoDir, branch);
   const remoteExists = await git.remoteBranchExists(repoDir, branch);
@@ -75,6 +76,19 @@ export async function orchestrateWorktreeSetup(
   if (workBranchExists) {
     const worktreePaths = await git.listWorktreesForBranch(repoDir, workBranch);
     if (worktreePaths.length > 0) {
+      // Check whether this is a safe-to-reuse preserved worktree:
+      // exactly one worktree at the expected path, clean, and no commits ahead of target.
+      if (
+        worktreePaths.length === 1 &&
+        worktreePaths[0] === worktreePath &&
+        !(await git.isWorktreeDirty(worktreePath)) &&
+        (await git.branchIsAncestorOf(repoDir, workBranch, branch))
+      ) {
+        log?.(
+          `Reusing preserved worktree at \`${worktreePath}\` (clean, no commits ahead of \`${branch}\`).`,
+        );
+        return workBranch;
+      }
       // Branch still checked out in an active worktree — unsafe to touch.
       throw new StaleEngineeringBranchError(workBranch, worktreePaths);
     }

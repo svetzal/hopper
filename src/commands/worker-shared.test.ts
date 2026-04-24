@@ -239,6 +239,64 @@ describe("orchestrateWorktreeSetup", () => {
     // branchIsAncestorOf should NOT have been called (worktrees check short-circuits)
     expect(git.branchIsAncestorOf).not.toHaveBeenCalled();
   });
+
+  test("same path + clean + no commits ahead → reuses worktree, createWorktree NOT called", async () => {
+    const workBranch = "hopper-eng/my-slug-aaaaaaaa";
+    const git = makeMockGit({
+      branchExists: mock(async () => true),
+      // One worktree at the exact same path as the argument
+      listWorktreesForBranch: mock(async () => [WORKTREE_PATH]),
+      isWorktreeDirty: mock(async () => false),
+      // workBranch IS ancestor of target → no commits ahead of target
+      branchIsAncestorOf: mock(async () => true),
+    });
+    const logs: string[] = [];
+
+    const result = await orchestrateWorktreeSetup(
+      git,
+      REPO_DIR,
+      TARGET_BRANCH,
+      WORKTREE_PATH,
+      ITEM_ID,
+      workBranch,
+      (msg) => logs.push(msg),
+    );
+
+    expect(result).toBe(workBranch);
+    expect(git.createWorktree).not.toHaveBeenCalled();
+    expect(git.forceDeleteBranch).not.toHaveBeenCalled();
+    expect(logs.some((l) => l.includes("Reusing preserved worktree"))).toBe(true);
+  });
+
+  test("same path + dirty → throws StaleEngineeringBranchError, createWorktree NOT called", async () => {
+    const workBranch = "hopper-eng/my-slug-aaaaaaaa";
+    const git = makeMockGit({
+      branchExists: mock(async () => true),
+      listWorktreesForBranch: mock(async () => [WORKTREE_PATH]),
+      isWorktreeDirty: mock(async () => true),
+    });
+
+    await expect(
+      orchestrateWorktreeSetup(git, REPO_DIR, TARGET_BRANCH, WORKTREE_PATH, ITEM_ID, workBranch),
+    ).rejects.toBeInstanceOf(StaleEngineeringBranchError);
+    expect(git.createWorktree).not.toHaveBeenCalled();
+  });
+
+  test("same path + clean but commits ahead of target → throws StaleEngineeringBranchError, createWorktree NOT called", async () => {
+    const workBranch = "hopper-eng/my-slug-aaaaaaaa";
+    const git = makeMockGit({
+      branchExists: mock(async () => true),
+      listWorktreesForBranch: mock(async () => [WORKTREE_PATH]),
+      isWorktreeDirty: mock(async () => false),
+      // workBranch is NOT ancestor of target → workBranch has commits ahead
+      branchIsAncestorOf: mock(async () => false),
+    });
+
+    await expect(
+      orchestrateWorktreeSetup(git, REPO_DIR, TARGET_BRANCH, WORKTREE_PATH, ITEM_ID, workBranch),
+    ).rejects.toBeInstanceOf(StaleEngineeringBranchError);
+    expect(git.createWorktree).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -380,6 +380,7 @@ export async function processEngineeringItem(
       worktreePath,
       item.id,
       workBranch,
+      log,
     );
     worktreeLivePath = worktreePath;
 

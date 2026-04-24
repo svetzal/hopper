@@ -509,4 +509,39 @@ describe("processEngineeringItem", () => {
       .calls as string[][];
     expect(createWorktreeCalls[0]?.[2]).toContain("fresh-slug");
   });
+
+  test("preserved worktree at expected path + clean + no commits ahead → no requeue, proceeds to plan phase", async () => {
+    const item = makeClaimedItem({
+      id: ITEM_ID,
+      workingDir: "/repo",
+      branch: "main",
+      engineeringBranchSlug: "my-slug",
+    });
+    // Seed the temp store with the claimed item so the pass-through requeueItem can find it
+    await store.saveItems([item]);
+
+    // workBranch = buildEngineeringBranchName(ITEM_ID, "my-slug") = "hopper-eng/my-slug-aaaaaaaa"
+    const workBranch = "hopper-eng/my-slug-aaaaaaaa";
+    const expectedWorktreePath = `${HOPPER_HOME}/worktrees/${ITEM_ID}`;
+
+    const deps = makeFullDeps({
+      branchExists: mock(async () => true),
+      // Worktree for workBranch is at exactly the expected path
+      listWorktreesForBranch: mock(async (_, b) =>
+        b === workBranch ? [expectedWorktreePath] : [],
+      ),
+      isWorktreeDirty: mock(async () => false),
+      // workBranch is ancestor of target → no commits ahead
+      branchIsAncestorOf: mock(async () => true),
+    });
+
+    await processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps);
+
+    // The preserved worktree should be reused — no new worktree created
+    expect(deps.git.createWorktree).not.toHaveBeenCalled();
+    // No requeue should have occurred
+    expect(requeueItemMock).not.toHaveBeenCalled();
+    // Plan phase (and subsequent phases) should have run
+    expect(deps.claude.runSession).toHaveBeenCalled();
+  });
 });
