@@ -1,66 +1,22 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
-import type { GitGateway } from "../gateways/git-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import type { Item } from "../store.ts";
-// Mock the store module so processItem doesn't touch the real items.json
 import * as store from "../store.ts";
-import { makeClaimedItem, setupTempStoreDir } from "./test-helpers.ts";
+import {
+  makeClaimedItem,
+  makeMockGit,
+  makeMockStoreModule,
+  setupTempStoreDir,
+} from "./test-helpers.ts";
 import { processItem } from "./worker.ts";
 
-// Capture the real requeueItem BEFORE mock.module rewires the module registry.
-// The module-level mock below delegates to this captured reference so that
-// other test files which rely on the real implementation (notably
-// src/commands/requeue.test.ts) continue to see real behaviour — each test
-// file sets its own temp store dir via `setupTempStoreDir`, so this
-// pass-through is safe across the whole suite.
-const realRequeueItem = store.requeueItem;
-
-mock.module("../store.ts", () => ({
-  ...store,
-  completeItem: mock(async () => ({
-    completed: { title: "done" } as Item,
-    recurred: undefined,
-  })),
-  recordItemPhase: mock(async () => {}),
-  requeueItem: mock(async (id: string, reason: string, agent?: string) =>
-    realRequeueItem(id, reason, agent),
-  ),
-}));
-const { completeItem, recordItemPhase, requeueItem } = await import("../store.ts");
-const completeItemMock = completeItem as ReturnType<typeof mock>;
-const recordItemPhaseMock = recordItemPhase as ReturnType<typeof mock>;
-const requeueItemMock = requeueItem as ReturnType<typeof mock>;
-
-function makeMockGit(overrides?: Partial<GitGateway>): GitGateway {
-  return {
-    branchExists: mock(async () => true),
-    remoteBranchExists: mock(async () => false),
-    createTrackingBranch: mock(async () => {}),
-    createBranch: mock(async () => {}),
-    createWorktree: mock(async () => {}),
-    worktreeRemove: mock(async () => {}),
-    isWorktreeDirty: mock(async () => false),
-    commitAll: mock(async () => {}),
-    getCurrentBranch: mock(async () => "main"),
-    checkout: mock(async () => {}),
-    mergeFastForward: mock(async () => 0),
-    mergeCommit: mock(async () => 0),
-    mergeAbort: mock(async () => {}),
-    mergeNoEdit: mock(async () => ({ exitCode: 0, stderr: "" })),
-    deleteBranch: mock(async () => {}),
-    push: mock(async () => ({ success: true, message: "Pushed main to origin." })),
-    pushTags: mock(async () => ({ success: true, message: "Pushed tags to origin." })),
-    diffSummary: mock(
-      async () => " src/foo.ts | 2 +-\n\ndiff --git a/src/foo.ts b/src/foo.ts\n+changed line",
-    ),
-    branchIsAncestorOf: mock(async () => true),
-    listWorktreesForBranch: mock(async () => []),
-    forceDeleteBranch: mock(async () => {}),
-    ...overrides,
-  };
-}
+const storeMocks = makeMockStoreModule();
+mock.module("../store.ts", () => storeMocks.moduleObject);
+const completeItemMock = storeMocks.mocks.completeItem as ReturnType<typeof mock>;
+const recordItemPhaseMock = storeMocks.mocks.recordItemPhase as ReturnType<typeof mock>;
+const requeueItemMock = storeMocks.mocks.requeueItem as ReturnType<typeof mock>;
 
 function makeMockClaude(exitCode = 0, result = "Done."): ClaudeGateway {
   return {

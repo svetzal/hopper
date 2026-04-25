@@ -52,7 +52,7 @@ async function safeRecordPhase(itemId: string, record: PhaseRecord, log?: LogFn)
   try {
     await recordItemPhase(itemId, record);
   } catch (e) {
-    log?.("Phase recording failed: " + String(e));
+    log?.(`Phase recording failed: ${String(e)}`);
   }
 }
 
@@ -67,7 +67,7 @@ async function resolveEngineeringBranchSlug(
     if (exitCode !== 0) return null;
     return normaliseBranchSlug(text);
   } catch (e) {
-    log?.("Branch slug generation failed: " + String(e));
+    log?.(`Branch slug generation failed: ${String(e)}`);
     return null;
   }
 }
@@ -83,7 +83,7 @@ async function resolveEngineeringCommitMessage(
     const { exitCode, text } = await claude.generateText(prompt, "haiku");
     return resolveEngineeringCommitFallback(item, text, exitCode);
   } catch (e) {
-    log?.("Commit message generation failed, using title: " + String(e));
+    log?.(`Commit message generation failed, using title: ${String(e)}`);
     return item.title;
   }
 }
@@ -358,7 +358,7 @@ export async function processEngineeringItem(
       try {
         await setItemEngineeringBranchSlug(item.id, slug);
       } catch (e) {
-        log("Slug persistence failed: " + String(e));
+        log(`Slug persistence failed: ${String(e)}`);
       }
     }
   }
@@ -435,7 +435,7 @@ export async function processEngineeringItem(
       try {
         await requeueItem(item.id, reason, agentName);
       } catch (e) {
-        log("Requeue after pre-spawn failure failed: " + String(e));
+        log(`Requeue after pre-spawn failure failed: ${String(e)}`);
       }
     } else {
       // Post-session failure: let the worker loop's last-resort handler decide.

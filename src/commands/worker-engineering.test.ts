@@ -2,10 +2,14 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
-// Mock the store module so tests don't touch real ~/.hopper/items.json
 import * as store from "../store.ts";
 import type { EngineeringAuditPaths } from "../worker-workflow.ts";
-import { makeClaimedItem, setupTempStoreDir } from "./test-helpers.ts";
+import {
+  makeClaimedItem,
+  makeMockGit,
+  makeMockStoreModule,
+  setupTempStoreDir,
+} from "./test-helpers.ts";
 import {
   commitEngineeringChanges,
   processEngineeringItem,
@@ -13,32 +17,12 @@ import {
   runPlanPhase,
 } from "./worker-engineering.ts";
 
-// Capture the real requeueItem BEFORE mock.module rewires the module registry.
-// The pass-through below lets tests spy on calls while still exercising the
-// real store transition — matching the pattern used in worker.test.ts.
-const realRequeueItem = store.requeueItem;
-
-const mockCompleteItem = mock(async () => ({
-  completed: { title: "done" },
-  recurred: undefined,
-}));
-const mockRecordItemPhase = mock(async () => {});
 const mockSetItemEngineeringBranchSlug = mock(async () => {});
-
-mock.module("../store.ts", () => ({
-  ...store,
-  completeItem: mockCompleteItem,
-  recordItemPhase: mockRecordItemPhase,
-  requeueItem: mock(async (id: string, reason: string, agent?: string) =>
-    realRequeueItem(id, reason, agent),
-  ),
+const storeMocks = makeMockStoreModule({
   setItemEngineeringBranchSlug: mockSetItemEngineeringBranchSlug,
-}));
-
-// Grab the mock reference after mock.module has installed it so tests can spy
-// on calls and assert arguments.
-const { requeueItem } = await import("../store.ts");
-const requeueItemMock = requeueItem as ReturnType<typeof mock>;
+});
+mock.module("../store.ts", () => storeMocks.moduleObject);
+const requeueItemMock = storeMocks.mocks.requeueItem as ReturnType<typeof mock>;
 
 const HOPPER_HOME = "/tmp/test-hopper-eng";
 const ITEM_ID = "aaaaaaaa-0000-0000-0000-000000000000";
@@ -58,33 +42,6 @@ function makeMockFs(): FsGateway {
   return {
     ensureDir: mock(async () => {}),
     writeFile: mock(async () => {}),
-  };
-}
-
-function makeMockGit(overrides?: Partial<GitGateway>): GitGateway {
-  return {
-    branchExists: mock(async () => true),
-    remoteBranchExists: mock(async () => false),
-    createTrackingBranch: mock(async () => {}),
-    createBranch: mock(async () => {}),
-    createWorktree: mock(async () => {}),
-    worktreeRemove: mock(async () => {}),
-    isWorktreeDirty: mock(async () => false),
-    commitAll: mock(async () => {}),
-    getCurrentBranch: mock(async () => "main"),
-    checkout: mock(async () => {}),
-    mergeFastForward: mock(async () => 0),
-    mergeCommit: mock(async () => 0),
-    mergeAbort: mock(async () => {}),
-    mergeNoEdit: mock(async () => ({ exitCode: 0, stderr: "" })),
-    deleteBranch: mock(async () => {}),
-    push: mock(async () => ({ success: true, message: "Pushed." })),
-    pushTags: mock(async () => ({ success: true, message: "Tags pushed." })),
-    diffSummary: mock(async () => "src/foo.ts | 2 +-"),
-    branchIsAncestorOf: mock(async () => true),
-    listWorktreesForBranch: mock(async () => []),
-    forceDeleteBranch: mock(async () => {}),
-    ...overrides,
   };
 }
 

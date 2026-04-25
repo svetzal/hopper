@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import type { GitGateway } from "../gateways/git-gateway.ts";
-import { makeClaimedItem } from "./test-helpers.ts";
+import { makeClaimedItem, makeMockGit } from "./test-helpers.ts";
 import {
   createLogger,
   mergeAndPush,
@@ -15,33 +14,6 @@ const REPO_DIR = "/repo";
 const WORKTREE_PATH = "/worktrees/work";
 const TARGET_BRANCH = "main";
 const WORK_BRANCH = "hopper/aaaaaaaa";
-
-function makeMockGit(overrides?: Partial<GitGateway>): GitGateway {
-  return {
-    branchExists: mock(async () => true),
-    remoteBranchExists: mock(async () => false),
-    createTrackingBranch: mock(async () => {}),
-    createBranch: mock(async () => {}),
-    createWorktree: mock(async () => {}),
-    worktreeRemove: mock(async () => {}),
-    isWorktreeDirty: mock(async () => false),
-    commitAll: mock(async () => {}),
-    getCurrentBranch: mock(async () => TARGET_BRANCH),
-    checkout: mock(async () => {}),
-    mergeFastForward: mock(async () => 0),
-    mergeCommit: mock(async () => 0),
-    mergeAbort: mock(async () => {}),
-    mergeNoEdit: mock(async () => ({ exitCode: 0, stderr: "" })),
-    deleteBranch: mock(async () => {}),
-    push: mock(async () => ({ success: true, message: "Pushed." })),
-    pushTags: mock(async () => ({ success: true, message: "Tags pushed." })),
-    diffSummary: mock(async () => "src/foo.ts | 2 +-"),
-    branchIsAncestorOf: mock(async () => true),
-    listWorktreesForBranch: mock(async () => []),
-    forceDeleteBranch: mock(async () => {}),
-    ...overrides,
-  };
-}
 
 const noop = () => {};
 
