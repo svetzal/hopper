@@ -130,6 +130,16 @@ To create a new release:
 
    **The `codesign --force --sign -` step is required on macOS.** Bun's `--compile` embeds an ad-hoc signature that becomes invalid once the file is copied (macOS attaches a `com.apple.provenance` xattr on copy, which desyncs the embedded hash). Without an ad-hoc re-sign, the kernel SIGKILLs the process on launch with no useful error — you just see `[1] <pid> killed hopper ...`. Verify with `codesign --verify --verbose=2 ~/.local/bin/hopper`.
 
+9. Refresh the globally-installed coordinator skill:
+
+   ```bash
+   hopper init --global
+   ```
+
+   The `hopper` binary embeds the skill content at build time, but installing the binary does not by itself update the copy at `~/.claude/skills/hopper-coordinator/SKILL.md` that Claude Code loads. `hopper init --global` copies the embedded skill into place and stamps `metadata.version` and `hopper-version` from the running binary's `VERSION`. Running it as the last release step guarantees the global skill never lags behind the binary. The newer-binary-over-older-skill direction needs no `--force`; the version guard only blocks the reverse.
+
+   **Note for the in-flight Claude Code session:** the skill is loaded at session start, so a session that began before the release will keep using the old skill until you restart Claude Code (or open a new session). New sessions and other agents on the machine pick up the new skill immediately.
+
 CI does the rest automatically on tag push:
 - Runs tests and type-check
 - Cross-compiles binaries (macOS arm64/x64, Linux x64, Windows x64)
