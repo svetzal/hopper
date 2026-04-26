@@ -3,6 +3,7 @@
 import { runCommand } from "./command-runner.ts";
 import { addCommand } from "./commands/add.ts";
 import { createAgentResolver } from "./commands/add-agent-resolver.ts";
+import { auditCommand } from "./commands/audit.ts";
 import { cancelCommand } from "./commands/cancel.ts";
 import { claimCommand } from "./commands/claim.ts";
 import { completeCommand } from "./commands/complete.ts";
@@ -16,6 +17,7 @@ import { tagCommand, untagCommand } from "./commands/tag.ts";
 import { workerCommand } from "./commands/worker-loop.ts";
 import { VERSION } from "./constants.ts";
 import { createAgentsGateway } from "./gateways/agents-gateway.ts";
+import { createAuditGateway } from "./gateways/audit-gateway.ts";
 import { createClaudeGateway } from "./gateways/claude-gateway.ts";
 import { createGitGateway } from "./gateways/git-gateway.ts";
 import { createLlmGateway } from "./gateways/llm-gateway.ts";
@@ -94,6 +96,11 @@ Usage:
   hopper add <description> [--type investigation|engineering|task]  Set the task type (default: task)
   hopper add <description> [--agent <name>]                  Pin a craftsperson/agent
   hopper add --preset <name> [--after --every]               Create item from preset
+  hopper audit <id>                  Show audit summary for an item
+  hopper audit <id> --tail <n>       Last N decoded session events
+  hopper audit <id> --plan           Show the engineering plan
+  hopper audit <id> --result         Show the final result
+  hopper audit <id> --phase <name>   Restrict to one phase (engineering only)
   hopper show <id>                   Show full details of an item
   hopper list                        List queued + in-progress + scheduled items
   hopper list --all                  Include completed items
@@ -187,6 +194,11 @@ async function main(): Promise<void> {
     case "integrate": {
       const git = createGitGateway();
       await runCommand((p) => integrateCommand(p, git), parsed);
+      break;
+    }
+    case "audit": {
+      const audit = createAuditGateway();
+      await runCommand((p) => auditCommand(p, audit), parsed);
       break;
     }
     case "show":

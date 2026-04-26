@@ -74,6 +74,8 @@ As coordinator, you:
 
 ## Read State in JSON, Always
 
+**All hopper state is read through the hopper CLI.** Do not inspect `~/.hopper/audit/*` or `~/.hopper/items.json` directly — they are implementation details, not interfaces. If the CLI does not yet expose what you need, that is feedback for hopper, not a license to reach past it.
+
 Whenever you (the coordinator agent) are *reading* queue state to reason about it — listing items, looking up an item by prefix, capturing the ID of a freshly added item, checking timestamps, deciding what to do next — pass `--json` and parse the result with `jq`. Do not screen-scrape the human-formatted output.
 
 This is the single most important convention in this skill. Two reasons:
@@ -90,7 +92,7 @@ hopper list --json
 # Find a specific item by description fragment
 hopper list --all --json | jq '.[] | select(.description | contains("WebSocket"))'
 
-# Look up an item's full detail (with all timestamps and audit-file paths inferred from id)
+# Look up an item's full detail
 hopper show <id> --json
 
 # Capture the ID of a newly created item without parsing prose
@@ -256,45 +258,40 @@ However, the audit file only reflects what the claude CLI itself has emitted. If
 
 **Monitoring background work.** When watching a long-running background process or tailing a log, use the `Monitor` tool (streams each new stdout line as a notification) instead of polling with `pgrep -f X` + `tail /tmp/<log>`. Monitor lets you continue other work and get pinged when output appears — no repeated status checks burning context.
 
-**Key files per task:**
-
-| Path | Contents |
-|------|----------|
-| `~/.hopper/audit/<full-id>-audit.jsonl` | Every Claude session event: tool calls, thinking, user/assistant turns, hook runs. Events appear on disk as they stream from Claude — this is the primary liveness signal. |
-| `~/.hopper/audit/<full-id>-result.md` | Final result written by the worker on completion. Present even if session ended early — may say "see audit log for details". |
-| `~/.hopper/worktrees/<full-id>/` | Git worktree the worker operated in. Useful for finding partial changes. |
-| `~/.hopper/items.json` | Full queue state, one JSON array at top level (NOT `.items[]`). Query with `jq '.[] | select(.id | startswith("<prefix>"))'`. |
-
-**Step 1 — count audit events and skim the shape.**
+**Step 1 — get the audit summary.**
 
 ```bash
-wc -l ~/.hopper/audit/<full-id>-audit.jsonl        # How much work was logged
-grep -o '"name":"[^"]*"' ~/.hopper/audit/<full-id>-audit.jsonl \
-  | sort | uniq -c | sort -rn | head -20            # Tool-use histogram
-grep -o '"command":"[^"]*"' ~/.hopper/audit/<full-id>-audit.jsonl \
-  | tail -10                                        # Last shell commands attempted
+hopper audit <id> --json
 ```
 
-A session with zero audit events (or an audit file that has not grown in 10–15+ minutes) hung before doing real work, or is stuck between events in Claude's internal processing. A session with hundreds of events then silence usually hit a runaway tool output, a stuck subagent, or an oversized response mid-stream.
+This returns a single JSON object with everything you need to assess the session at a glance:
+
+```bash
+hopper audit <id> --json | jq '.totalEvents'            # How much work was logged
+hopper audit <id> --json | jq '.toolHistogram'          # Top-5 tools by call count
+hopper audit <id> --json | jq '.lastCommands'           # Last 3 Bash commands run
+hopper audit <id> --json | jq '.lastIncompleteToolUse'  # Tool call with no result (hung here?)
+hopper audit <id> --json | jq '.lastEventGapSeconds'    # Seconds since last audit event
+```
+
+A session with zero `totalEvents` (or `lastEventGapSeconds` above 600–900) hung before doing real work or is stuck between events in Claude's internal processing. Hundreds of events followed by a large `lastEventGapSeconds` and a non-null `lastIncompleteToolUse` usually indicates the session died mid-call.
 
 **Step 2 — decode the tail in context.**
 
-For readable summaries of the last N events, parse with Python to pull `role`, `tool_use` names, and `command`/`file_path` from the `input` object. One-liner sketch:
+```bash
+hopper audit <id> --tail 15 --json
+```
 
-```python
-import json
-events = [json.loads(l) for l in open(p)]
-for e in events[-15:]:
-    msg = e.get('message') or {}
-    content = msg.get('content')
-    # content is a list of blocks; first block may be thinking, tool_use, text, or tool_result
-    # Each needs slightly different extraction — see examples below
+Each decoded event has `phase`, `kind`, `role`, `name` (for tool_use and system), `input` (for tool_use), and `textPreview` (for text/thinking). For engineering items, restrict to a specific phase:
+
+```bash
+hopper audit <id> --phase execute --tail 10 --json
 ```
 
 What to look for in the tail:
-- **A tool_use with no matching tool_result** — session died mid-call. The `input` of that tool tells you what it was attempting (often a huge command, a massive scan, or a subagent Task).
-- **A `system` event of subtype `task_started` with no subsequent assistant turn** — an Agent (subagent) was launched and never returned. Common when a Task prompt was too loose or the subagent itself got stuck.
-- **A final assistant `text` block saying "I need to..." followed by nothing** — the session was composing a plan and got cut off.
+- **A `tool_use` event with a non-null `lastIncompleteToolUse`** — session died mid-call. The `input` of that tool tells you what it was attempting (often a huge command, a massive scan, or a subagent Task).
+- **A `system` event of `name: "task_started"` with no subsequent `tool_result`** — an Agent (subagent) was launched and never returned. Common when a Task prompt was too loose or the subagent itself got stuck.
+- **A final `text` event with `role: "assistant"` followed by nothing** — the session was composing a plan and got cut off.
 
 **Step 3 — process tree, but interpret carefully.**
 
@@ -321,20 +318,21 @@ Don't pattern-match too aggressively. Read the specific audit log, note what it 
 **Step 4 — report to the user with specifics, not guesses.**
 
 When giving an update, include:
-- Total audit events (a proxy for how much work the worker did)
-- Tool-use distribution (shows what the worker focused on)
-- Last 2-3 commands or operations from the tail
-- Whether the expected output artifact (the file the description said to write) exists
-- Your diagnosis of the likely hang point, grounded in the audit log
+- `totalEvents` from `hopper audit <id> --json` (a proxy for how much work the worker did)
+- `toolHistogram` — shows what the worker focused on
+- `lastCommands` — the most recent Bash commands attempted
+- `lastIncompleteToolUse` — the tool call the session was stuck on, if any
+- Whether the expected output artifact exists (check with `hopper audit <id> --result`)
+- Your diagnosis of the likely hang point, grounded in the audit output
 
-Avoid speculative MCP-hang narratives unless the audit log supports them. "Stuck" ≠ "stuck in MCP init".
+Avoid speculative MCP-hang narratives unless the audit output supports them. "Stuck" ≠ "stuck in MCP init".
 
 **Step 5 — decide with the user before killing processes.**
 
 Options when a task is genuinely stuck:
 1. Kill the Claude session PID → worker notices and auto-marks the item. May leave it as in_progress until the next worker tick; follow up with `hopper requeue` if needed.
 2. `hopper requeue <id> --reason "..."` → explicit requeue, worker claim is released, item re-enters the queue.
-3. If the audit log shows near-complete investigation work, you may have enough intel to synthesize findings manually from the audit content instead of retrying — check with the user first.
+3. If `hopper audit <id> --result` shows near-complete investigation work, you may have enough intel to synthesize findings manually instead of retrying — check with the user first.
 
 ### Cancelling Items
 

@@ -53,6 +53,7 @@ Binaries are standalone — no runtime needed on the target machine.
 | Command | Description |
 |---------|-------------|
 | `add <description>` | Queue a new work item (auto-generates a title via LLM) |
+| `audit <id>` | Show audit summary, decoded event tail, plan, or result for an item |
 | `show <id>` | Display full details of an item |
 | `list` | Show queued and in-progress items |
 | `claim` | Claim the next queued item (FIFO) |
@@ -73,6 +74,10 @@ Binaries are standalone — no runtime needed on the target machine.
 - `--every <duration>` — Make recurring (e.g. `4h`, `1d`). Minimum 5 minutes (`add`)
 - `--times <n>` — Limit recurrences to n total runs, requires `--every` (`add`)
 - `--until <timespec>` — End date for recurrence, requires `--every` (`add`)
+- `--tail <n>` — Last N decoded session events (`audit`)
+- `--plan` — Show the engineering plan markdown (`audit`)
+- `--result` — Show the final result or in-progress placeholder (`audit`)
+- `--phase <name>` — Restrict audit to one phase, e.g. `execute` (`audit`, engineering items only)
 - `--all` — Include completed items (`list`)
 - `--completed` — Show only completed items (`list`)
 - `--dry-run` — Print the git commands without executing them (`integrate`)
