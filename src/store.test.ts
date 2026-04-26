@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Item } from "./store.ts";
 import {
   addItem,
   cancelItem,
@@ -16,6 +15,7 @@ import {
   saveItems,
   setStoreDir,
 } from "./store.ts";
+import { makeItem } from "./test-helpers.ts";
 
 describe("store", () => {
   let tempDir: string;
@@ -28,17 +28,6 @@ describe("store", () => {
   afterEach(async () => {
     await rm(tempDir, { recursive: true });
   });
-
-  function makeItem(overrides?: Partial<Item>): Item {
-    return {
-      id: crypto.randomUUID(),
-      title: "Test item",
-      description: "A test description",
-      status: "queued",
-      createdAt: new Date().toISOString(),
-      ...overrides,
-    };
-  }
 
   test("loadItems returns empty array when no file exists", async () => {
     const items = await loadItems();

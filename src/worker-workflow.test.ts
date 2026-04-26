@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Item } from "./store.ts";
+import { makeItem } from "./test-helpers.ts";
 import {
   buildCommitMessage,
   buildTaskPrompt,
@@ -19,21 +19,14 @@ import {
 
 const HOPPER_HOME = "/home/user/.hopper";
 
-function makeItem(overrides?: Partial<Item>): Item {
-  return {
-    id: "abcdef12-0000-0000-0000-000000000000",
-    title: "Test task",
-    description: "A test description",
-    status: "queued",
-    createdAt: new Date().toISOString(),
-    ...overrides,
-  };
-}
-
 describe("worker-workflow", () => {
   describe("resolveWorkSetup", () => {
     test("returns worktree setup when item has workingDir and branch", () => {
-      const item = makeItem({ workingDir: "/repo/project", branch: "main" });
+      const item = makeItem({
+        id: "abcdef12-0000-0000-0000-000000000000",
+        workingDir: "/repo/project",
+        branch: "main",
+      });
       expect(resolveWorkSetup(item, HOPPER_HOME)).toEqual({
         type: "worktree",
         repoDir: "/repo/project",
@@ -81,7 +74,11 @@ describe("worker-workflow", () => {
     });
 
     test("worktreePath is nested under hopperHome/worktrees/<itemId>", () => {
-      const item = makeItem({ workingDir: "/repo", branch: "dev" });
+      const item = makeItem({
+        id: "abcdef12-0000-0000-0000-000000000000",
+        workingDir: "/repo",
+        branch: "dev",
+      });
       const setup = resolveWorkSetup(item, "/custom/home");
       expect(setup.type).toBe("worktree");
       if (setup.type === "worktree") {

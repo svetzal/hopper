@@ -9,7 +9,7 @@ import {
   makeMockGit,
   makeMockStoreModule,
   setupTempStoreDir,
-} from "./test-helpers.ts";
+} from "../test-helpers.ts";
 import { processItem } from "./worker.ts";
 
 const storeMocks = makeMockStoreModule();

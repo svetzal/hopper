@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { makeParsed, setupTempStoreDir } from "../test-helpers.ts";
 import type { TitleGenerator } from "../titler.ts";
 import { addCommand } from "./add.ts";
-import { makeParsed, setupTempStoreDir } from "./test-helpers.ts";
 
 function makeTitler(title = "Generated Title"): TitleGenerator {
   return { generateTitle: mock(async (_desc: string) => title) };

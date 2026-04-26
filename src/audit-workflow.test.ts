@@ -7,22 +7,21 @@ import {
   parsePhaseFromFilename,
   summarizeEvents,
 } from "./audit-workflow.ts";
-import type { Item } from "./store.ts";
+import { makeItem } from "./test-helpers.ts";
 
 const ITEM_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 const NOW_MS = 1_700_000_000_000; // Fixed reference time for tests
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function makeItem(overrides?: Partial<Item>): Item {
-  return {
+function makeAuditItem() {
+  return makeItem({
     id: ITEM_ID,
     title: "Test task",
     description: "Do the thing",
     status: "in_progress",
     createdAt: new Date(NOW_MS - 60_000).toISOString(),
-    ...overrides,
-  };
+  });
 }
 
 function toolUseEvent(id: string, name: string, input: unknown): string {
@@ -401,7 +400,7 @@ describe("summarizeEvents non-JSON line counting", () => {
 
 describe("formatAuditSummary", () => {
   test("includes item id prefix, title, and status", () => {
-    const item = makeItem();
+    const item = makeAuditItem();
     const summary = summarizeEvents([], NOW_MS);
     const output = formatAuditSummary(item, summary);
 
@@ -411,7 +410,7 @@ describe("formatAuditSummary", () => {
   });
 
   test("shows '(no audit files found)' when no events", () => {
-    const output = formatAuditSummary(makeItem(), summarizeEvents([], NOW_MS));
+    const output = formatAuditSummary(makeAuditItem(), summarizeEvents([], NOW_MS));
     expect(output).toContain("no audit files found");
   });
 
@@ -419,7 +418,7 @@ describe("formatAuditSummary", () => {
     const mtime = NOW_MS - 120_000; // 120 seconds ago
     const input = makePhaseInput("audit", [systemEvent("init")], mtime);
     const summary = summarizeEvents([input], NOW_MS);
-    const output = formatAuditSummary(makeItem(), summary);
+    const output = formatAuditSummary(makeAuditItem(), summary);
 
     expect(output).toContain("Last event:");
     expect(output).toContain("2m"); // ~120s → 2m
@@ -433,7 +432,7 @@ describe("formatAuditSummary", () => {
       toolResultEvent("t2"),
     ];
     const summary = summarizeEvents([makePhaseInput("execute", lines)], NOW_MS);
-    const output = formatAuditSummary(makeItem(), summary);
+    const output = formatAuditSummary(makeAuditItem(), summary);
 
     expect(output).toContain("Bash: 2");
   });
@@ -441,7 +440,7 @@ describe("formatAuditSummary", () => {
   test("shows last commands", () => {
     const lines = [bashEvent("t1", "bun test"), toolResultEvent("t1")];
     const summary = summarizeEvents([makePhaseInput("execute", lines)], NOW_MS);
-    const output = formatAuditSummary(makeItem(), summary);
+    const output = formatAuditSummary(makeAuditItem(), summary);
 
     expect(output).toContain("bun test");
   });
@@ -449,7 +448,7 @@ describe("formatAuditSummary", () => {
   test("shows incomplete tool_use when present", () => {
     const lines = [bashEvent("t1", "bun test")]; // no tool_result
     const summary = summarizeEvents([makePhaseInput("execute", lines)], NOW_MS);
-    const output = formatAuditSummary(makeItem(), summary);
+    const output = formatAuditSummary(makeAuditItem(), summary);
 
     expect(output).toContain("Last incomplete tool_use");
     expect(output).toContain("Bash");

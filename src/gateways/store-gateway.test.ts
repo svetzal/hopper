@@ -2,19 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Item } from "../store.ts";
+import { makeItem } from "../test-helpers.ts";
 import { createStoreGateway } from "./store-gateway.ts";
-
-function makeItem(overrides?: Partial<Item>): Item {
-  return {
-    id: "00000000-0000-0000-0000-000000000001",
-    title: "Test item",
-    description: "A test description",
-    status: "queued",
-    createdAt: new Date().toISOString(),
-    ...overrides,
-  };
-}
 
 describe("StoreGateway", () => {
   let tempDir: string;

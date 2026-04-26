@@ -7,18 +7,8 @@ import {
   relativeTimeFuture,
   shortId,
 } from "./format.ts";
-import type { Item, PhaseRecord } from "./store.ts";
-
-function makeItem(overrides?: Partial<Item>): Item {
-  return {
-    id: "abcdef12-3456-7890-abcd-ef1234567890",
-    title: "Test item",
-    description: "A test description",
-    status: "queued",
-    createdAt: "2025-01-01T10:00:00Z",
-    ...overrides,
-  };
-}
+import type { PhaseRecord } from "./store.ts";
+import { makeItem } from "./test-helpers.ts";
 
 describe("formatPhasesStatus", () => {
   function mkPhase(overrides: Partial<PhaseRecord> & { name: PhaseRecord["name"] }): PhaseRecord {
@@ -150,7 +140,12 @@ describe("formatPhasesStatus", () => {
 describe("formatItemDetail — engineering audit paths", () => {
   test("engineering items show all four per-phase audit paths", () => {
     const output = formatItemDetail(
-      makeItem({ type: "engineering", workingDir: "/repo", branch: "main" }),
+      makeItem({
+        id: "abcdef12-3456-7890-abcd-ef1234567890",
+        type: "engineering",
+        workingDir: "/repo",
+        branch: "main",
+      }),
     );
     expect(output).toContain(
       "Plan file:    ~/.hopper/audit/abcdef12-3456-7890-abcd-ef1234567890-plan.md",
@@ -328,7 +323,7 @@ describe("format", () => {
 
   describe("formatItemDetail", () => {
     test("includes ID, title, status, and created date", () => {
-      const item = makeItem();
+      const item = makeItem({ id: "abcdef12-3456-7890-abcd-ef1234567890" });
       const output = formatItemDetail(item);
 
       expect(output).toContain("ID:");

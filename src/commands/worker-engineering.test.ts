@@ -3,13 +3,13 @@ import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import * as store from "../store.ts";
-import type { EngineeringAuditPaths } from "../worker-workflow.ts";
 import {
   makeClaimedItem,
   makeMockGit,
   makeMockStoreModule,
   setupTempStoreDir,
-} from "./test-helpers.ts";
+} from "../test-helpers.ts";
+import type { EngineeringAuditPaths } from "../worker-workflow.ts";
 import {
   commitEngineeringChanges,
   processEngineeringItem,

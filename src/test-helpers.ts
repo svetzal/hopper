@@ -2,9 +2,9 @@ import { mock } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ParsedArgs } from "../cli.ts";
-import type { GitGateway } from "../gateways/git-gateway.ts";
-import * as storeModule from "../store.ts";
+import type { ParsedArgs } from "./cli.ts";
+import type { GitGateway } from "./gateways/git-gateway.ts";
+import * as storeModule from "./store.ts";
 
 export function makeParsed(
   command: string,

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Item } from "../store.ts";
 import { addItem, claimNextItem } from "../store.ts";
+import { makeItem, makeParsed, setupTempStoreDir } from "../test-helpers.ts";
 import { completeCommand } from "./complete.ts";
-import { makeItem, makeParsed, setupTempStoreDir } from "./test-helpers.ts";
 
 async function addAndClaim(overrides?: Partial<Item>): Promise<string> {
   await addItem(makeItem(overrides));

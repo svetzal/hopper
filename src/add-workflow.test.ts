@@ -12,22 +12,7 @@ import {
   validateTaskType,
   validateTimesSpec,
 } from "./add-workflow.ts";
-import type { Item } from "./store.ts";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function makeItem(overrides?: Partial<Item>): Item {
-  return {
-    id: "aaaaaaaa-0000-0000-0000-000000000000",
-    title: "Test task",
-    description: "A test description",
-    status: "queued",
-    createdAt: new Date().toISOString(),
-    ...overrides,
-  };
-}
+import { makeItem } from "./test-helpers.ts";
 
 /** A fixed "now" well into the future so parseTimeSpec won't reject relative specs. */
 const NOW = new Date("2030-01-01T00:00:00.000Z");

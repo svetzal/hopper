@@ -4,8 +4,8 @@ import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import type { ClaimedItem } from "../store.ts";
+import { makeClaimedItem } from "../test-helpers.ts";
 import type { WorkerConfig } from "../worker-workflow.ts";
-import { makeClaimedItem } from "./test-helpers.ts";
 import { runWorkerLoop, type WorkerLoopDeps } from "./worker-loop.ts";
 
 const noop = mock(async () => {});

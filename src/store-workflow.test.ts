@@ -15,24 +15,7 @@ import {
   requeue,
   setEngineeringBranchSlug,
 } from "./store-workflow.ts";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-let idCounter = 0;
-
-function makeItem(overrides?: Partial<Item>): Item {
-  idCounter += 1;
-  return {
-    id: `00000000-0000-0000-0000-${String(idCounter).padStart(12, "0")}`,
-    title: "Test item",
-    description: "A test description",
-    status: "queued",
-    createdAt: new Date().toISOString(),
-    ...overrides,
-  };
-}
+import { makeItem } from "./test-helpers.ts";
 
 const FIXED_NOW = new Date("2025-06-01T12:00:00.000Z");
 const FIXED_UUID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Item } from "../store.ts";
 import { addItem, claimNextItem } from "../store.ts";
+import { makeItem, makeParsed, setupTempStoreDir } from "../test-helpers.ts";
 import { requeueCommand } from "./requeue.ts";
-import { makeItem, makeParsed, setupTempStoreDir } from "./test-helpers.ts";
 
 async function addAndClaimId(): Promise<string> {
   await addItem(makeItem());

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Item } from "../store.ts";
 import { addItem } from "../store.ts";
+import { makeItem, makeParsed, setupTempStoreDir } from "../test-helpers.ts";
 import { claimCommand } from "./claim.ts";
-import { makeItem, makeParsed, setupTempStoreDir } from "./test-helpers.ts";
 
 describe("claimCommand", () => {
   const storeDir = setupTempStoreDir("hopper-claim-test-");

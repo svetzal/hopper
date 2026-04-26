@@ -1,17 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { filterAndSortItems, formatItemList, itemTiming, taskTypeBadge } from "./list-workflow.ts";
-import type { Item } from "./store.ts";
-
-function makeItem(overrides?: Partial<Item>): Item {
-  return {
-    id: crypto.randomUUID(),
-    title: "Test item",
-    description: "A test description",
-    status: "queued",
-    createdAt: new Date().toISOString(),
-    ...overrides,
-  };
-}
+import { makeItem } from "./test-helpers.ts";
 
 describe("filterAndSortItems", () => {
   test("default mode includes queued, in_progress, scheduled, blocked items", () => {

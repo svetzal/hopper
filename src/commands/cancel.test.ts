@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { addItem, saveItems } from "../store.ts";
+import { makeItem, makeParsed, setupTempStoreDir } from "../test-helpers.ts";
 import { cancelCommand } from "./cancel.ts";
-import { makeItem, makeParsed, setupTempStoreDir } from "./test-helpers.ts";
 
 describe("cancelCommand", () => {
   const storeDir = setupTempStoreDir("hopper-cancel-test-");

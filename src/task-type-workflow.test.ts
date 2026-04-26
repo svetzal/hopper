@@ -20,39 +20,38 @@ import {
   VALIDATE_ALLOWED_TOOLS,
   VALIDATE_TOOLS,
 } from "./task-type-workflow.ts";
+import { makeItem } from "./test-helpers.ts";
 
-function makeItem(overrides?: Partial<Item>): Item {
-  return {
+function makeInvestigationItem() {
+  return makeItem({
     id: "abcdef12-0000-0000-0000-000000000000",
     title: "Investigate cache misses",
     description: "Figure out why the in-memory cache never hits.",
-    status: "queued",
     createdAt: "2026-01-01T00:00:00Z",
     type: "investigation",
-    ...overrides,
-  };
+  });
 }
 
 describe("buildInvestigationPrompt", () => {
   test("includes the item title and description verbatim", () => {
-    const prompt = buildInvestigationPrompt(makeItem());
+    const prompt = buildInvestigationPrompt(makeInvestigationItem());
     expect(prompt).toContain("Investigate cache misses");
     expect(prompt).toContain("Figure out why the in-memory cache never hits.");
   });
 
   test("states that the deliverable is a markdown findings report", () => {
-    const prompt = buildInvestigationPrompt(makeItem());
+    const prompt = buildInvestigationPrompt(makeInvestigationItem());
     expect(prompt.toLowerCase()).toContain("markdown");
     expect(prompt.toLowerCase()).toContain("findings");
   });
 
   test("explicitly forbids mutating the filesystem", () => {
-    const prompt = buildInvestigationPrompt(makeItem());
+    const prompt = buildInvestigationPrompt(makeInvestigationItem());
     expect(prompt.toLowerCase()).toContain("read-only");
   });
 
   test("tells the agent its final message is captured as the result", () => {
-    const prompt = buildInvestigationPrompt(makeItem());
+    const prompt = buildInvestigationPrompt(makeInvestigationItem());
     expect(prompt.toLowerCase()).toContain("final message");
   });
 });

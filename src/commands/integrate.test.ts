@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { addItem, saveItems } from "../store.ts";
+import { makeItem, makeMockGit, makeParsed, setupTempStoreDir } from "../test-helpers.ts";
 import { integrateCommand } from "./integrate.ts";
-import { makeItem, makeMockGit, makeParsed, setupTempStoreDir } from "./test-helpers.ts";
 
 describe("integrateCommand", () => {
   const storeDir = setupTempStoreDir("hopper-integrate-test-");

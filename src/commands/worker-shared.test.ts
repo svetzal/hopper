@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { makeClaimedItem, makeMockGit } from "./test-helpers.ts";
+import { makeClaimedItem, makeMockGit } from "../test-helpers.ts";
 import {
   createLogger,
   mergeAndPush,

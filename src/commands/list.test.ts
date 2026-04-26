@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Item } from "../store.ts";
 import { addItem, saveItems } from "../store.ts";
+import { makeItem, makeParsed, setupTempStoreDir } from "../test-helpers.ts";
 import { listCommand } from "./list.ts";
-import { makeItem, makeParsed, setupTempStoreDir } from "./test-helpers.ts";
 
 describe("listCommand", () => {
   const storeDir = setupTempStoreDir("hopper-list-test-");
