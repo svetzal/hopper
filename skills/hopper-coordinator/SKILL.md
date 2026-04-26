@@ -72,6 +72,39 @@ As coordinator, you:
 5. **Review completed work** using `hopper show`
 6. **Manage the queue** — cancel, requeue, reprioritize, and tag items as needed
 
+## Read State in JSON, Always
+
+Whenever you (the coordinator agent) are *reading* queue state to reason about it — listing items, looking up an item by prefix, capturing the ID of a freshly added item, checking timestamps, deciding what to do next — pass `--json` and parse the result with `jq`. Do not screen-scrape the human-formatted output.
+
+This is the single most important convention in this skill. Two reasons:
+
+- **One call instead of a chain.** `hopper list --json` exposes every field on every item — id, full timestamps (createdAt, claimedAt, completedAt, scheduledAt), status, priority, tags, dependencies, agent, result, recurrence, workingDir, branch. You do not need a follow-up `hopper show` to inspect details on items you already saw in the list. A `jq` filter against the list output replaces multiple chained commands.
+- **Human output is lossy on purpose.** Relative time strings, truncated descriptions, and short IDs are designed for human eyes; they hide information you may need. The JSON output is the source of truth.
+
+**Default patterns:**
+
+```bash
+# Pull active queue with full fields, ready for jq
+hopper list --json
+
+# Find a specific item by description fragment
+hopper list --all --json | jq '.[] | select(.description | contains("WebSocket"))'
+
+# Look up an item's full detail (with all timestamps and audit-file paths inferred from id)
+hopper show <id> --json
+
+# Capture the ID of a newly created item without parsing prose
+ID=$(hopper add "..." --dir <path> --branch <branch> --json | jq -r '.id')
+
+# Check absolute completion timestamp on a finished item
+hopper show <id> --json | jq -r '.completedAt'
+
+# Items completed in the last 24 hours
+hopper list --completed --json | jq '[.[] | select(.completedAt > (now - 86400 | todate))]'
+```
+
+**When bare (human-formatted) commands are still appropriate:** when you intend to surface the output verbatim to the user and they want a readable summary. In that case, run the bare command separately for display — but do your reasoning against `--json`.
+
 ## CLI Reference
 
 ### ID Prefix Matching
@@ -175,14 +208,25 @@ Do NOT force a craftsperson when none fits. Investigation items, shell-command i
 
 ### Listing Items
 
+When you (the agent) are reading state, default to `--json` and let `jq` do the filtering. Reach for the bare commands only when you want a human-readable summary to show the user.
+
 ```bash
-hopper list                      # Queued + in-progress + scheduled + blocked
-hopper list --all                # Include completed and cancelled
-hopper list --completed          # Only completed items
-hopper list --scheduled          # Only scheduled items
-hopper list --tag <tag>          # Filter by tag (repeatable, OR logic)
-hopper list --priority <level>   # Filter by priority
-hopper list --json               # Machine-readable output
+# Agent-facing (default): JSON for reasoning
+hopper list --json                                        # Active queue (queued + in_progress + scheduled + blocked)
+hopper list --all --json                                  # Everything, including completed and cancelled
+hopper list --completed --json                            # Only completed
+hopper list --scheduled --json                            # Only scheduled
+hopper list --tag <tag> --json                            # Filter by tag (repeatable, OR logic)
+hopper list --priority <level> --json                     # Filter by priority
+
+# Common jq one-liners
+hopper list --json | jq -r '.[] | "\(.id[:8])  \(.status)  \(.title)"'              # Compact id/status/title
+hopper list --completed --json | jq '[.[] | {id: .id[:8], completedAt, title}]'      # Completed with absolute timestamps
+hopper list --json | jq '[.[] | select(.status == "in_progress")] | length'          # How many are currently running
+
+# Human-facing (only when displaying to the user)
+hopper list
+hopper list --completed
 ```
 
 Items are sorted by priority (high > normal > low), then by creation date (oldest first).
@@ -190,11 +234,15 @@ Items are sorted by priority (high > normal > low), then by creation date (oldes
 ### Viewing Item Details
 
 ```bash
-hopper show <id>             # Full details of a single item
-hopper show <id> --json      # Machine-readable output
+# Agent-facing
+hopper show <id> --json
+hopper show <id> --json | jq -r '.completedAt, .result'   # Pull specific fields
+
+# Human-facing (only when displaying to the user)
+hopper show <id>
 ```
 
-Shows all fields: description, status, timestamps, agent info, result, tags, dependencies, requeue reason, recurrence, and working directory.
+The JSON form returns every stored field: full UUID, full ISO timestamps (createdAt, claimedAt, completedAt, scheduledAt, dueAt), status, priority, tags, dependencies, agent, result, recurrence, workingDir, branch, requeueReason, retries, and (for engineering items) the phase records. The human form prints absolute ISO timestamps too but truncates the UUID to its 8-character prefix — fine for display, not what you want when you need to pass IDs into other commands.
 
 ### Investigating In-Progress Tasks
 
@@ -360,7 +408,7 @@ Command-line flags and positional descriptions override preset values. Preset na
 
 ### Machine-Readable Output
 
-All commands support `--json` for structured output. Use this when you need to parse results programmatically or chain commands together.
+All commands support `--json` for structured output. As the coordinator agent, this is your default — see "Read State in JSON, Always" earlier in this skill. Use the bare (human-formatted) form only when you intend to surface the output to the user verbatim.
 
 ## Automatic Directory Serialization
 
@@ -451,17 +499,19 @@ hopper add "Add loading spinners to all form submit buttons. Run the test suite 
 
 ```bash
 # Use --after-item when order matters logically —
-# the API endpoint needs the migration to exist first
+# the API endpoint needs the migration to exist first.
+# Capture the new item's id from --json instead of parsing prose output.
 
-hopper add "Add the orders table migration. Run existing tests and type checker to confirm nothing breaks." \
+MIGRATION_ID=$(hopper add \
+  "Add the orders table migration. Run existing tests and type checker to confirm nothing breaks." \
   --dir ~/Work/Projects/api \
-  --branch feat/orders
-# Output: Created item e5f6g7h8-...
+  --branch feat/orders \
+  --json | jq -r '.id')
 
 hopper add "Implement GET /api/orders endpoint with pagination. Add integration tests. Run the full test suite and linter — both must pass." \
   --dir ~/Work/Projects/api \
   --branch feat/orders \
-  --after-item e5f6g7h8
+  --after-item "$MIGRATION_ID"
 ```
 
 ### Shell command items
@@ -591,11 +641,34 @@ hopper add "Run smoke tests" --command "npm test" --every 10m --times 3
 
 ### Monitoring and managing the queue
 
+When you're reasoning about the queue, default to `--json` + `jq`. One JSON call exposes every field on every item, so you almost never need to chain `list` → `show`.
+
 ```bash
-hopper list                        # What's active?
-hopper list --tag backend          # Just backend work
-hopper list --completed            # What finished?
-hopper show a1b2c3d4               # Full details (prefix match)
-hopper reprioritize a1b2c3d4 high  # Bump priority
-hopper cancel e5f6g7h8             # Remove from queue
+# What's active right now?
+hopper list --json \
+  | jq -r '.[] | "\(.id[:8])  \(.status)  \(.priority // "normal")  \(.title)"'
+
+# What's claimed and by whom, with how long it's been running?
+hopper list --json \
+  | jq -r '.[] | select(.status == "in_progress")
+              | "\(.id[:8])  \(.claimedBy // "?")  claimed=\(.claimedAt)  \(.title)"'
+
+# What finished, with absolute timestamps?
+hopper list --completed --json \
+  | jq -r '.[] | "\(.id[:8])  completed=\(.completedAt)  \(.title)"'
+
+# What's blocked, and on what?
+hopper list --json \
+  | jq -r '.[] | select(.status == "blocked")
+              | "\(.id[:8])  blocked-on=\(.dependsOn // [] | map(.[:8]) | join(","))  \(.title)"'
+
+# Filter by tag without a follow-up call
+hopper list --tag backend --json | jq 'length'
+
+# Mutations don't need --json unless you want to verify the post-state
+hopper reprioritize a1b2c3d4 high
+hopper cancel e5f6g7h8
+
+# When showing the user, run the bare form separately
+hopper list
 ```

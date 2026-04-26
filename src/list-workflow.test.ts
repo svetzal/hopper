@@ -225,15 +225,24 @@ describe("taskTypeBadge", () => {
 });
 
 describe("itemTiming", () => {
-  test("returns completed duration for completed items", () => {
+  test("returns when-completed plus duration for completed items", () => {
     const item = makeItem({
       status: "completed",
       claimedAt: "2025-01-01T10:00:00Z",
       completedAt: "2025-01-01T11:00:00Z",
     });
 
-    expect(itemTiming(item)).toContain("completed in");
-    expect(itemTiming(item)).toContain("1h");
+    const out = itemTiming(item);
+
+    // Must show *when* it completed (relative time ending in "ago"),
+    // not just *how long* it took.
+    expect(out).toContain("completed");
+    expect(out).toContain("ago");
+    // Must still surface the duration.
+    expect(out).toContain("took 1h");
+    // The old "completed in <duration>" form silently dropped the "when",
+    // which is the bug we're fixing.
+    expect(out).not.toContain("completed in");
   });
 
   test("returns claimed info for in_progress items", () => {

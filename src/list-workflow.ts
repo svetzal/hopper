@@ -86,7 +86,11 @@ export function filterAndSortItems(
 /** Format a single item timing annotation. */
 export function itemTiming(item: Item): string {
   if (item.status === Status.COMPLETED && item.claimedAt && item.completedAt) {
-    return `  (completed in ${formatDuration(item.claimedAt, item.completedAt)})`;
+    // Show *when* it completed (relative) and *how long* it took (duration).
+    // The previous form ("completed in 1h") collapsed both into one phrase and
+    // silently dropped the "when", forcing the reader into `hopper show` or
+    // --json to find out whether something finished an hour ago or last week.
+    return `  (completed ${relativeTime(item.completedAt)}, took ${formatDuration(item.claimedAt, item.completedAt)})`;
   }
   if (item.status === Status.IN_PROGRESS && item.claimedAt) {
     const by = item.claimedBy ? ` by ${item.claimedBy}` : "";
