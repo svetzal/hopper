@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-04-25
+
+### Added
+
+- **`hopper audit <id>` command — primary CLI surface for inspecting in-progress and completed work.** Replaces the previous practice of poking `~/.hopper/audit/*.jsonl` and `~/.hopper/items.json` directly. Default mode returns a summary (`totalEvents`, `perPhaseEvents`, `lastEventAt`, `lastEventGapSeconds`, top-5 `toolHistogram`, `lastCommands`, `lastIncompleteToolUse`); `--tail <n>` returns the last N decoded session events; `--plan` and `--result` return the engineering plan and result markdown; `--phase <name>` restricts summary/tail to a single engineering phase. Both `--json` and human output formats are supported.
+
+### Changed
+
+- **Coordinator skill principle: all hopper state is read through the hopper CLI.** New "Read State in JSON, Always" section establishes the rule and forbids direct inspection of `~/.hopper/audit/*` and `~/.hopper/items.json`. The "Investigating In-Progress Tasks" section is rewritten to use `hopper audit <id> --json` patterns instead of `wc`/`grep`/`jq`/Python against raw JSONL. The on-disk file-paths table is removed in favour of CLI-only diagnostics.
+- **Coordinator skill steers the agent toward `--json` for all state reads.** Listing, viewing, monitoring, and dependency-chain example blocks now lead with `hopper list --json | jq …` and `hopper show <id> --json` patterns. The dependency-chain example captures a newly added item's id via `--json | jq -r '.id'` instead of implying the agent parses prose output.
+- **List output for completed items now surfaces both *when* and *how long*.** `itemTiming` renders completed items as `(completed 2h ago, took 1h)` instead of the previous `(completed in 1h)`, which dropped the timestamp. Readers of `hopper list --completed` can now tell at a glance whether something finished recently or last week without dropping into `hopper show` or `--json`.
+
+### Fixed
+
+- **Engineering worker reuses safe preserved worktrees on requeue.** When an engineering execute fails, the worktree is preserved for inspection. On user requeue, if the worktree is clean with no commits ahead of target, the worker now reuses it instead of rejecting with a stale-branch error. Prevents infinite auto-requeue loops.
+
+### Maintenance
+
+- Consolidated test helpers across `src/commands/*.test.ts` (`test-helpers.ts`), reducing boilerplate across integrate / worker / worker-engineering / worker-shared test suites.
+- Refactored `worker-engineering`, `add-agent-resolver`, `add`, `worker-loop`, and `titler` for clarity.
+- Added `.worktrees` to `.gitignore`.
+- Dependency updates.
+
 ## [2.0.7] - 2026-04-19
 
 ### Fixed
@@ -317,7 +340,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Release workflow: use macos-14 for x64 builds
 
-[Unreleased]: https://github.com/svetzal/hopper/compare/v2.0.7...HEAD
+[Unreleased]: https://github.com/svetzal/hopper/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/svetzal/hopper/compare/v2.0.7...v2.1.0
 [2.0.7]: https://github.com/svetzal/hopper/compare/v2.0.6...v2.0.7
 [2.0.6]: https://github.com/svetzal/hopper/compare/v2.0.5...v2.0.6
 [2.0.5]: https://github.com/svetzal/hopper/compare/v2.0.4...v2.0.5
