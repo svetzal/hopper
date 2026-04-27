@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ParsedArgs } from "../cli.ts";
+import { toErrorMessage } from "../error-utils.ts";
 import { shortId } from "../format.ts";
 import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import { createClaudeGateway } from "../gateways/claude-gateway.ts";
@@ -118,11 +119,13 @@ export async function runWorkerLoop(
             try {
               await loopDeps.requeueIfStillClaimed(
                 item.id,
-                `Worker crashed before completion: ${(err as Error).message ?? err}`,
+                `Worker crashed before completion: ${toErrorMessage(err)}`,
                 agentName,
               );
             } catch (requeueErr) {
-              log(`Warning: last-resort requeue for ${shortId(item.id)} failed: ${requeueErr}`);
+              log(
+                `Warning: last-resort requeue for ${shortId(item.id)} failed: ${toErrorMessage(requeueErr)}`,
+              );
             }
           })
           .finally(() => activeTasks.delete(item.id));

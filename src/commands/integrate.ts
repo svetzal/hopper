@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { ParsedArgs } from "../cli.ts";
 import { booleanFlag, requirePositional } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
+import { toErrorMessage } from "../error-utils.ts";
 import { shortId } from "../format.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import { createGitGateway } from "../gateways/git-gateway.ts";
@@ -93,9 +94,7 @@ export async function integrateCommand(
       try {
         await git.deleteBranch(workingDir, branch);
       } catch (e) {
-        warnings.push(
-          `Could not delete branch ${branch}: ${e instanceof Error ? e.message : String(e)}`,
-        );
+        warnings.push(`Could not delete branch ${branch}: ${toErrorMessage(e)}`);
       }
 
       try {
@@ -105,9 +104,7 @@ export async function integrateCommand(
           worktreeRemoved = true;
         }
       } catch (e) {
-        warnings.push(
-          `Could not remove worktree ${worktreePath}: ${e instanceof Error ? e.message : String(e)}`,
-        );
+        warnings.push(`Could not remove worktree ${worktreePath}: ${toErrorMessage(e)}`);
       }
     }
 

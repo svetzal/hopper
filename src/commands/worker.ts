@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { toErrorMessage } from "../error-utils.ts";
 import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
@@ -77,7 +78,7 @@ async function handleCompletion(
         await requeueItem(item.id, autoRequeue.reason, agentName);
         log(`Auto-requeued: ${item.title} (${autoRequeue.reason}).`);
       } catch (err) {
-        log(`Auto-requeue failed: ${err instanceof Error ? err.message : String(err)}`);
+        log(`Auto-requeue failed: ${toErrorMessage(err)}`);
         log(`Use 'hopper requeue ${item.id} --reason "..."' to retry.`);
       }
     } else {
