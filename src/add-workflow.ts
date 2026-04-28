@@ -86,14 +86,14 @@ export function validateDirBranch(
   branch: string | undefined,
   command: string | undefined,
   type?: TaskType,
-): AddValidationError | null {
+): Result<void, AddValidationError> {
   if (type === TaskType.INVESTIGATION) {
-    if (branch) return { code: "INVESTIGATION_NO_BRANCH" };
-    return null;
+    if (branch) return err({ code: "INVESTIGATION_NO_BRANCH" });
+    return ok(undefined);
   }
-  if (dir && !branch && !command) return { code: "DIR_REQUIRES_BRANCH_OR_COMMAND" };
-  if (branch && !dir) return { code: "BRANCH_REQUIRES_DIR" };
-  return null;
+  if (dir && !branch && !command) return err({ code: "DIR_REQUIRES_BRANCH_OR_COMMAND" });
+  if (branch && !dir) return err({ code: "BRANCH_REQUIRES_DIR" });
+  return ok(undefined);
 }
 
 // ---------------------------------------------------------------------------

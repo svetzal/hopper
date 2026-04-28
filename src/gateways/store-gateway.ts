@@ -1,9 +1,8 @@
-import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Item } from "../store.ts";
 import { ensureDefaults } from "../store-workflow.ts";
-import { loadJsonFile } from "./json-file.ts";
+import { loadJsonFile, saveJsonFile } from "./json-file.ts";
 
 export interface StoreGateway {
   load(): Promise<Item[]>;
@@ -21,8 +20,7 @@ export function createStoreGateway(storeDir?: string): StoreGateway {
       );
     },
     async save(items: Item[]): Promise<void> {
-      await mkdir(dir, { recursive: true });
-      await Bun.write(filePath, `${JSON.stringify(items, null, 2)}\n`);
+      await saveJsonFile(filePath, dir, items);
     },
   };
 }

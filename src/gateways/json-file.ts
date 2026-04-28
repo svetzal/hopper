@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+
 export async function loadJsonFile<T>(
   filePath: string,
   transform?: (raw: unknown[]) => T[],
@@ -12,4 +14,9 @@ export async function loadJsonFile<T>(
     // Corrupted or unreadable — start fresh
   }
   return [];
+}
+
+export async function saveJsonFile<T>(filePath: string, dir: string, data: T[]): Promise<void> {
+  await mkdir(dir, { recursive: true });
+  await Bun.write(filePath, `${JSON.stringify(data, null, 2)}\n`);
 }

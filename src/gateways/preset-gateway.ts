@@ -1,8 +1,7 @@
-import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Preset } from "../presets.ts";
-import { loadJsonFile } from "./json-file.ts";
+import { loadJsonFile, saveJsonFile } from "./json-file.ts";
 
 export interface PresetGateway {
   load(): Promise<Preset[]>;
@@ -18,8 +17,7 @@ export function createPresetGateway(storeDir?: string): PresetGateway {
       return loadJsonFile<Preset>(filePath);
     },
     async save(presets: Preset[]): Promise<void> {
-      await mkdir(dir, { recursive: true });
-      await Bun.write(filePath, `${JSON.stringify(presets, null, 2)}\n`);
+      await saveJsonFile(filePath, dir, presets);
     },
   };
 }

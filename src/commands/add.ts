@@ -106,9 +106,9 @@ export async function addCommand(
     }
 
     // 6. Validate dir/branch combination (accounting for task type)
-    const dirBranchError = validateDirBranch(dir, branch, command, type);
-    if (dirBranchError) {
-      return { status: "error", message: formatValidationError(dirBranchError) };
+    const dirBranchResult = validateDirBranch(dir, branch, command, type);
+    if (!dirBranchResult.ok) {
+      return { status: "error", message: formatValidationError(dirBranchResult.error) };
     }
 
     // 7. Parse priority
