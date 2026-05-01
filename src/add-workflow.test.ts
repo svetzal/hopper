@@ -23,7 +23,10 @@ const NOW = new Date("2030-01-01T00:00:00.000Z");
 
 describe("validateDirBranch", () => {
   test("returns ok when nothing is set", () => {
-    expect(validateDirBranch(undefined, undefined, undefined)).toEqual({ ok: true, value: undefined });
+    expect(validateDirBranch(undefined, undefined, undefined)).toEqual({
+      ok: true,
+      value: undefined,
+    });
   });
 
   test("returns ok when dir and branch are both set", () => {
@@ -31,11 +34,17 @@ describe("validateDirBranch", () => {
   });
 
   test("returns ok when dir and command are both set (no branch required)", () => {
-    expect(validateDirBranch("/repo", undefined, "make build")).toEqual({ ok: true, value: undefined });
+    expect(validateDirBranch("/repo", undefined, "make build")).toEqual({
+      ok: true,
+      value: undefined,
+    });
   });
 
   test("returns ok when all three are set", () => {
-    expect(validateDirBranch("/repo", "main", "make build")).toEqual({ ok: true, value: undefined });
+    expect(validateDirBranch("/repo", "main", "make build")).toEqual({
+      ok: true,
+      value: undefined,
+    });
   });
 
   test("DIR_REQUIRES_BRANCH_OR_COMMAND when dir is set but neither branch nor command", () => {
@@ -60,15 +69,24 @@ describe("validateDirBranch", () => {
   });
 
   test("investigation type with only dir is allowed", () => {
-    expect(validateDirBranch("/repo", undefined, undefined, "investigation")).toEqual({ ok: true, value: undefined });
+    expect(validateDirBranch("/repo", undefined, undefined, "investigation")).toEqual({
+      ok: true,
+      value: undefined,
+    });
   });
 
   test("investigation type with no dir and no branch is allowed", () => {
-    expect(validateDirBranch(undefined, undefined, undefined, "investigation")).toEqual({ ok: true, value: undefined });
+    expect(validateDirBranch(undefined, undefined, undefined, "investigation")).toEqual({
+      ok: true,
+      value: undefined,
+    });
   });
 
   test("engineering type with dir + branch is allowed", () => {
-    expect(validateDirBranch("/repo", "main", undefined, "engineering")).toEqual({ ok: true, value: undefined });
+    expect(validateDirBranch("/repo", "main", undefined, "engineering")).toEqual({
+      ok: true,
+      value: undefined,
+    });
   });
 
   test("engineering type with dir only is rejected (branch or command required)", () => {
