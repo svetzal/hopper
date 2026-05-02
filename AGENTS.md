@@ -69,7 +69,10 @@ A pre-push hook runs `bun run lint` and `bun test` automatically.
 - **Error handling strategy**: Three distinct layers — never call `console.error` outside `command-runner.ts`:
   1. **Gateway layer** (`src/gateways/`): Silent catch-and-return-empty/null. Missing files, unreadable directories, and parse failures return neutral defaults. No logging.
   2. **Command layer** (`src/commands/` returning `CommandResult`): Use `withStoreError` for top-level try/catch. Surface partial failures via `warnings` on `CommandResult`. Only `command-runner.ts` writes to stderr — commands never call `console.error` directly.
-  3. **Worker layer** (`worker-loop.ts`, `worker-engineering.ts`, `worker-shared.ts`): Use the injected `log`/`LogFn` callback for all output including errors. Non-critical helpers swallow exceptions silently. The loop's last-resort requeue logs failures via `log` but never crashes.
+  3. **Worker layer** (`worker-loop.ts`, `worker-engineering.ts`, `worker-shared.ts`): Use the injected `log`/`LogFn` callback for all output including errors. Three sub-layers:
+     - **`safe*` helpers** (`safeRecordPhase`, `safeRequeue`, `safePersistBranchSlug`, `resolveEngineeringBranchSlug`, `resolveEngineeringCommitMessage`): Catch all exceptions, log via optional `log` callback, return neutral fallback or void. Never throw.
+     - **Orchestration functions** (`processItem`, `processEngineeringItem`, `teardownMergeAndComplete`, `commitEngineeringChanges`): Let exceptions propagate. Use try/finally only for resource cleanup. Pre-spawn setup in `processEngineeringItem` auto-requeues via `safeRequeue` on failure and returns early; post-spawn failures propagate to the worker loop.
+     - **Worker loop** (`runWorkerLoop`): Catches all exceptions from `processItem` via `.catch()`, calls `safeRequeue` as last-resort via `requeueIfStillClaimed`, never crashes the loop.
 
 ### Skill Distribution
 

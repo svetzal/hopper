@@ -12,7 +12,7 @@ import { createGitGateway } from "../gateways/git-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import { createShellGateway } from "../gateways/shell-gateway.ts";
 import type { ClaimedItem } from "../store.ts";
-import { claimNextItem, findItem, requeueItem } from "../store.ts";
+import { claimNextItem, findItem } from "../store.ts";
 import {
   resolveLoopAction,
   resolvePostClaimLoopAction,
@@ -21,6 +21,7 @@ import {
   type WorkerConfig,
 } from "../worker-workflow.ts";
 import { processItem, type WorkerDeps } from "./worker.ts";
+import { safeRequeue } from "./worker-shared.ts";
 
 export interface WorkerLoopDeps {
   claimNext: (agentName: string) => Promise<ClaimedItem | null | undefined>;
@@ -116,17 +117,11 @@ export async function runWorkerLoop(
         const task = doProcessItem(item, agentName, hopperHome, gatewayDeps, concurrency)
           .catch(async (err) => {
             log(`Error processing item ${shortId(item.id)}: ${err}`);
-            try {
-              await loopDeps.requeueIfStillClaimed(
-                item.id,
-                `Worker crashed before completion: ${toErrorMessage(err)}`,
-                agentName,
-              );
-            } catch (requeueErr) {
-              log(
-                `Warning: last-resort requeue for ${shortId(item.id)} failed: ${toErrorMessage(requeueErr)}`,
-              );
-            }
+            await loopDeps.requeueIfStillClaimed(
+              item.id,
+              `Worker crashed before completion: ${toErrorMessage(err)}`,
+              agentName,
+            );
           })
           .finally(() => activeTasks.delete(item.id));
         activeTasks.set(item.id, task);
@@ -197,7 +192,9 @@ export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Prom
       try {
         const item = await findItem(itemId);
         if (item.status === "in_progress") {
-          await requeueItem(itemId, reason, agentName);
+          await safeRequeue(itemId, reason, agentName, (msg) =>
+            log(`Warning: last-resort requeue for ${shortId(itemId)} failed: ${msg}`),
+          );
         }
       } catch (err) {
         log(`Warning: last-resort requeue for ${shortId(itemId)} failed: ${err}`);

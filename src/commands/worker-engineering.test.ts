@@ -467,6 +467,43 @@ describe("processEngineeringItem", () => {
     expect(createWorktreeCalls[0]?.[2]).toContain("fresh-slug");
   });
 
+  test("post-spawn failure (runSession throws) → error propagates, no requeue", async () => {
+    const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
+    await store.saveItems([item]);
+    const deps = makeFullDeps();
+    // Worktree setup succeeds; plan-phase runSession throws unexpectedly
+    (deps.claude.runSession as ReturnType<typeof mock>).mockImplementation(async () => {
+      throw new Error("unexpected crash in plan phase");
+    });
+
+    await expect(processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps)).rejects.toThrow(
+      "unexpected crash in plan phase",
+    );
+    // Pre-spawn succeeded, so no requeue should have been attempted
+    expect(requeueItemMock).not.toHaveBeenCalled();
+  });
+
+  test("pre-spawn failure + safeRequeue failure (double-fault) → no rethrow", async () => {
+    const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
+    await store.saveItems([item]);
+    const deps = makeFullDeps({
+      createWorktree: mock(async () => {
+        throw new Error("worktree failed");
+      }),
+    });
+    // Also make the requeue call fail
+    requeueItemMock.mockImplementationOnce(async () => {
+      throw new Error("requeue also failed");
+    });
+
+    // Neither worktree setup nor requeue succeeded, but the function must not rethrow
+    await expect(
+      processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps),
+    ).resolves.toBeUndefined();
+    // safeRequeue was still attempted despite the failure
+    expect(requeueItemMock).toHaveBeenCalledTimes(1);
+  });
+
   test("preserved worktree at expected path + clean + no commits ahead → no requeue, proceeds to plan phase", async () => {
     const item = makeClaimedItem({
       id: ITEM_ID,

@@ -10,12 +10,7 @@ import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import { buildEngineeringBranchName } from "../git-workflow.ts";
 import type { ClaimedItem, Item, PhaseRecord } from "../store.ts";
-import {
-  completeItem,
-  recordItemPhase,
-  requeueItem,
-  setItemEngineeringBranchSlug,
-} from "../store.ts";
+import { completeItem, recordItemPhase, setItemEngineeringBranchSlug } from "../store.ts";
 import {
   buildBranchSlugPrompt,
   buildCommitMessagePrompt,
@@ -41,6 +36,7 @@ import {
   mergeAndPush,
   orchestrateWorktreeSetup,
   StaleEngineeringBranchError,
+  safeRequeue,
   teardownWorktree,
 } from "./worker-shared.ts";
 
@@ -54,6 +50,14 @@ async function safeRecordPhase(itemId: string, record: PhaseRecord, log?: LogFn)
     await recordItemPhase(itemId, record);
   } catch (e) {
     log?.(`Phase recording failed: ${toErrorMessage(e)}`);
+  }
+}
+
+async function safePersistBranchSlug(itemId: string, slug: string, log?: LogFn): Promise<void> {
+  try {
+    await setItemEngineeringBranchSlug(itemId, slug);
+  } catch (e) {
+    log?.(`Slug persistence failed: ${toErrorMessage(e)}`);
   }
 }
 
@@ -355,23 +359,15 @@ export async function processEngineeringItem(
     log("Generating branch slug...");
     slug = await resolveEngineeringBranchSlug(claude, item, log);
     if (slug) {
-      // Persist for future retries — best-effort, must not crash the run.
-      try {
-        await setItemEngineeringBranchSlug(item.id, slug);
-      } catch (e) {
-        log(`Slug persistence failed: ${toErrorMessage(e)}`);
-      }
+      await safePersistBranchSlug(item.id, slug, log);
     }
   }
   const workBranch = buildEngineeringBranchName(item.id, slug);
   log(`Work branch: ${workBranch}`);
 
-  // Track whether a Claude session has started. Pre-spawn failures (worktree
-  // setup, audit-dir creation) auto-requeue the item so it doesn't get stuck
-  // in `in_progress`. Post-session failures are handled by the worker loop's
+  // Pre-spawn setup: auto-requeue on failure so the item doesn't get stuck
+  // in `in_progress`. Post-spawn failures propagate to the worker loop's
   // last-resort safety net.
-  let claudeSessionStarted = false;
-  let worktreeLivePath: string | undefined;
   try {
     log(`Setting up worktree at ${worktreePath}...`);
     await orchestrateWorktreeSetup(
@@ -383,70 +379,48 @@ export async function processEngineeringItem(
       workBranch,
       log,
     );
-    worktreeLivePath = worktreePath;
-
-    // All pre-spawn setup is complete. Mark the session boundary before the
-    // first Claude invocation so the catch block below knows which regime
-    // we are in.
-    claudeSessionStarted = true;
-
-    // --- Plan phase -------------------------------------------------------
-    const planResult = await runPlanPhase(item, worktreePath, paths, { claude, fs }, log);
-    if (!planResult) return;
-    const { planText } = planResult;
-
-    // --- Execute / Validate loop ----------------------------------------
-    const loopResult = await runExecuteValidateLoop(
-      item,
-      worktreePath,
-      planText,
-      paths,
-      hopperHome,
-      { claude, fs },
-      log,
-    );
-    if (!loopResult.passed) return;
-
-    // --- Commit (Hopper + Haiku) -----------------------------------------
-    const { dirty } = await commitEngineeringChanges(item, worktreePath, { git, claude }, log);
-
-    // --- Worktree teardown + merge/push + complete -----------------------
-    await teardownMergeAndComplete(
-      item,
-      agentName,
-      worktreePath,
-      workBranch,
-      dirty,
-      planText,
-      loopResult.executeResults,
-      loopResult.validateResults,
-      paths,
-      { git, fs },
-      log,
-    );
-    worktreeLivePath = undefined;
   } catch (err) {
-    if (!claudeSessionStarted) {
-      // Pre-spawn failure: release the claim so the item can be retried.
-      const reason =
-        err instanceof StaleEngineeringBranchError
-          ? `Stale branch: ${err.message}`
-          : `Worktree setup failed: ${toErrorMessage(err)}`;
-      log(`Pre-spawn failure — auto-requeueing: ${reason}`);
-      try {
-        await requeueItem(item.id, reason, agentName);
-      } catch (e) {
-        log(`Requeue after pre-spawn failure failed: ${toErrorMessage(e)}`);
-      }
-    } else {
-      // Post-session failure: let the worker loop's last-resort handler decide.
-      throw err;
-    }
-  } finally {
-    // Only tear down if the flow didn't already clean up the worktree. A live
-    // path here means we aborted mid-flight; the worktree may be in an
-    // intermediate state so leave it for inspection — the `worktrees` dir is
-    // shared with the user's review workflow, not a temp dir.
-    void worktreeLivePath;
+    const reason =
+      err instanceof StaleEngineeringBranchError
+        ? `Stale branch: ${err.message}`
+        : `Worktree setup failed: ${toErrorMessage(err)}`;
+    log(`Pre-spawn failure — auto-requeueing: ${reason}`);
+    await safeRequeue(item.id, reason, agentName, log);
+    return;
   }
+
+  // --- Plan phase -------------------------------------------------------
+  const planResult = await runPlanPhase(item, worktreePath, paths, { claude, fs }, log);
+  if (!planResult) return;
+  const { planText } = planResult;
+
+  // --- Execute / Validate loop ----------------------------------------
+  const loopResult = await runExecuteValidateLoop(
+    item,
+    worktreePath,
+    planText,
+    paths,
+    hopperHome,
+    { claude, fs },
+    log,
+  );
+  if (!loopResult.passed) return;
+
+  // --- Commit (Hopper + Haiku) -----------------------------------------
+  const { dirty } = await commitEngineeringChanges(item, worktreePath, { git, claude }, log);
+
+  // --- Worktree teardown + merge/push + complete -----------------------
+  await teardownMergeAndComplete(
+    item,
+    agentName,
+    worktreePath,
+    workBranch,
+    dirty,
+    planText,
+    loopResult.executeResults,
+    loopResult.validateResults,
+    paths,
+    { git, fs },
+    log,
+  );
 }

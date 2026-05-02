@@ -1,3 +1,4 @@
+import { toErrorMessage } from "../error-utils.ts";
 import { shortId } from "../format.ts";
 import type { GitGateway, MergeOutcome } from "../gateways/git-gateway.ts";
 import {
@@ -7,7 +8,7 @@ import {
   resolveMergeCommitResult,
   resolveMergeStep,
 } from "../git-workflow.ts";
-import type { Item } from "../store.ts";
+import { type Item, requeueItem } from "../store.ts";
 
 export type LogFn = (message: string) => void;
 
@@ -34,6 +35,19 @@ export class StaleEngineeringBranchError extends Error {
         : `Work branch "${branch}" already exists but has diverged from the target branch; cannot safely reclaim.`,
     );
     this.name = "StaleEngineeringBranchError";
+  }
+}
+
+export async function safeRequeue(
+  itemId: string,
+  reason: string,
+  agentName: string,
+  log?: LogFn,
+): Promise<void> {
+  try {
+    await requeueItem(itemId, reason, agentName);
+  } catch (e) {
+    log?.(`Requeue failed: ${toErrorMessage(e)}`);
   }
 }
 

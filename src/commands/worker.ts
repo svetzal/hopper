@@ -1,11 +1,10 @@
 import { join } from "node:path";
-import { toErrorMessage } from "../error-utils.ts";
 import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import type { ClaimedItem, Item } from "../store.ts";
-import { completeItem, requeueItem } from "../store.ts";
+import { completeItem } from "../store.ts";
 import { buildInvestigationOptions, buildInvestigationPrompt } from "../task-type-workflow.ts";
 import {
   buildCommitMessage,
@@ -23,6 +22,7 @@ import {
   type LogFn,
   mergeAndPush,
   orchestrateWorktreeSetup,
+  safeRequeue,
   teardownWorktree,
 } from "./worker-shared.ts";
 
@@ -74,13 +74,8 @@ async function handleCompletion(
     // something worth reading before the operator decides whether to retry.
     const autoRequeue = resolveAutoRequeue(exitCode, result);
     if (autoRequeue.shouldAutoRequeue) {
-      try {
-        await requeueItem(item.id, autoRequeue.reason, agentName);
-        log(`Auto-requeued: ${item.title} (${autoRequeue.reason}).`);
-      } catch (err) {
-        log(`Auto-requeue failed: ${toErrorMessage(err)}`);
-        log(`Use 'hopper requeue ${item.id} --reason "..."' to retry.`);
-      }
+      log(`Auto-requeueing: ${item.title} (${autoRequeue.reason}).`);
+      await safeRequeue(item.id, autoRequeue.reason, agentName, log);
     } else {
       log(`Use 'hopper requeue ${item.id} --reason "..."' to retry.`);
     }
