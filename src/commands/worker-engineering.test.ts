@@ -4,10 +4,12 @@ import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import * as store from "../store.ts";
 import {
+  callArgs,
   makeClaimedItem,
   makeMockGit,
   makeMockStoreModule,
   setupTempStoreDir,
+  typedMock,
 } from "../test-helpers.ts";
 import type { EngineeringAuditPaths } from "../worker-workflow.ts";
 import {
@@ -17,12 +19,12 @@ import {
   runPlanPhase,
 } from "./worker-engineering.ts";
 
-const mockSetItemEngineeringBranchSlug = mock(async () => {});
+const mockSetItemEngineeringBranchSlug = mock(async (_id: string, _slug: string) => {});
 const storeMocks = makeMockStoreModule({
   setItemEngineeringBranchSlug: mockSetItemEngineeringBranchSlug,
 });
 mock.module("../store.ts", () => storeMocks.moduleObject);
-const requeueItemMock = storeMocks.mocks.requeueItem as ReturnType<typeof mock>;
+const requeueItemMock = storeMocks.mocks.requeueItem;
 
 const HOPPER_HOME = "/tmp/test-hopper-eng";
 const ITEM_ID = "aaaaaaaa-0000-0000-0000-000000000000";
@@ -106,8 +108,8 @@ describe("runPlanPhase", () => {
 
     await runPlanPhase(item, "/worktree", paths, { claude, fs }, noop);
 
-    const writeCalls = (fs.writeFile as ReturnType<typeof mock>).mock.calls as unknown[][];
-    const planWrite = writeCalls.find((c) => (c[0] as string) === paths.planFile);
+    const writeFileMock = typedMock(fs.writeFile);
+    const planWrite = writeFileMock.mock.calls.find((c) => c[0] === paths.planFile);
     expect(planWrite).toBeDefined();
     expect(planWrite?.[1]).toBe("plan content");
   });
@@ -123,10 +125,10 @@ describe("runPlanPhase", () => {
 
     await runPlanPhase(item, "/worktree", paths, { claude, fs }, noop);
 
-    const writeCalls = (fs.writeFile as ReturnType<typeof mock>).mock.calls as unknown[][];
-    const resultWrite = writeCalls.find((c) => (c[0] as string) === paths.resultFile);
+    const planFailWriteMock = typedMock(fs.writeFile);
+    const resultWrite = planFailWriteMock.mock.calls.find((c) => c[0] === paths.resultFile);
     expect(resultWrite).toBeDefined();
-    expect(resultWrite?.[1] as string).toContain("Plan phase failed");
+    expect(resultWrite?.[1]).toContain("Plan phase failed");
   });
 });
 
@@ -298,10 +300,10 @@ describe("runExecuteValidateLoop", () => {
       noop,
     );
 
-    const writeCalls = (fs.writeFile as ReturnType<typeof mock>).mock.calls as unknown[][];
-    const resultWrite = writeCalls.find((c) => (c[0] as string) === paths.resultFile);
+    const execFailWriteMock = typedMock(fs.writeFile);
+    const resultWrite = execFailWriteMock.mock.calls.find((c) => c[0] === paths.resultFile);
     expect(resultWrite).toBeDefined();
-    expect(resultWrite?.[1] as string).toContain("Execute phase attempt 1 failed");
+    expect(resultWrite?.[1]).toContain("Execute phase attempt 1 failed");
   });
 });
 
@@ -391,7 +393,7 @@ describe("processEngineeringItem", () => {
     await processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps);
 
     expect(requeueItemMock).toHaveBeenCalledTimes(1);
-    const [calledId, reason] = requeueItemMock.mock.calls[0] as [string, string, string];
+    const [calledId, reason] = callArgs(requeueItemMock, 0);
     expect(calledId).toBe(ITEM_ID);
     expect(reason).toContain("Worktree setup failed");
     // Verify the real store was actually updated
@@ -416,8 +418,8 @@ describe("processEngineeringItem", () => {
     await processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps);
 
     expect(requeueItemMock).toHaveBeenCalledTimes(1);
-    const [, reason] = requeueItemMock.mock.calls[0] as [string, string, string];
-    expect(reason).toContain("Stale branch");
+    const [, staleReason] = callArgs(requeueItemMock, 0);
+    expect(staleReason).toContain("Stale branch");
     // Verify the real store was actually updated
     const reloadedResult = await store.findItem(ITEM_ID);
     const reloaded = reloadedResult.ok ? reloadedResult.value : null;
@@ -441,16 +443,15 @@ describe("processEngineeringItem", () => {
     // Slug should NOT be re-persisted when already cached
     expect(mockSetItemEngineeringBranchSlug).not.toHaveBeenCalled();
     // The work branch passed to createWorktree should contain the cached slug
-    const createWorktreeCalls = (deps.git.createWorktree as ReturnType<typeof mock>).mock
-      .calls as string[][];
-    expect(createWorktreeCalls[0]?.[2]).toContain("cached-slug");
+    const [, , cachedBranchArg] = callArgs(typedMock(deps.git.createWorktree), 0);
+    expect(cachedBranchArg).toContain("cached-slug");
   });
 
   test("item without slug → generateText called once and setItemEngineeringBranchSlug called with persisted value", async () => {
     const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
     // generateText returns a fresh slug
     const deps = makeFullDeps();
-    (deps.claude.generateText as ReturnType<typeof mock>).mockImplementation(async () => ({
+    typedMock(deps.claude.generateText).mockImplementation(async () => ({
       exitCode: 0,
       text: "fresh-slug",
     }));
@@ -459,14 +460,12 @@ describe("processEngineeringItem", () => {
 
     expect(deps.claude.generateText).toHaveBeenCalledTimes(1);
     expect(mockSetItemEngineeringBranchSlug).toHaveBeenCalledTimes(1);
-    const [persistedId, persistedSlug] = mockSetItemEngineeringBranchSlug.mock
-      .calls[0] as unknown as [string, string];
+    const [persistedId, persistedSlug] = callArgs(mockSetItemEngineeringBranchSlug, 0);
     expect(persistedId).toBe(ITEM_ID);
     expect(persistedSlug).toBe("fresh-slug");
     // Work branch should include the persisted slug
-    const createWorktreeCalls = (deps.git.createWorktree as ReturnType<typeof mock>).mock
-      .calls as string[][];
-    expect(createWorktreeCalls[0]?.[2]).toContain("fresh-slug");
+    const [, , freshBranchArg] = callArgs(typedMock(deps.git.createWorktree), 0);
+    expect(freshBranchArg).toContain("fresh-slug");
   });
 
   test("post-spawn failure (runSession throws) → error propagates, no requeue", async () => {
@@ -474,7 +473,7 @@ describe("processEngineeringItem", () => {
     await store.saveItems([item]);
     const deps = makeFullDeps();
     // Worktree setup succeeds; plan-phase runSession throws unexpectedly
-    (deps.claude.runSession as ReturnType<typeof mock>).mockImplementation(async () => {
+    typedMock(deps.claude.runSession).mockImplementation(async () => {
       throw new Error("unexpected crash in plan phase");
     });
 
@@ -494,9 +493,11 @@ describe("processEngineeringItem", () => {
       }),
     });
     // Also make the requeue call fail
-    requeueItemMock.mockImplementationOnce(async () => {
-      throw new Error("requeue also failed");
-    });
+    requeueItemMock.mockImplementationOnce(
+      async (_id: string, _reason: string, _agent?: string) => {
+        throw new Error("requeue also failed");
+      },
+    );
 
     // Neither worktree setup nor requeue succeeded, but the function must not rethrow
     await expect(

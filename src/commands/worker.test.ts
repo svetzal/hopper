@@ -3,21 +3,23 @@ import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import { ok } from "../result.ts";
-import type { Item } from "../store.ts";
+import type { CompleteResult, Item } from "../store.ts";
 import * as store from "../store.ts";
 import {
+  callArgs,
   makeClaimedItem,
   makeMockGit,
   makeMockStoreModule,
   setupTempStoreDir,
+  typedMock,
 } from "../test-helpers.ts";
 import { processItem } from "./worker.ts";
 
 const storeMocks = makeMockStoreModule();
 mock.module("../store.ts", () => storeMocks.moduleObject);
-const completeItemMock = storeMocks.mocks.completeItem as ReturnType<typeof mock>;
-const recordItemPhaseMock = storeMocks.mocks.recordItemPhase as ReturnType<typeof mock>;
-const requeueItemMock = storeMocks.mocks.requeueItem as ReturnType<typeof mock>;
+const completeItemMock = storeMocks.mocks.completeItem;
+const recordItemPhaseMock = storeMocks.mocks.recordItemPhase;
+const requeueItemMock = storeMocks.mocks.requeueItem;
 
 function makeMockClaude(exitCode = 0, result = "Done."): ClaudeGateway {
   return {
@@ -95,9 +97,9 @@ describe("processItem", () => {
 
     expect(completeItemMock).not.toHaveBeenCalled();
     expect(requeueItemMock).toHaveBeenCalledTimes(1);
-    const call = (requeueItemMock.mock.calls as unknown[][])[0] as unknown[];
-    expect(call[0]).toBe(item.id);
-    expect(call[1] as string).toContain("exited 1");
+    const [requeueId, requeueReason] = callArgs(requeueItemMock, 0);
+    expect(requeueId).toBe(item.id);
+    expect(requeueReason).toContain("exited 1");
 
     // And the pass-through actually transitioned the item back to queued
     const reloaded = await store.loadItems();
@@ -146,7 +148,7 @@ describe("processItem", () => {
   test("commits directly when worktree is dirty after Claude session", async () => {
     const item = makeClaimedItem({ workingDir: "/repo", branch: "main" });
     const git = makeMockGit();
-    (git.isWorktreeDirty as ReturnType<typeof mock>).mockImplementation(async () => true);
+    typedMock(git.isWorktreeDirty).mockImplementation(async () => true);
     const claude = makeMockClaude(0, "Fixed the bug.");
     const fs = makeMockFs();
 
@@ -156,7 +158,7 @@ describe("processItem", () => {
     expect(claude.runSession).toHaveBeenCalledTimes(1);
     // Hopper commits directly with item title + Claude summary
     expect(git.commitAll).toHaveBeenCalledTimes(1);
-    const commitMsg = (git.commitAll as ReturnType<typeof mock>).mock.calls[0]?.[1];
+    const [, commitMsg] = callArgs(typedMock(git.commitAll), 0);
     expect(commitMsg).toContain("Test task");
     expect(commitMsg).toContain("Fixed the bug.");
   });
@@ -176,7 +178,7 @@ describe("processItem", () => {
     const completedTokens: string[] = [];
     completeItemMock.mockImplementation(async (token: string) => {
       completedTokens.push(token);
-      return ok({ completed: { title: "done" } as Item, recurred: undefined });
+      return ok<CompleteResult>({ completed: { title: "done" } as Item });
     });
 
     // Create independent mocks for each to prove isolation
@@ -317,9 +319,9 @@ describe("processItem", () => {
 
     expect(git.createWorktree).not.toHaveBeenCalled();
     expect(shell.runCommand).toHaveBeenCalledTimes(1);
-    const callArgs = (shell.runCommand as ReturnType<typeof mock>).mock.calls[0] as unknown[];
-    expect(callArgs[0]).toBe("ls");
-    expect(callArgs[1]).toBe("/some/dir");
+    const [shellCmd, shellDir] = callArgs(typedMock(shell.runCommand), 0);
+    expect(shellCmd).toBe("ls");
+    expect(shellDir).toBe("/some/dir");
   });
 
   test("branch setup tracks remote when local absent and remote exists", async () => {
@@ -530,8 +532,8 @@ describe("processItem", () => {
     expect(claude.generateText).toHaveBeenCalledTimes(2);
     // Hopper-driven commit happened with the Haiku message
     expect(git.commitAll).toHaveBeenCalledTimes(1);
-    const commitMsg = (git.commitAll as ReturnType<typeof mock>).mock.calls[0]?.[1];
-    expect(commitMsg).toContain("Add --quiet flag");
+    const [, engCommitMsg] = callArgs(typedMock(git.commitAll), 0);
+    expect(engCommitMsg).toContain("Add --quiet flag");
     // Merge + push happened
     expect(git.mergeFastForward).toHaveBeenCalledTimes(1);
     expect(git.push).toHaveBeenCalledTimes(1);
@@ -556,8 +558,7 @@ describe("processItem", () => {
       shell: makeMockShell(),
     });
 
-    const workBranchArg = (git.createWorktree as ReturnType<typeof mock>).mock
-      .calls[0]?.[2] as string;
+    const [, , workBranchArg] = callArgs(typedMock(git.createWorktree), 0);
     expect(workBranchArg.startsWith("hopper-eng/refactor-parser-")).toBe(true);
   });
 
@@ -585,10 +586,9 @@ describe("processItem", () => {
       shell: makeMockShell(),
     });
 
-    const workBranchArg = (git.createWorktree as ReturnType<typeof mock>).mock
-      .calls[0]?.[2] as string;
+    const [, , fallbackBranchArg] = callArgs(typedMock(git.createWorktree), 0);
     // hopper-eng/<id-prefix> with no slug segment
-    expect(workBranchArg).toMatch(/^hopper-eng\/[a-f0-9]{8}$/);
+    expect(fallbackBranchArg).toMatch(/^hopper-eng\/[a-f0-9]{8}$/);
   });
 
   test("engineering: persists plan.md to audit dir, not the worktree", async () => {
@@ -608,12 +608,12 @@ describe("processItem", () => {
       shell: makeMockShell(),
     });
 
-    const writeCalls = (fs.writeFile as ReturnType<typeof mock>).mock.calls as unknown[][];
-    const planWrite = writeCalls.find((c) => (c[0] as string).endsWith("-plan.md"));
+    const writeMock = typedMock(fs.writeFile);
+    const planWrite = writeMock.mock.calls.find((c) => c[0].endsWith("-plan.md"));
     expect(planWrite).toBeDefined();
-    expect((planWrite?.[0] as string).startsWith(HOPPER_HOME)).toBe(true);
+    expect(planWrite?.[0].startsWith(HOPPER_HOME)).toBe(true);
     // Ensure nothing was written inside the worktree directory
-    const worktreeWrite = writeCalls.find((c) => (c[0] as string).includes("/worktrees/"));
+    const worktreeWrite = writeMock.mock.calls.find((c) => c[0].includes("/worktrees/"));
     expect(worktreeWrite).toBeUndefined();
   });
 
@@ -736,10 +736,8 @@ describe("processItem", () => {
     // No commit → no merge
     expect(git.mergeFastForward).not.toHaveBeenCalled();
     // Haiku commit-message call was NOT made (we skipped commit entirely)
-    const generateCalls = (claude.generateText as ReturnType<typeof mock>).mock
-      .calls as unknown[][];
-    const commitMsgCall = generateCalls.find((c) =>
-      (c[0] as string).toLowerCase().includes("conventional-commit"),
+    const commitMsgCall = typedMock(claude.generateText).mock.calls.find((c) =>
+      c[0].toLowerCase().includes("conventional-commit"),
     );
     expect(commitMsgCall).toBeUndefined();
     // Item still completed
@@ -766,10 +764,10 @@ describe("processItem", () => {
       shell: makeMockShell(),
     });
 
-    const sessionCalls = (claude.runSession as ReturnType<typeof mock>).mock.calls as unknown[][];
-    const executeCall = sessionCalls.find((c) => (c[0] as string).includes("EXECUTE phase"));
+    const sessionCalls = typedMock(claude.runSession).mock.calls;
+    const executeCall = sessionCalls.find((c) => c[0].includes("EXECUTE phase"));
     expect(executeCall).toBeDefined();
-    expect(executeCall?.[0] as string).toContain(planText);
+    expect(executeCall?.[0]).toContain(planText);
   });
 
   test("engineering: forwards the resolved agent to the execute phase options", async () => {
@@ -790,10 +788,9 @@ describe("processItem", () => {
       shell: makeMockShell(),
     });
 
-    const sessionCalls = (claude.runSession as ReturnType<typeof mock>).mock.calls as unknown[][];
-    const executeCall = sessionCalls.find((c) => (c[0] as string).includes("EXECUTE phase"));
-    const executeOptions = executeCall?.[3] as { agent?: string } | undefined;
-    expect(executeOptions?.agent).toBe("rust-craftsperson");
+    const agentSessionCalls = typedMock(claude.runSession).mock.calls;
+    const executeCall = agentSessionCalls.find((c) => c[0].includes("EXECUTE phase"));
+    expect(executeCall?.[3]?.agent).toBe("rust-craftsperson");
   });
 
   test("engineering: records a phase entry after each phase finishes", async () => {
@@ -814,9 +811,7 @@ describe("processItem", () => {
     });
 
     expect(recordItemPhaseMock).toHaveBeenCalledTimes(3);
-    const recorded = (recordItemPhaseMock.mock.calls as unknown[][]).map(
-      (c) => c[1] as { name: string; exitCode: number; passed?: boolean },
-    );
+    const recorded = recordItemPhaseMock.mock.calls.map((c) => c[1]);
     expect(recorded.map((r) => r.name)).toEqual(["plan", "execute", "validate"]);
     expect(recorded[0]?.exitCode).toBe(0);
     expect(recorded[2]?.passed).toBe(true);
@@ -841,10 +836,8 @@ describe("processItem", () => {
       shell: makeMockShell(),
     });
 
-    const validateCall = (recordItemPhaseMock.mock.calls as unknown[][]).find(
-      (c) => (c[1] as { name: string }).name === "validate",
-    );
-    expect((validateCall?.[1] as { passed: boolean }).passed).toBe(false);
+    const validateCall = recordItemPhaseMock.mock.calls.find((c) => c[1].name === "validate");
+    expect(validateCall?.[1].passed).toBe(false);
   });
 
   test("engineering: does not record execute or validate phases when plan phase fails", async () => {
@@ -864,9 +857,7 @@ describe("processItem", () => {
       shell: makeMockShell(),
     });
 
-    const recorded = (recordItemPhaseMock.mock.calls as unknown[][]).map(
-      (c) => (c[1] as { name: string }).name,
-    );
+    const recorded = recordItemPhaseMock.mock.calls.map((c) => c[1].name);
     expect(recorded).toEqual(["plan"]);
   });
 
@@ -942,14 +933,13 @@ describe("processItem", () => {
       shell: makeMockShell(),
     });
 
-    const calls = (claude.runSession as ReturnType<typeof mock>).mock.calls as unknown[][];
-    const remediationCall = calls.find(
-      (c) => (c[0] as string).includes("EXECUTE phase") && (c[0] as string).includes("remediation"),
+    const remediationCalls = typedMock(claude.runSession).mock.calls;
+    const remediationCall = remediationCalls.find(
+      (c) => c[0].includes("EXECUTE phase") && c[0].includes("remediation"),
     );
     expect(remediationCall).toBeDefined();
-    const prompt = remediationCall?.[0] as string;
-    expect(prompt).toContain("first-execute-summary");
-    expect(prompt).toContain("failing-validate-output");
+    expect(remediationCall?.[0]).toContain("first-execute-summary");
+    expect(remediationCall?.[0]).toContain("failing-validate-output");
   });
 
   test("engineering: stops after exhausting retries and preserves worktree", async () => {
@@ -1040,8 +1030,8 @@ describe("processItem", () => {
       shell: makeMockShell(),
     });
 
-    const calls = (claude.runSession as ReturnType<typeof mock>).mock.calls as unknown[][];
-    const auditPaths = calls.map((c) => c[2] as string);
+    const retryAuditCalls = typedMock(claude.runSession).mock.calls;
+    const auditPaths = retryAuditCalls.map((c) => c[2]);
     expect(auditPaths).toContain(`${HOPPER_HOME}/audit/${item.id}-execute.jsonl`);
     expect(auditPaths).toContain(`${HOPPER_HOME}/audit/${item.id}-validate.jsonl`);
     expect(auditPaths).toContain(`${HOPPER_HOME}/audit/${item.id}-execute-2.jsonl`);
@@ -1080,9 +1070,7 @@ describe("processItem", () => {
       shell: makeMockShell(),
     });
 
-    const recorded = (recordItemPhaseMock.mock.calls as unknown[][]).map(
-      (c) => c[1] as { name: string; attempt?: number; passed?: boolean },
-    );
+    const recorded = recordItemPhaseMock.mock.calls.map((c) => c[1]);
     expect(recorded.map((r) => `${r.name}@${r.attempt ?? 1}`)).toEqual([
       "plan@1",
       "execute@1",
@@ -1112,8 +1100,8 @@ describe("processItem", () => {
       shell: makeMockShell(),
     });
 
-    const runCalls = (claude.runSession as ReturnType<typeof mock>).mock.calls as unknown[][];
-    const auditPaths = runCalls.map((c) => c[2] as string);
+    const perPhaseAuditCalls = typedMock(claude.runSession).mock.calls;
+    const auditPaths = perPhaseAuditCalls.map((c) => c[2]);
     expect(auditPaths).toContain(`${HOPPER_HOME}/audit/${item.id}-plan.jsonl`);
     expect(auditPaths).toContain(`${HOPPER_HOME}/audit/${item.id}-execute.jsonl`);
     expect(auditPaths).toContain(`${HOPPER_HOME}/audit/${item.id}-validate.jsonl`);

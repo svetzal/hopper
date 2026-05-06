@@ -1,4 +1,4 @@
-import { mock } from "bun:test";
+import { type Mock, mock } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -86,24 +86,65 @@ export function makeMockGit(overrides?: Partial<GitGateway>): GitGateway {
   };
 }
 
+/**
+ * Cast a function value to its typed Mock equivalent.
+ * Use this when extracting mocks from a mock module to get proper Mock<T> typing.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: generic helper requires any to capture function shape
+export function typedMock<T extends (...args: any[]) => any>(m: T): Mock<T> {
+  return m as unknown as Mock<T>;
+}
+
+/**
+ * Extract typed call arguments from a mock function at the given call index.
+ * Returns a properly typed tuple matching the mock's parameter types.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: generic helper requires any to capture function shape
+export function callArgs<T extends (...args: any[]) => any>(
+  m: Mock<T>,
+  callIndex: number,
+): Parameters<T> {
+  return m.mock.calls[callIndex] as Parameters<T>;
+}
+
+type BaseMocks = {
+  completeItem: Mock<typeof storeModule.completeItem>;
+  recordItemPhase: Mock<typeof storeModule.recordItemPhase>;
+  requeueItem: Mock<typeof storeModule.requeueItem>;
+};
+
 export function makeMockStoreModule<T extends Record<string, unknown> = Record<never, never>>(
   extraMocks?: T,
-) {
+): {
+  moduleObject: typeof storeModule;
+  mocks: BaseMocks & T;
+} {
   const realRequeueItem = storeModule.requeueItem;
-  const completeItem = mock(async () =>
+  const completeItem: Mock<typeof storeModule.completeItem> = mock(async () =>
     ok({
-      completed: { title: "done" } as storeModule.Item,
+      completed: makeItem({ title: "done", status: "completed" }),
       recurred: undefined as storeModule.Item | undefined,
     }),
   );
-  const recordItemPhase = mock(async () => {});
-  const requeueItem = mock(async (id: string, reason: string, agent?: string) =>
-    realRequeueItem(id, reason, agent),
+  const recordItemPhase: Mock<typeof storeModule.recordItemPhase> = mock(async () => {});
+  const requeueItem: Mock<typeof storeModule.requeueItem> = mock(
+    async (id: string, reason: string, agent?: string) => realRequeueItem(id, reason, agent),
   );
-  const baseMocks = { completeItem, recordItemPhase, requeueItem };
-  const mocks = { ...baseMocks, ...(extraMocks ?? {}) } as typeof baseMocks & T;
+  const baseMocks: BaseMocks = { completeItem, recordItemPhase, requeueItem };
+  const mocks = { ...baseMocks, ...(extraMocks ?? {}) } as BaseMocks & T;
   return {
     moduleObject: { ...storeModule, ...mocks } as unknown as typeof storeModule,
     mocks,
   };
+}
+
+/**
+ * Claims the next queued item, throwing if no item is available.
+ * Use in tests instead of calling `claimNextItem` directly when you need a
+ * `ClaimedItem` without optional chaining or `as string` casts.
+ */
+export async function claimOrFail(agent?: string): Promise<storeModule.ClaimedItem> {
+  const claimed = await storeModule.claimNextItem(agent);
+  if (!claimed) throw new Error("Expected claimNextItem to return an item");
+  return claimed;
 }

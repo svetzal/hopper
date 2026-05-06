@@ -1,9 +1,10 @@
 import type { ParsedArgs } from "../cli.ts";
 import { stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
+import type { ClaimedItem } from "../store.ts";
 import { claimNextItem } from "../store.ts";
 
-export async function claimCommand(parsed: ParsedArgs): Promise<CommandResult> {
+export async function claimCommand(parsed: ParsedArgs): Promise<CommandResult<ClaimedItem>> {
   const agent = stringFlag(parsed, "agent");
 
   const item = await claimNextItem(agent);

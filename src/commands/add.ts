@@ -16,6 +16,7 @@ import { shortId } from "../format.ts";
 import { findPreset } from "../presets.ts";
 import type { Priority } from "../priority.ts";
 import { parsePriority, priorityBadge } from "../priority.ts";
+import type { Item } from "../store.ts";
 import { addItem, loadItems } from "../store.ts";
 import { mergeTags, normalizeTags, tagBadge } from "../tags.ts";
 import type { TitleGenerator } from "../titler.ts";
@@ -39,7 +40,7 @@ export async function addCommand(
   titler: TitleGenerator,
   readStdin: () => Promise<string> = () => new Response(Bun.stdin.stream()).text(),
   resolveAgent?: AgentResolver,
-): Promise<CommandResult> {
+): Promise<CommandResult<Item>> {
   // 1. Resolve preset (I/O)
   const presetName = stringFlag(parsed, "preset");
   let preset: Awaited<ReturnType<typeof findPreset>>;

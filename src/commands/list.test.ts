@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { Item } from "../store.ts";
 import { addItem, saveItems } from "../store.ts";
 import { makeItem, makeParsed, setupTempStoreDir } from "../test-helpers.ts";
 import { listCommand } from "./list.ts";
@@ -28,8 +27,7 @@ describe("listCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const data = result.data as Item[];
-      expect(data).toHaveLength(2);
+      expect(result.data).toHaveLength(2);
     }
   });
 
@@ -41,9 +39,8 @@ describe("listCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const data = result.data as Item[];
-      expect(data).toHaveLength(1);
-      expect(data[0]?.status).toBe("completed");
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]?.status).toBe("completed");
     }
   });
 
@@ -55,8 +52,7 @@ describe("listCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const data = result.data as Item[];
-      expect(data).toHaveLength(2);
+      expect(result.data).toHaveLength(2);
     }
   });
 
@@ -76,9 +72,8 @@ describe("listCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const data = result.data as Item[];
-      expect(data).toHaveLength(1);
-      expect(data[0]?.tags).toContain("frontend");
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]?.tags).toContain("frontend");
     }
   });
 
@@ -92,8 +87,7 @@ describe("listCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const data = result.data as Item[];
-      expect(data).toHaveLength(1);
+      expect(result.data).toHaveLength(1);
     }
   });
 });

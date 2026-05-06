@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { Item } from "../store.ts";
 import { addItem } from "../store.ts";
 import { makeItem, makeParsed, setupTempStoreDir } from "../test-helpers.ts";
 import { tagCommand, untagCommand } from "./tag.ts";
@@ -36,9 +35,8 @@ describe("tagCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const data = result.data as Item;
-      expect(data.tags).toContain("feature");
-      expect(data.tags).toContain("backend");
+      expect(result.data.tags).toContain("feature");
+      expect(result.data.tags).toContain("backend");
       expect(result.humanOutput).toContain("Tagged");
     }
   });
@@ -76,9 +74,8 @@ describe("untagCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const data = result.data as Item;
-      expect(data.tags).not.toContain("backend");
-      expect(data.tags).toContain("feature");
+      expect(result.data.tags).not.toContain("backend");
+      expect(result.data.tags).toContain("feature");
       expect(result.humanOutput).toContain("Untagged");
     }
   });

@@ -3,9 +3,10 @@ import { requirePositional } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
 import { shortId } from "../format.ts";
 import { parsePriority } from "../priority.ts";
+import type { Item } from "../store.ts";
 import { reprioritizeItem } from "../store.ts";
 
-export async function reprioritizeCommand(parsed: ParsedArgs): Promise<CommandResult> {
+export async function reprioritizeCommand(parsed: ParsedArgs): Promise<CommandResult<Item>> {
   const USAGE = "Usage: hopper reprioritize <id> <high|normal|low>";
   const idArg = requirePositional(parsed, 0, USAGE);
   if (!idArg.ok) return idArg.error;

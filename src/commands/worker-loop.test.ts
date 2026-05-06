@@ -4,7 +4,7 @@ import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import type { ClaimedItem } from "../store.ts";
-import { makeClaimedItem } from "../test-helpers.ts";
+import { callArgs, makeClaimedItem, typedMock } from "../test-helpers.ts";
 import type { WorkerConfig } from "../worker-workflow.ts";
 import { runWorkerLoop, type WorkerLoopDeps } from "./worker-loop.ts";
 
@@ -111,8 +111,7 @@ describe("runWorkerLoop", () => {
     );
 
     // Sleep was called with the correct poll interval (in ms)
-    const sleepMock = loopDeps.sleep as ReturnType<typeof mock>;
-    expect(sleepMock).toHaveBeenCalledWith(30 * 1000);
+    expect(typedMock(loopDeps.sleep)).toHaveBeenCalledWith(30 * 1000);
 
     // After waking from sleep, shutdown was triggered so the loop exited
     const shutdownLog = logs.find((l) => l.includes("Shutting down"));
@@ -173,7 +172,7 @@ describe("runWorkerLoop", () => {
 
   test("processItem rejects → requeueIfStillClaimed called with item id and error reason; loop continues", async () => {
     const item = makeClaimedItem();
-    const requeueIfStillClaimed = mock(async () => {});
+    const requeueIfStillClaimed = mock(async (_id: string, _reason: string, _agent: string) => {});
     const logs: string[] = [];
 
     const loopDeps: WorkerLoopDeps = {
@@ -190,11 +189,7 @@ describe("runWorkerLoop", () => {
     await runWorkerLoop(makeRunOnceConfig(), HOPPER_HOME, makeGatewayDeps(), loopDeps);
 
     expect(requeueIfStillClaimed).toHaveBeenCalledTimes(1);
-    const [calledId, reason] = requeueIfStillClaimed.mock.calls[0] as unknown as [
-      string,
-      string,
-      string,
-    ];
+    const [calledId, reason] = callArgs(requeueIfStillClaimed, 0);
     expect(calledId).toBe(item.id);
     expect(reason).toContain("process exploded");
   });

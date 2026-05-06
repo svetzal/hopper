@@ -2,9 +2,10 @@ import type { ParsedArgs } from "../cli.ts";
 import { requirePositional, stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
 import { formatDuration } from "../format.ts";
+import type { CompleteResult } from "../store.ts";
 import { completeItem } from "../store.ts";
 
-export async function completeCommand(parsed: ParsedArgs): Promise<CommandResult> {
+export async function completeCommand(parsed: ParsedArgs): Promise<CommandResult<CompleteResult>> {
   const tokenArg = requirePositional(parsed, 0, "Usage: hopper complete <token>");
   if (!tokenArg.ok) return tokenArg.error;
 

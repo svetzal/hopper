@@ -2,9 +2,10 @@ import type { ParsedArgs } from "../cli.ts";
 import { stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
 import { filterAndSortItems, formatItemList } from "../list-workflow.ts";
+import type { Item } from "../store.ts";
 import { loadItems } from "../store.ts";
 
-export async function listCommand(parsed: ParsedArgs): Promise<CommandResult> {
+export async function listCommand(parsed: ParsedArgs): Promise<CommandResult<Item[]>> {
   const allItems = await loadItems();
 
   const filter =

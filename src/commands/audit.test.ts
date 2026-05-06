@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { AuditGateway, PhaseFile } from "../gateways/audit-gateway.ts";
 import { addItem } from "../store.ts";
 import { makeItem, makeParsed, setupTempStoreDir } from "../test-helpers.ts";
+import type { AuditPlanResult, AuditResultResult, AuditSummaryResult } from "./audit.ts";
 import { auditCommand } from "./audit.ts";
 
 // ── Fake gateway ──────────────────────────────────────────────────────────────
@@ -219,7 +220,7 @@ describe("auditCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const data = result.data as Record<string, unknown>;
+      const data = result.data as AuditSummaryResult;
       expect(data.itemId).toBe(item.id);
       expect(data.status).toBe("in_progress");
       expect(typeof data.totalEvents).toBe("number");
@@ -237,7 +238,7 @@ describe("auditCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const serialized = JSON.parse(JSON.stringify(result.data));
+      const serialized = JSON.parse(JSON.stringify(result.data)) as AuditSummaryResult;
       expect(serialized).toBeDefined();
       expect(typeof serialized.totalEvents).toBe("number");
     }
@@ -265,12 +266,11 @@ describe("auditCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const data = result.data as Record<string, unknown>;
+      const data = result.data as AuditSummaryResult;
       expect(data.totalEvents).toBe(5); // 1 + 2 + 2
-      const perPhase = data.perPhaseEvents as Record<string, number>;
-      expect(perPhase.plan).toBe(1);
-      expect(perPhase.execute).toBe(2);
-      expect(perPhase["execute-2"]).toBe(2);
+      expect(data.perPhaseEvents.plan).toBe(1);
+      expect(data.perPhaseEvents.execute).toBe(2);
+      expect(data.perPhaseEvents["execute-2"]).toBe(2);
     }
   });
 
@@ -297,11 +297,10 @@ describe("auditCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const data = result.data as Record<string, unknown>;
-      const perPhase = data.perPhaseEvents as Record<string, number>;
-      expect(perPhase.plan).toBeUndefined();
-      expect(perPhase.execute).toBe(2);
-      expect(perPhase["execute-2"]).toBe(2);
+      const data = result.data as AuditSummaryResult;
+      expect(data.perPhaseEvents.plan).toBeUndefined();
+      expect(data.perPhaseEvents.execute).toBe(2);
+      expect(data.perPhaseEvents["execute-2"]).toBe(2);
     }
   });
 
@@ -333,7 +332,7 @@ describe("auditCommand", () => {
     expect(result.status).toBe("success");
     if (result.status === "success") {
       expect(result.humanOutput).toContain("# My Plan");
-      const data = result.data as Record<string, unknown>;
+      const data = result.data as AuditPlanResult;
       expect(data.plan).toBe("# My Plan\n\nDo things.");
     }
   });
@@ -363,7 +362,7 @@ describe("auditCommand", () => {
     expect(result.status).toBe("success");
     if (result.status === "success") {
       expect(result.humanOutput).toContain("in progress");
-      const data = result.data as Record<string, unknown>;
+      const data = result.data as AuditResultResult;
       expect(data.inProgress).toBe(true);
       expect(data.result).toBeNull();
     }
@@ -414,8 +413,8 @@ describe("auditCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const events = result.data as unknown[];
-      expect(events).toHaveLength(3);
+      expect(Array.isArray(result.data)).toBe(true);
+      expect((result.data as unknown[]).length).toBe(3);
     }
   });
 

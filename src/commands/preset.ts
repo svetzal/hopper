@@ -2,6 +2,7 @@ import { formatValidationError, validateRetries, validateTaskType } from "../add
 import type { ParsedArgs } from "../cli.ts";
 import { requirePositional, stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
+import type { Preset } from "../presets.ts";
 import {
   addPreset,
   findPreset,
@@ -27,7 +28,7 @@ export async function presetCommand(parsed: ParsedArgs): Promise<CommandResult> 
   }
 }
 
-async function presetAddCommand(parsed: ParsedArgs): Promise<CommandResult> {
+async function presetAddCommand(parsed: ParsedArgs): Promise<CommandResult<Preset | undefined>> {
   const rawName = parsed.positional[1];
   const description = parsed.positional[2];
 
@@ -84,7 +85,7 @@ async function presetAddCommand(parsed: ParsedArgs): Promise<CommandResult> {
   };
 }
 
-async function presetListCommand(_parsed: ParsedArgs): Promise<CommandResult> {
+async function presetListCommand(_parsed: ParsedArgs): Promise<CommandResult<Preset[]>> {
   const presets = await loadPresets();
 
   if (presets.length === 0) {
@@ -126,7 +127,9 @@ async function presetListCommand(_parsed: ParsedArgs): Promise<CommandResult> {
   };
 }
 
-async function presetRemoveCommand(parsed: ParsedArgs): Promise<CommandResult> {
+async function presetRemoveCommand(
+  parsed: ParsedArgs,
+): Promise<CommandResult<{ removed: string }>> {
   const nameArg = requirePositional(parsed, 1, "Usage: hopper preset remove <name>");
   if (!nameArg.ok) return nameArg.error;
   const name = nameArg.value;
@@ -141,7 +144,7 @@ async function presetRemoveCommand(parsed: ParsedArgs): Promise<CommandResult> {
   };
 }
 
-async function presetShowCommand(parsed: ParsedArgs): Promise<CommandResult> {
+async function presetShowCommand(parsed: ParsedArgs): Promise<CommandResult<Preset>> {
   const nameArg = requirePositional(parsed, 1, "Usage: hopper preset show <name>");
   if (!nameArg.ok) return nameArg.error;
   const name = nameArg.value;

@@ -9,10 +9,30 @@ import type { GitGateway } from "../gateways/git-gateway.ts";
 import { createGitGateway } from "../gateways/git-gateway.ts";
 import { findItem } from "../store.ts";
 
+export type IntegrateDryRunResult = {
+  dryRun: true;
+  itemId: string;
+  workingDir: string;
+  branch: string;
+  targetBranch: string;
+  commands: string[];
+  keepWorktree: boolean;
+};
+
+export type IntegrateResult = {
+  dryRun?: false;
+  itemId: string;
+  workingDir: string;
+  branch: string;
+  targetBranch: string;
+  keepWorktree: boolean;
+  worktreeRemoved: boolean;
+};
+
 export async function integrateCommand(
   parsed: ParsedArgs,
   git: GitGateway = createGitGateway(),
-): Promise<CommandResult> {
+): Promise<CommandResult<IntegrateDryRunResult | IntegrateResult>> {
   const idArg = requirePositional(parsed, 0, "Usage: hopper integrate <item-id>");
   if (!idArg.ok) return idArg.error;
 

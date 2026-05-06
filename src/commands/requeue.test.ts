@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { Item } from "../store.ts";
 import { addItem, claimNextItem } from "../store.ts";
 import { makeItem, makeParsed, setupTempStoreDir } from "../test-helpers.ts";
 import { requeueCommand } from "./requeue.ts";
@@ -51,9 +50,8 @@ describe("requeueCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const data = result.data as Item;
-      expect(data.status).toBe("queued");
-      expect(data.requeueReason).toBe("not ready");
+      expect(result.data.status).toBe("queued");
+      expect(result.data.requeueReason).toBe("not ready");
       expect(result.humanOutput).toContain("Requeued:");
     }
   });
@@ -67,8 +65,7 @@ describe("requeueCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const data = result.data as Item;
-      expect(data.requeuedBy).toBe("my-bot");
+      expect(result.data.requeuedBy).toBe("my-bot");
     }
   });
 });

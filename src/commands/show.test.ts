@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { Item } from "../store.ts";
 import { addItem } from "../store.ts";
 import { makeItem, makeParsed, setupTempStoreDir } from "../test-helpers.ts";
 import { showCommand } from "./show.ts";
@@ -41,8 +40,7 @@ describe("showCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const data = result.data as Item;
-      expect(data.title).toBe("Specific task");
+      expect(result.data.title).toBe("Specific task");
     }
   });
 

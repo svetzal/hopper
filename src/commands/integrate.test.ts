@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { addItem, saveItems } from "../store.ts";
 import { makeItem, makeMockGit, makeParsed, setupTempStoreDir } from "../test-helpers.ts";
+import type { IntegrateDryRunResult, IntegrateResult } from "./integrate.ts";
 import { integrateCommand } from "./integrate.ts";
 
 describe("integrateCommand", () => {
@@ -89,7 +90,8 @@ describe("integrateCommand", () => {
       expect(result.humanOutput).toBe(
         `Integrated ${item.id.slice(0, 8)} from ${branch} into main of ${workingDir}.`,
       );
-      expect((result.data as { itemId: string }).itemId).toBe(item.id);
+      const data = result.data as IntegrateResult;
+      expect(data.itemId).toBe(item.id);
     }
   });
 
@@ -140,12 +142,7 @@ describe("integrateCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const data = result.data as {
-        dryRun: boolean;
-        commands: string[];
-        itemId: string;
-        targetBranch: string;
-      };
+      const data = result.data as IntegrateDryRunResult;
       expect(data.dryRun).toBe(true);
       expect(data.targetBranch).toBe("main");
       expect(data.commands).toBeArray();

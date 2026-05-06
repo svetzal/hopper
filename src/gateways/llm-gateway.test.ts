@@ -26,9 +26,9 @@ describe("LlmGateway", () => {
     });
 
     expect(capturedUrl).toBe("https://api.openai.com/v1/chat/completions");
-    expect((capturedInit?.headers as Record<string, string>)?.Authorization).toBe(
-      "Bearer test-api-key",
-    );
+    expect(capturedInit).toBeDefined();
+    const headers = capturedInit?.headers as Record<string, string>;
+    expect(headers?.Authorization).toBe("Bearer test-api-key");
     expect(result).toEqual(mockResponse);
   });
 
@@ -36,7 +36,10 @@ describe("LlmGateway", () => {
     let capturedBody: unknown;
 
     globalThis.fetch = (async (_input: Request | string | URL, init?: RequestInit) => {
-      capturedBody = JSON.parse(init?.body as string);
+      expect(init).toBeDefined();
+      const bodyStr = init?.body;
+      expect(typeof bodyStr).toBe("string");
+      capturedBody = JSON.parse(bodyStr as string);
       return new Response(JSON.stringify({ choices: [] }), { status: 200 });
     }) as unknown as typeof fetch;
 

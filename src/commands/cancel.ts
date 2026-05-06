@@ -1,9 +1,10 @@
 import type { ParsedArgs } from "../cli.ts";
 import { requirePositional } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
+import type { Item } from "../store.ts";
 import { cancelItem } from "../store.ts";
 
-export async function cancelCommand(parsed: ParsedArgs): Promise<CommandResult> {
+export async function cancelCommand(parsed: ParsedArgs): Promise<CommandResult<Item>> {
   const idArg = requirePositional(parsed, 0, "Usage: hopper cancel <item-id>");
   if (!idArg.ok) return idArg.error;
 

@@ -16,7 +16,7 @@ import {
   saveItems,
   setStoreDir,
 } from "./store.ts";
-import { makeItem } from "./test-helpers.ts";
+import { claimOrFail, makeItem } from "./test-helpers.ts";
 
 function unwrap<T>(result: Result<T>): T {
   if (!result.ok) throw new Error(result.error);
@@ -144,10 +144,9 @@ describe("store", () => {
   // completeItem tests
   test("completeItem completes with valid token", async () => {
     await saveItems([makeItem()]);
-    const claimed = await claimNextItem("agent");
-    const token = claimed?.claimToken as string;
+    const claimed = await claimOrFail("agent");
 
-    const { completed } = unwrap(await completeItem(token, "agent"));
+    const { completed } = unwrap(await completeItem(claimed.claimToken, "agent"));
     expect(completed.status).toBe("completed");
     expect(completed.completedAt).toBeDefined();
     expect(completed.completedBy).toBe("agent");
@@ -167,10 +166,11 @@ describe("store", () => {
 
   test("completeItem stores result when provided", async () => {
     await saveItems([makeItem()]);
-    const claimed = await claimNextItem("agent");
-    const token = claimed?.claimToken as string;
+    const claimed = await claimOrFail("agent");
 
-    const { completed } = unwrap(await completeItem(token, "agent", "Fixed the login bug"));
+    const { completed } = unwrap(
+      await completeItem(claimed.claimToken, "agent", "Fixed the login bug"),
+    );
     expect(completed.result).toBe("Fixed the login bug");
 
     const items = await loadItems();
@@ -179,15 +179,15 @@ describe("store", () => {
 
   test("completeItem leaves result undefined when not provided", async () => {
     await saveItems([makeItem()]);
-    const claimed = await claimNextItem("agent");
-    const { completed } = unwrap(await completeItem(claimed?.claimToken as string, "agent"));
+    const claimed = await claimOrFail("agent");
+    const { completed } = unwrap(await completeItem(claimed.claimToken, "agent"));
     expect(completed.result).toBeUndefined();
   });
 
   test("completeItem clears claim token after completion", async () => {
     await saveItems([makeItem()]);
-    const claimed = await claimNextItem();
-    await completeItem(claimed?.claimToken as string);
+    const claimed = await claimOrFail();
+    await completeItem(claimed.claimToken);
 
     const items = await loadItems();
     // The first item might be a recurred item, find the completed one
@@ -197,8 +197,8 @@ describe("store", () => {
 
   test("completeItem sets timestamps", async () => {
     await saveItems([makeItem()]);
-    const claimed = await claimNextItem();
-    const { completed } = unwrap(await completeItem(claimed?.claimToken as string));
+    const claimed = await claimOrFail();
+    const { completed } = unwrap(await completeItem(claimed.claimToken));
 
     expect(completed.completedAt).toBeTruthy();
     expect(new Date(completed.completedAt as string).getTime()).toBeGreaterThan(0);
@@ -208,8 +208,8 @@ describe("store", () => {
   test("requeueItem resets to queued", async () => {
     const item = makeItem();
     await saveItems([item]);
-    const claimed = await claimNextItem();
-    const requeued = unwrap(await requeueItem(claimed?.id as string, "needs more info"));
+    const claimed = await claimOrFail();
+    const requeued = unwrap(await requeueItem(claimed.id, "needs more info"));
 
     expect(requeued.status).toBe("queued");
     expect(requeued.requeueReason).toBe("needs more info");
@@ -227,8 +227,8 @@ describe("store", () => {
 
   test("requeueItem clears claim fields", async () => {
     await saveItems([makeItem()]);
-    const claimed = await claimNextItem("agent");
-    const requeued = unwrap(await requeueItem(claimed?.id as string, "blocked"));
+    const claimed = await claimOrFail("agent");
+    const requeued = unwrap(await requeueItem(claimed.id, "blocked"));
 
     expect(requeued.claimedAt).toBeUndefined();
     expect(requeued.claimedBy).toBeUndefined();
@@ -441,12 +441,10 @@ describe("store", () => {
     const item = makeItem({ workingDir: "/tmp/my-project" });
     await addItem(item);
 
-    const claimed = await claimNextItem("agent");
-    expect(claimed?.workingDir).toBe("/tmp/my-project");
+    const claimed = await claimOrFail("agent");
+    expect(claimed.workingDir).toBe("/tmp/my-project");
 
-    const { completed } = unwrap(
-      await completeItem(claimed?.claimToken as string, "agent", "done"),
-    );
+    const { completed } = unwrap(await completeItem(claimed.claimToken, "agent", "done"));
     expect(completed.workingDir).toBe("/tmp/my-project");
 
     const items = await loadItems();
@@ -459,10 +457,10 @@ describe("store", () => {
     expect(item.workingDir).toBeUndefined();
 
     await addItem(item);
-    const claimed = await claimNextItem("agent");
-    expect(claimed?.workingDir).toBeUndefined();
+    const claimed = await claimOrFail("agent");
+    expect(claimed.workingDir).toBeUndefined();
 
-    const { completed } = unwrap(await completeItem(claimed?.claimToken as string, "agent"));
+    const { completed } = unwrap(await completeItem(claimed.claimToken, "agent"));
     expect(completed.workingDir).toBeUndefined();
   });
 
@@ -473,10 +471,8 @@ describe("store", () => {
       recurrence: { interval: "4h", intervalMs: 4 * 3_600_000 },
     });
     await saveItems([item]);
-    const claimed = await claimNextItem("agent");
-    const { completed, recurred } = unwrap(
-      await completeItem(claimed?.claimToken as string, "agent", "done"),
-    );
+    const claimed = await claimOrFail("agent");
+    const { completed, recurred } = unwrap(await completeItem(claimed.claimToken, "agent", "done"));
 
     expect(completed.status).toBe("completed");
     expect(recurred).toBeDefined();
@@ -506,10 +502,8 @@ describe("store", () => {
       },
     });
     await saveItems([item]);
-    const claimed = await claimNextItem("agent");
-    const { completed, recurred } = unwrap(
-      await completeItem(claimed?.claimToken as string, "agent"),
-    );
+    const claimed = await claimOrFail("agent");
+    const { completed, recurred } = unwrap(await completeItem(claimed.claimToken, "agent"));
 
     expect(completed.status).toBe("completed");
     expect(recurred).toBeUndefined();
@@ -527,8 +521,8 @@ describe("store", () => {
       recurrence: { interval: "2h", intervalMs: 7_200_000 },
     });
     await saveItems([item]);
-    const claimed = await claimNextItem("agent");
-    const { recurred } = unwrap(await completeItem(claimed?.claimToken as string, "agent"));
+    const claimed = await claimOrFail("agent");
+    const { recurred } = unwrap(await completeItem(claimed.claimToken, "agent"));
 
     expect(recurred?.workingDir).toBe("/tmp/project");
     expect(recurred?.branch).toBe("main");
@@ -577,8 +571,8 @@ describe("store", () => {
       recurrence: { interval: "1h", intervalMs: 3_600_000, remainingRuns: 2 },
     });
     await saveItems([item]);
-    const claimed = await claimNextItem("agent");
-    const { recurred } = unwrap(await completeItem(claimed?.claimToken as string, "agent"));
+    const claimed = await claimOrFail("agent");
+    const { recurred } = unwrap(await completeItem(claimed.claimToken, "agent"));
 
     expect(recurred).toBeDefined();
     expect(recurred?.recurrence?.remainingRuns).toBe(1);
@@ -590,10 +584,8 @@ describe("store", () => {
       recurrence: { interval: "1h", intervalMs: 3_600_000, remainingRuns: 0 },
     });
     await saveItems([item]);
-    const claimed = await claimNextItem("agent");
-    const { completed, recurred } = unwrap(
-      await completeItem(claimed?.claimToken as string, "agent"),
-    );
+    const claimed = await claimOrFail("agent");
+    const { completed, recurred } = unwrap(await completeItem(claimed.claimToken, "agent"));
 
     expect(completed.status).toBe("completed");
     expect(recurred).toBeUndefined();
@@ -609,8 +601,8 @@ describe("store", () => {
       recurrence: { interval: "1h", intervalMs: 3_600_000 },
     });
     await saveItems([item]);
-    const claimed = await claimNextItem("agent");
-    const { recurred } = unwrap(await completeItem(claimed?.claimToken as string, "agent"));
+    const claimed = await claimOrFail("agent");
+    const { recurred } = unwrap(await completeItem(claimed.claimToken, "agent"));
 
     expect(recurred).toBeDefined();
     expect(recurred?.recurrence?.remainingRuns).toBeUndefined();
@@ -623,8 +615,8 @@ describe("store", () => {
       recurrence: { interval: "1h", intervalMs: 3_600_000 },
     });
     await saveItems([item]);
-    const claimed = await claimNextItem("agent");
-    const { recurred } = unwrap(await completeItem(claimed?.claimToken as string, "agent"));
+    const claimed = await claimOrFail("agent");
+    const { recurred } = unwrap(await completeItem(claimed.claimToken, "agent"));
 
     expect(recurred?.priority).toBe("high");
   });
@@ -700,9 +692,9 @@ describe("store", () => {
     });
     await saveItems([dep, blocked]);
 
-    const claimed = await claimNextItem();
-    expect(claimed?.title).toBe("Dep");
-    await completeItem(claimed?.claimToken as string, "agent");
+    const claimed = await claimOrFail();
+    expect(claimed.title).toBe("Dep");
+    await completeItem(claimed.claimToken, "agent");
 
     const items = await loadItems();
     const unblockedItem = items.find((i) => i.title === "Blocked");
@@ -719,8 +711,8 @@ describe("store", () => {
     });
     await saveItems([dep, blocked]);
 
-    const claimed = await claimNextItem();
-    await completeItem(claimed?.claimToken as string, "agent");
+    const claimed = await claimOrFail();
+    await completeItem(claimed.claimToken, "agent");
 
     const items = await loadItems();
     const unblockedItem = items.find((i) => i.title === "Blocked");
@@ -738,17 +730,17 @@ describe("store", () => {
     await saveItems([dep1, dep2, blocked]);
 
     // Complete dep1
-    const claimed1 = await claimNextItem();
-    await completeItem(claimed1?.claimToken as string, "agent");
+    const claimed1 = await claimOrFail();
+    await completeItem(claimed1.claimToken, "agent");
 
     let items = await loadItems();
     let blockedItem = items.find((i) => i.title === "Blocked");
     expect(blockedItem?.status).toBe("blocked");
 
     // Complete dep2
-    const claimed2 = await claimNextItem();
-    expect(claimed2?.title).toBe("Dep2");
-    await completeItem(claimed2?.claimToken as string, "agent");
+    const claimed2 = await claimOrFail();
+    expect(claimed2.title).toBe("Dep2");
+    await completeItem(claimed2.claimToken, "agent");
 
     items = await loadItems();
     blockedItem = items.find((i) => i.title === "Blocked");
@@ -765,8 +757,8 @@ describe("store", () => {
     });
     await saveItems([dep1, dep2, blocked]);
 
-    const claimed = await claimNextItem();
-    await completeItem(claimed?.claimToken as string, "agent");
+    const claimed = await claimOrFail();
+    await completeItem(claimed.claimToken, "agent");
 
     const items = await loadItems();
     const blockedItem = items.find((i) => i.title === "Blocked");
@@ -831,16 +823,16 @@ describe("store", () => {
     await saveItems([dep, unrelated, blocked]);
 
     // Complete the unrelated item
-    const claimed = await claimNextItem();
+    const claimed = await claimOrFail();
     // Could claim either dep or unrelated, let's be specific
-    if (claimed?.title === "Unrelated") {
-      await completeItem(claimed?.claimToken as string, "agent");
+    if (claimed.title === "Unrelated") {
+      await completeItem(claimed.claimToken, "agent");
       const items = await loadItems();
       const blockedItem = items.find((i) => i.title === "Blocked");
       expect(blockedItem?.status).toBe("blocked");
     } else {
       // If dep was claimed first, complete it and verify unblock
-      await completeItem(claimed?.claimToken as string, "agent");
+      await completeItem(claimed.claimToken, "agent");
       const items = await loadItems();
       const blockedItem = items.find((i) => i.title === "Blocked");
       expect(blockedItem?.status).toBe("queued");
@@ -895,13 +887,11 @@ describe("store", () => {
     });
     await addItem(item);
 
-    const claimed = await claimNextItem("agent");
-    expect(claimed?.type).toBe("investigation");
-    expect(claimed?.agent).toBe("rust-craftsperson");
+    const claimed = await claimOrFail("agent");
+    expect(claimed.type).toBe("investigation");
+    expect(claimed.agent).toBe("rust-craftsperson");
 
-    const { completed } = unwrap(
-      await completeItem(claimed?.claimToken as string, "agent", "done"),
-    );
+    const { completed } = unwrap(await completeItem(claimed.claimToken, "agent", "done"));
     expect(completed.type).toBe("investigation");
     expect(completed.agent).toBe("rust-craftsperson");
   });

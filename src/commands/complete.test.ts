@@ -45,8 +45,7 @@ describe("completeCommand", () => {
     expect(result.status).toBe("success");
     if (result.status === "success") {
       expect(result.humanOutput).toContain("Re-queued:");
-      const data = result.data as { completed: Item; recurred?: Item };
-      expect(data.recurred).toBeDefined();
+      expect(result.data.recurred).toBeDefined();
     }
   });
 
@@ -59,9 +58,8 @@ describe("completeCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const data = result.data as { completed: Item };
-      expect(data.completed.completedBy).toBe("bot");
-      expect(data.completed.result).toBe("All done.");
+      expect(result.data.completed.completedBy).toBe("bot");
+      expect(result.data.completed.result).toBe("All done.");
     }
   });
 

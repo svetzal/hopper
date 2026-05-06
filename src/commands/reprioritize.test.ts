@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { Item } from "../store.ts";
 import { addItem } from "../store.ts";
 import { makeItem, makeParsed, setupTempStoreDir } from "../test-helpers.ts";
 import { reprioritizeCommand } from "./reprioritize.ts";
@@ -48,8 +47,7 @@ describe("reprioritizeCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const data = result.data as Item;
-      expect(data.priority).toBe("high");
+      expect(result.data.priority).toBe("high");
       expect(result.humanOutput).toContain("normal");
       expect(result.humanOutput).toContain("high");
     }

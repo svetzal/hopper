@@ -12,7 +12,7 @@ async function tagAction(
   usage: string,
   storeFn: (id: string, tags: string[]) => Promise<Result<Item>>,
   verb: string,
-): Promise<CommandResult> {
+): Promise<CommandResult<Item>> {
   const idArg = requirePositional(parsed, 0, usage);
   if (!idArg.ok) return idArg.error;
 
@@ -34,10 +34,10 @@ async function tagAction(
   };
 }
 
-export function tagCommand(parsed: ParsedArgs): Promise<CommandResult> {
+export function tagCommand(parsed: ParsedArgs): Promise<CommandResult<Item>> {
   return tagAction(parsed, "Usage: hopper tag <id> <tag> [<tag>...]", updateItemTags, "Tagged");
 }
 
-export function untagCommand(parsed: ParsedArgs): Promise<CommandResult> {
+export function untagCommand(parsed: ParsedArgs): Promise<CommandResult<Item>> {
   return tagAction(parsed, "Usage: hopper untag <id> <tag> [<tag>...]", removeItemTags, "Untagged");
 }

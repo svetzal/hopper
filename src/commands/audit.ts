@@ -1,4 +1,6 @@
 import {
+  type AuditSummary,
+  type DecodedEvent,
   decodeEvents,
   formatAuditSummary,
   formatDecodedEvents,
@@ -9,15 +11,25 @@ import {
 import type { ParsedArgs } from "../cli.ts";
 import { booleanFlag, requirePositional, stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
+import type { ItemStatus } from "../constants.ts";
 import type { AuditGateway } from "../gateways/audit-gateway.ts";
 import { findItem } from "../store.ts";
+
+export type AuditPlanResult = { plan: string };
+export type AuditResultResult = { result: string | null; inProgress?: boolean };
+export type AuditSummaryResult = { itemId: string; status: ItemStatus } & AuditSummary;
+export type AuditCommandData =
+  | AuditPlanResult
+  | AuditResultResult
+  | AuditSummaryResult
+  | DecodedEvent[];
 
 const USAGE = "Usage: hopper audit <id> [--tail <n>] [--plan|--result] [--phase <name>]";
 
 export async function auditCommand(
   parsed: ParsedArgs,
   gateway: AuditGateway,
-): Promise<CommandResult> {
+): Promise<CommandResult<AuditCommandData>> {
   const idArg = requirePositional(parsed, 0, USAGE);
   if (!idArg.ok) return idArg.error;
 

@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { Item } from "../store.ts";
 import { addItem } from "../store.ts";
 import { makeItem, makeParsed, setupTempStoreDir } from "../test-helpers.ts";
 import { claimCommand } from "./claim.ts";
@@ -27,8 +26,7 @@ describe("claimCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const data = result.data as Item;
-      expect(data.status).toBe("in_progress");
+      expect(result.data.status).toBe("in_progress");
       expect(result.humanOutput).toContain("Claimed:");
       expect(result.humanOutput).toContain("Token:");
     }
@@ -42,8 +40,7 @@ describe("claimCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const data = result.data as Item;
-      expect(data.claimedBy).toBe("my-agent");
+      expect(result.data.claimedBy).toBe("my-agent");
     }
   });
 
@@ -55,8 +52,7 @@ describe("claimCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const data = result.data as Item;
-      expect(data.claimedBy).toBeUndefined();
+      expect(result.data.claimedBy).toBeUndefined();
     }
   });
 });
