@@ -2,15 +2,15 @@ import type { ParsedArgs } from "../cli.ts";
 import { requirePositional } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
 import { shortId } from "../format.ts";
+import type { Result } from "../result.ts";
 import type { Item } from "../store.ts";
 import { removeItemTags, updateItemTags } from "../store.ts";
 import { normalizeTags } from "../tags.ts";
-import { withStoreError } from "./with-store-error.ts";
 
 async function tagAction(
   parsed: ParsedArgs,
   usage: string,
-  storeFn: (id: string, tags: string[]) => Promise<Item>,
+  storeFn: (id: string, tags: string[]) => Promise<Result<Item>>,
   verb: string,
 ): Promise<CommandResult> {
   const idArg = requirePositional(parsed, 0, usage);
@@ -25,14 +25,13 @@ async function tagAction(
   if (!tagResult.ok) return { status: "error", message: tagResult.error };
   const tags = tagResult.value;
 
-  return withStoreError(async () => {
-    const item = await storeFn(idArg.value, tags);
-    return {
-      status: "success",
-      data: item,
-      humanOutput: `${verb} ${shortId(item.id)}: ${tags.join(", ")}`,
-    };
-  });
+  const outcome = await storeFn(idArg.value, tags);
+  if (!outcome.ok) return { status: "error", message: outcome.error };
+  return {
+    status: "success",
+    data: outcome.value,
+    humanOutput: `${verb} ${shortId(outcome.value.id)}: ${tags.join(", ")}`,
+  };
 }
 
 export function tagCommand(parsed: ParsedArgs): Promise<CommandResult> {

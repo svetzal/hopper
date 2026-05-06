@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
+import { ok } from "../result.ts";
 import type { Item } from "../store.ts";
 import * as store from "../store.ts";
 import {
@@ -175,7 +176,7 @@ describe("processItem", () => {
     const completedTokens: string[] = [];
     completeItemMock.mockImplementation(async (token: string) => {
       completedTokens.push(token);
-      return { completed: { title: "done" } as Item, recurred: undefined };
+      return ok({ completed: { title: "done" } as Item, recurred: undefined });
     });
 
     // Create independent mocks for each to prove isolation

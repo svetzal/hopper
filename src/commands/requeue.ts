@@ -2,7 +2,6 @@ import type { ParsedArgs } from "../cli.ts";
 import { requirePositional, stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
 import { requeueItem } from "../store.ts";
-import { withStoreError } from "./with-store-error.ts";
 
 export async function requeueCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const idArg = requirePositional(parsed, 0, 'Usage: hopper requeue <id> --reason "..."');
@@ -15,12 +14,11 @@ export async function requeueCommand(parsed: ParsedArgs): Promise<CommandResult>
 
   const agent = stringFlag(parsed, "agent");
 
-  return withStoreError(async () => {
-    const item = await requeueItem(idArg.value, reason, agent);
-    return {
-      status: "success",
-      data: item,
-      humanOutput: `Requeued: ${item.title}`,
-    };
-  });
+  const outcome = await requeueItem(idArg.value, reason, agent);
+  if (!outcome.ok) return { status: "error", message: outcome.error };
+  return {
+    status: "success",
+    data: outcome.value,
+    humanOutput: `Requeued: ${outcome.value.title}`,
+  };
 }

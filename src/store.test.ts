@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Result } from "./result.ts";
 import {
   addItem,
   cancelItem,
@@ -16,6 +17,11 @@ import {
   setStoreDir,
 } from "./store.ts";
 import { makeItem } from "./test-helpers.ts";
+
+function unwrap<T>(result: Result<T>): T {
+  if (!result.ok) throw new Error(result.error);
+  return result.value;
+}
 
 describe("store", () => {
   let tempDir: string;
@@ -141,18 +147,22 @@ describe("store", () => {
     const claimed = await claimNextItem("agent");
     const token = claimed?.claimToken as string;
 
-    const { completed } = await completeItem(token, "agent");
+    const { completed } = unwrap(await completeItem(token, "agent"));
     expect(completed.status).toBe("completed");
     expect(completed.completedAt).toBeDefined();
     expect(completed.completedBy).toBe("agent");
     expect(completed.claimToken).toBeUndefined();
   });
 
-  test("completeItem throws on invalid token", async () => {
+  test("completeItem returns error result on invalid token", async () => {
     await saveItems([makeItem()]);
     await claimNextItem();
 
-    await expect(completeItem("bad-token")).rejects.toThrow("No in-progress item found");
+    const result = await completeItem("bad-token");
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("No in-progress item found"),
+    });
   });
 
   test("completeItem stores result when provided", async () => {
@@ -160,7 +170,7 @@ describe("store", () => {
     const claimed = await claimNextItem("agent");
     const token = claimed?.claimToken as string;
 
-    const { completed } = await completeItem(token, "agent", "Fixed the login bug");
+    const { completed } = unwrap(await completeItem(token, "agent", "Fixed the login bug"));
     expect(completed.result).toBe("Fixed the login bug");
 
     const items = await loadItems();
@@ -170,7 +180,7 @@ describe("store", () => {
   test("completeItem leaves result undefined when not provided", async () => {
     await saveItems([makeItem()]);
     const claimed = await claimNextItem("agent");
-    const { completed } = await completeItem(claimed?.claimToken as string, "agent");
+    const { completed } = unwrap(await completeItem(claimed?.claimToken as string, "agent"));
     expect(completed.result).toBeUndefined();
   });
 
@@ -188,7 +198,7 @@ describe("store", () => {
   test("completeItem sets timestamps", async () => {
     await saveItems([makeItem()]);
     const claimed = await claimNextItem();
-    const { completed } = await completeItem(claimed?.claimToken as string);
+    const { completed } = unwrap(await completeItem(claimed?.claimToken as string));
 
     expect(completed.completedAt).toBeTruthy();
     expect(new Date(completed.completedAt as string).getTime()).toBeGreaterThan(0);
@@ -199,7 +209,7 @@ describe("store", () => {
     const item = makeItem();
     await saveItems([item]);
     const claimed = await claimNextItem();
-    const requeued = await requeueItem(claimed?.id as string, "needs more info");
+    const requeued = unwrap(await requeueItem(claimed?.id as string, "needs more info"));
 
     expect(requeued.status).toBe("queued");
     expect(requeued.requeueReason).toBe("needs more info");
@@ -210,7 +220,7 @@ describe("store", () => {
     const item = makeItem({ createdAt: originalCreatedAt });
     await saveItems([item]);
     await claimNextItem();
-    const requeued = await requeueItem(item.id, "reason");
+    const requeued = unwrap(await requeueItem(item.id, "reason"));
 
     expect(requeued.createdAt).toBe(originalCreatedAt);
   });
@@ -218,26 +228,28 @@ describe("store", () => {
   test("requeueItem clears claim fields", async () => {
     await saveItems([makeItem()]);
     const claimed = await claimNextItem("agent");
-    const requeued = await requeueItem(claimed?.id as string, "blocked");
+    const requeued = unwrap(await requeueItem(claimed?.id as string, "blocked"));
 
     expect(requeued.claimedAt).toBeUndefined();
     expect(requeued.claimedBy).toBeUndefined();
     expect(requeued.claimToken).toBeUndefined();
   });
 
-  test("requeueItem rejects non-in_progress items", async () => {
+  test("requeueItem returns error result for non-in_progress items", async () => {
     const item = makeItem({ status: "queued" });
     await saveItems([item]);
 
-    await expect(requeueItem(item.id, "reason")).rejects.toThrow("not in progress");
+    const result = await requeueItem(item.id, "reason");
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("not in progress") });
   });
 
-  test("requeueItem throws on no match", async () => {
+  test("requeueItem returns error result on no match", async () => {
     await saveItems([makeItem()]);
-    await expect(requeueItem("nonexistent", "reason")).rejects.toThrow("No item found");
+    const result = await requeueItem("nonexistent", "reason");
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("No item found") });
   });
 
-  test("requeueItem throws on ambiguous prefix", async () => {
+  test("requeueItem returns error result on ambiguous prefix", async () => {
     const a = makeItem({
       id: "abcd0000-0000-0000-0000-000000000000",
       status: "in_progress",
@@ -249,7 +261,11 @@ describe("store", () => {
       claimedAt: new Date().toISOString(),
     });
     await saveItems([a, b]);
-    await expect(requeueItem("abcd", "reason")).rejects.toThrow("Ambiguous id prefix");
+    const result = await requeueItem("abcd", "reason");
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Ambiguous id prefix"),
+    });
   });
 
   // cancelItem tests
@@ -257,49 +273,58 @@ describe("store", () => {
     const item = makeItem({ title: "To cancel" });
     await saveItems([item]);
 
-    const { item: cancelled } = await cancelItem(item.id);
+    const { item: cancelled } = unwrap(await cancelItem(item.id));
     expect(cancelled.status).toBe("cancelled");
     expect(cancelled.cancelledAt).toBeDefined();
     expect(cancelled.title).toBe("To cancel");
   });
 
-  test("cancelItem rejects in_progress items", async () => {
+  test("cancelItem returns error result for in_progress items", async () => {
     const item = makeItem({ status: "in_progress", claimedAt: new Date().toISOString() });
     await saveItems([item]);
 
-    await expect(cancelItem(item.id)).rejects.toThrow(
-      'Cannot cancel item — status is "in_progress"',
-    );
+    const result = await cancelItem(item.id);
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('Cannot cancel item — status is "in_progress"'),
+    });
   });
 
-  test("cancelItem rejects completed items", async () => {
+  test("cancelItem returns error result for completed items", async () => {
     const item = makeItem({ status: "completed", completedAt: new Date().toISOString() });
     await saveItems([item]);
 
-    await expect(cancelItem(item.id)).rejects.toThrow(
-      "Only queued, scheduled, or blocked items can be cancelled",
-    );
+    const result = await cancelItem(item.id);
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Only queued, scheduled, or blocked items can be cancelled"),
+    });
   });
 
   test("cancelItem supports prefix matching", async () => {
     const item = makeItem({ id: "abcd1234-0000-0000-0000-000000000000", title: "Cancel me" });
     await saveItems([item]);
 
-    const { item: cancelled } = await cancelItem("abcd1234");
+    const { item: cancelled } = unwrap(await cancelItem("abcd1234"));
     expect(cancelled.title).toBe("Cancel me");
     expect(cancelled.status).toBe("cancelled");
   });
 
-  test("cancelItem throws on no match", async () => {
+  test("cancelItem returns error result on no match", async () => {
     await saveItems([makeItem()]);
-    await expect(cancelItem("nonexistent")).rejects.toThrow("No item found");
+    const result = await cancelItem("nonexistent");
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("No item found") });
   });
 
-  test("cancelItem throws on ambiguous prefix", async () => {
+  test("cancelItem returns error result on ambiguous prefix", async () => {
     const a = makeItem({ id: "abcd0000-0000-0000-0000-000000000000" });
     const b = makeItem({ id: "abcd1111-0000-0000-0000-000000000000" });
     await saveItems([a, b]);
-    await expect(cancelItem("abcd")).rejects.toThrow("Ambiguous id prefix");
+    const result = await cancelItem("abcd");
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Ambiguous id prefix"),
+    });
   });
 
   test("cancelItem persists changes", async () => {
@@ -370,7 +395,7 @@ describe("store", () => {
     });
     await saveItems([item]);
 
-    const { item: cancelled } = await cancelItem(item.id);
+    const { item: cancelled } = unwrap(await cancelItem(item.id));
     expect(cancelled.status).toBe("cancelled");
     expect(cancelled.cancelledAt).toBeDefined();
   });
@@ -380,7 +405,7 @@ describe("store", () => {
     const item = makeItem({ title: "Target" });
     await saveItems([makeItem({ title: "Other" }), item]);
 
-    const found = await findItem(item.id);
+    const found = unwrap(await findItem(item.id));
     expect(found.title).toBe("Target");
   });
 
@@ -388,22 +413,27 @@ describe("store", () => {
     const item = makeItem({ id: "abcd1234-0000-0000-0000-000000000000", title: "Target" });
     await saveItems([item]);
 
-    const found = await findItem("abcd1234");
+    const found = unwrap(await findItem("abcd1234"));
     expect(found.title).toBe("Target");
   });
 
-  test("findItem throws on no match", async () => {
+  test("findItem returns error result on no match", async () => {
     await saveItems([makeItem()]);
 
-    await expect(findItem("nonexistent")).rejects.toThrow("No item found");
+    const result = await findItem("nonexistent");
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("No item found") });
   });
 
-  test("findItem throws on ambiguous prefix", async () => {
+  test("findItem returns error result on ambiguous prefix", async () => {
     const a = makeItem({ id: "abcd0000-0000-0000-0000-000000000000" });
     const b = makeItem({ id: "abcd1111-0000-0000-0000-000000000000" });
     await saveItems([a, b]);
 
-    await expect(findItem("abcd")).rejects.toThrow("Ambiguous id prefix");
+    const result = await findItem("abcd");
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Ambiguous id prefix"),
+    });
   });
 
   // workingDir tests
@@ -414,7 +444,9 @@ describe("store", () => {
     const claimed = await claimNextItem("agent");
     expect(claimed?.workingDir).toBe("/tmp/my-project");
 
-    const { completed } = await completeItem(claimed?.claimToken as string, "agent", "done");
+    const { completed } = unwrap(
+      await completeItem(claimed?.claimToken as string, "agent", "done"),
+    );
     expect(completed.workingDir).toBe("/tmp/my-project");
 
     const items = await loadItems();
@@ -430,7 +462,7 @@ describe("store", () => {
     const claimed = await claimNextItem("agent");
     expect(claimed?.workingDir).toBeUndefined();
 
-    const { completed } = await completeItem(claimed?.claimToken as string, "agent");
+    const { completed } = unwrap(await completeItem(claimed?.claimToken as string, "agent"));
     expect(completed.workingDir).toBeUndefined();
   });
 
@@ -442,10 +474,8 @@ describe("store", () => {
     });
     await saveItems([item]);
     const claimed = await claimNextItem("agent");
-    const { completed, recurred } = await completeItem(
-      claimed?.claimToken as string,
-      "agent",
-      "done",
+    const { completed, recurred } = unwrap(
+      await completeItem(claimed?.claimToken as string, "agent", "done"),
     );
 
     expect(completed.status).toBe("completed");
@@ -477,7 +507,9 @@ describe("store", () => {
     });
     await saveItems([item]);
     const claimed = await claimNextItem("agent");
-    const { completed, recurred } = await completeItem(claimed?.claimToken as string, "agent");
+    const { completed, recurred } = unwrap(
+      await completeItem(claimed?.claimToken as string, "agent"),
+    );
 
     expect(completed.status).toBe("completed");
     expect(recurred).toBeUndefined();
@@ -496,7 +528,7 @@ describe("store", () => {
     });
     await saveItems([item]);
     const claimed = await claimNextItem("agent");
-    const { recurred } = await completeItem(claimed?.claimToken as string, "agent");
+    const { recurred } = unwrap(await completeItem(claimed?.claimToken as string, "agent"));
 
     expect(recurred?.workingDir).toBe("/tmp/project");
     expect(recurred?.branch).toBe("main");
@@ -546,7 +578,7 @@ describe("store", () => {
     });
     await saveItems([item]);
     const claimed = await claimNextItem("agent");
-    const { recurred } = await completeItem(claimed?.claimToken as string, "agent");
+    const { recurred } = unwrap(await completeItem(claimed?.claimToken as string, "agent"));
 
     expect(recurred).toBeDefined();
     expect(recurred?.recurrence?.remainingRuns).toBe(1);
@@ -559,7 +591,9 @@ describe("store", () => {
     });
     await saveItems([item]);
     const claimed = await claimNextItem("agent");
-    const { completed, recurred } = await completeItem(claimed?.claimToken as string, "agent");
+    const { completed, recurred } = unwrap(
+      await completeItem(claimed?.claimToken as string, "agent"),
+    );
 
     expect(completed.status).toBe("completed");
     expect(recurred).toBeUndefined();
@@ -576,7 +610,7 @@ describe("store", () => {
     });
     await saveItems([item]);
     const claimed = await claimNextItem("agent");
-    const { recurred } = await completeItem(claimed?.claimToken as string, "agent");
+    const { recurred } = unwrap(await completeItem(claimed?.claimToken as string, "agent"));
 
     expect(recurred).toBeDefined();
     expect(recurred?.recurrence?.remainingRuns).toBeUndefined();
@@ -590,7 +624,7 @@ describe("store", () => {
     });
     await saveItems([item]);
     const claimed = await claimNextItem("agent");
-    const { recurred } = await completeItem(claimed?.claimToken as string, "agent");
+    const { recurred } = unwrap(await completeItem(claimed?.claimToken as string, "agent"));
 
     expect(recurred?.priority).toBe("high");
   });
@@ -600,7 +634,7 @@ describe("store", () => {
     const item = makeItem({ title: "Repri" });
     await saveItems([item]);
 
-    const { item: updated, oldPriority } = await reprioritizeItem(item.id, "high");
+    const { item: updated, oldPriority } = unwrap(await reprioritizeItem(item.id, "high"));
     expect(updated.priority).toBe("high");
     expect(oldPriority).toBe("normal");
 
@@ -616,22 +650,30 @@ describe("store", () => {
     });
     await saveItems([item]);
 
-    const { item: updated } = await reprioritizeItem(item.id, "low");
+    const { item: updated } = unwrap(await reprioritizeItem(item.id, "low"));
     expect(updated.priority).toBe("low");
   });
 
-  test("reprioritizeItem rejects in-progress items", async () => {
+  test("reprioritizeItem returns error result for in-progress items", async () => {
     const item = makeItem({ status: "in_progress", claimedAt: new Date().toISOString() });
     await saveItems([item]);
 
-    await expect(reprioritizeItem(item.id, "high")).rejects.toThrow("Cannot reprioritize item");
+    const result = await reprioritizeItem(item.id, "high");
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Cannot reprioritize item"),
+    });
   });
 
-  test("reprioritizeItem rejects completed items", async () => {
+  test("reprioritizeItem returns error result for completed items", async () => {
     const item = makeItem({ status: "completed", completedAt: new Date().toISOString() });
     await saveItems([item]);
 
-    await expect(reprioritizeItem(item.id, "high")).rejects.toThrow("Cannot reprioritize item");
+    const result = await reprioritizeItem(item.id, "high");
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Cannot reprioritize item"),
+    });
   });
 
   // dependency tests
@@ -761,7 +803,7 @@ describe("store", () => {
     });
     await saveItems([dep, blocked1, blocked2]);
 
-    const { blockedDependentCount } = await cancelItem(dep.id);
+    const { blockedDependentCount } = unwrap(await cancelItem(dep.id));
     expect(blockedDependentCount).toBe(2);
   });
 
@@ -774,7 +816,7 @@ describe("store", () => {
     });
     await saveItems([dep, blocked]);
 
-    const { item: cancelled } = await cancelItem(blocked.id);
+    const { item: cancelled } = unwrap(await cancelItem(blocked.id));
     expect(cancelled.status).toBe("cancelled");
   });
 
@@ -857,7 +899,9 @@ describe("store", () => {
     expect(claimed?.type).toBe("investigation");
     expect(claimed?.agent).toBe("rust-craftsperson");
 
-    const { completed } = await completeItem(claimed?.claimToken as string, "agent", "done");
+    const { completed } = unwrap(
+      await completeItem(claimed?.claimToken as string, "agent", "done"),
+    );
     expect(completed.type).toBe("investigation");
     expect(completed.agent).toBe("rust-craftsperson");
   });

@@ -45,7 +45,10 @@ export async function safeRequeue(
   log?: LogFn,
 ): Promise<void> {
   try {
-    await requeueItem(itemId, reason, agentName);
+    const outcome = await requeueItem(itemId, reason, agentName);
+    if (!outcome.ok) {
+      log?.(`Requeue failed: ${outcome.error}`);
+    }
   } catch (e) {
     log?.(`Requeue failed: ${toErrorMessage(e)}`);
   }

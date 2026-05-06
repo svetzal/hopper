@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ItemStatus, TaskType } from "./constants.ts";
 import { createStoreGateway, type StoreGateway } from "./gateways/store-gateway.ts";
+import { ok, type Result } from "./result.ts";
 import {
   addTags,
   appendPhase,
@@ -151,27 +152,29 @@ export async function completeItem(
   token: string,
   agent?: string,
   result?: string,
-): Promise<CompleteResult> {
+): Promise<Result<CompleteResult>> {
   const items = await loadItems();
   const outcome = complete(items, token, agent, result, new Date(), crypto.randomUUID());
-  if (!outcome.ok) throw new Error(outcome.error);
+  if (!outcome.ok) return outcome;
   await saveItems(outcome.value.items);
-  return { completed: outcome.value.completed, recurred: outcome.value.recurred };
+  return ok({ completed: outcome.value.completed, recurred: outcome.value.recurred });
 }
 
-export async function findItem(id: string): Promise<Item> {
+export async function findItem(id: string): Promise<Result<Item>> {
   const items = await loadItems();
-  const result = resolveItem(items, id);
-  if (!result.ok) throw new Error(result.error);
-  return result.value;
+  return resolveItem(items, id);
 }
 
-export async function requeueItem(id: string, reason: string, agent?: string): Promise<Item> {
+export async function requeueItem(
+  id: string,
+  reason: string,
+  agent?: string,
+): Promise<Result<Item>> {
   const items = await loadItems();
   const outcome = requeue(items, id, reason, agent);
-  if (!outcome.ok) throw new Error(outcome.error);
+  if (!outcome.ok) return outcome;
   await saveItems(outcome.value.items);
-  return outcome.value.requeued;
+  return ok(outcome.value.requeued);
 }
 
 export interface CancelResult {
@@ -179,31 +182,31 @@ export interface CancelResult {
   blockedDependentCount: number;
 }
 
-export async function cancelItem(id: string): Promise<CancelResult> {
+export async function cancelItem(id: string): Promise<Result<CancelResult>> {
   const items = await loadItems();
   const outcome = cancel(items, id, new Date());
-  if (!outcome.ok) throw new Error(outcome.error);
+  if (!outcome.ok) return outcome;
   await saveItems(outcome.value.items);
-  return {
+  return ok({
     item: outcome.value.cancelled,
     blockedDependentCount: outcome.value.blockedDependentCount,
-  };
+  });
 }
 
-export async function updateItemTags(id: string, tags: string[]): Promise<Item> {
+export async function updateItemTags(id: string, tags: string[]): Promise<Result<Item>> {
   const items = await loadItems();
   const outcome = addTags(items, id, tags);
-  if (!outcome.ok) throw new Error(outcome.error);
+  if (!outcome.ok) return outcome;
   await saveItems(outcome.value.items);
-  return outcome.value.item;
+  return ok(outcome.value.item);
 }
 
-export async function removeItemTags(id: string, tags: string[]): Promise<Item> {
+export async function removeItemTags(id: string, tags: string[]): Promise<Result<Item>> {
   const items = await loadItems();
   const outcome = removeTags(items, id, tags);
-  if (!outcome.ok) throw new Error(outcome.error);
+  if (!outcome.ok) return outcome;
   await saveItems(outcome.value.items);
-  return outcome.value.item;
+  return ok(outcome.value.item);
 }
 
 export interface ReprioritizeResult {
@@ -214,12 +217,12 @@ export interface ReprioritizeResult {
 export async function reprioritizeItem(
   id: string,
   priority: "high" | "normal" | "low",
-): Promise<ReprioritizeResult> {
+): Promise<Result<ReprioritizeResult>> {
   const items = await loadItems();
   const outcome = reprioritize(items, id, priority);
-  if (!outcome.ok) throw new Error(outcome.error);
+  if (!outcome.ok) return outcome;
   await saveItems(outcome.value.items);
-  return { item: outcome.value.item, oldPriority: outcome.value.oldPriority };
+  return ok({ item: outcome.value.item, oldPriority: outcome.value.oldPriority });
 }
 
 /**

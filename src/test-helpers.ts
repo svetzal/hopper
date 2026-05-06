@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ParsedArgs } from "./cli.ts";
 import type { GitGateway } from "./gateways/git-gateway.ts";
+import { ok } from "./result.ts";
 import * as storeModule from "./store.ts";
 
 export function makeParsed(
@@ -89,10 +90,12 @@ export function makeMockStoreModule<T extends Record<string, unknown> = Record<n
   extraMocks?: T,
 ) {
   const realRequeueItem = storeModule.requeueItem;
-  const completeItem = mock(async () => ({
-    completed: { title: "done" } as storeModule.Item,
-    recurred: undefined as storeModule.Item | undefined,
-  }));
+  const completeItem = mock(async () =>
+    ok({
+      completed: { title: "done" } as storeModule.Item,
+      recurred: undefined as storeModule.Item | undefined,
+    }),
+  );
   const recordItemPhase = mock(async () => {});
   const requeueItem = mock(async (id: string, reason: string, agent?: string) =>
     realRequeueItem(id, reason, agent),

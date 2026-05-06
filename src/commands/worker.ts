@@ -55,12 +55,17 @@ async function handleCompletion(
 
   if (action === "complete") {
     log("Marking item complete...");
-    const { completed, recurred } = await completeItem(item.claimToken, agentName, finalResult);
-    log(`Completed: ${completed.title}`);
-    if (recurred) {
-      log(
-        `Re-queued: ${completed.title} (next run: ${recurred.scheduledAt ? new Date(recurred.scheduledAt).toLocaleString() : "unknown"})`,
-      );
+    const completeOutcome = await completeItem(item.claimToken, agentName, finalResult);
+    if (completeOutcome.ok) {
+      const { completed, recurred } = completeOutcome.value;
+      log(`Completed: ${completed.title}`);
+      if (recurred) {
+        log(
+          `Re-queued: ${completed.title} (next run: ${recurred.scheduledAt ? new Date(recurred.scheduledAt).toLocaleString() : "unknown"})`,
+        );
+      }
+    } else {
+      log(`Complete failed: ${completeOutcome.error}`);
     }
   } else {
     const sessionLabel = item.command ? "Command" : "Claude session";

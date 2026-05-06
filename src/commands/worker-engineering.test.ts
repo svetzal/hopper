@@ -395,9 +395,10 @@ describe("processEngineeringItem", () => {
     expect(calledId).toBe(ITEM_ID);
     expect(reason).toContain("Worktree setup failed");
     // Verify the real store was actually updated
-    const reloaded = await store.findItem(ITEM_ID);
-    expect(reloaded.status).toBe("queued");
-    expect(reloaded.requeueReason).toContain("Worktree setup failed");
+    const reloadedResult = await store.findItem(ITEM_ID);
+    const reloaded = reloadedResult.ok ? reloadedResult.value : null;
+    expect(reloaded?.status).toBe("queued");
+    expect(reloaded?.requeueReason).toContain("Worktree setup failed");
     expect(deps.claude.runSession).not.toHaveBeenCalled();
   });
 
@@ -418,9 +419,10 @@ describe("processEngineeringItem", () => {
     const [, reason] = requeueItemMock.mock.calls[0] as [string, string, string];
     expect(reason).toContain("Stale branch");
     // Verify the real store was actually updated
-    const reloaded = await store.findItem(ITEM_ID);
-    expect(reloaded.status).toBe("queued");
-    expect(reloaded.requeueReason).toContain("Stale branch");
+    const reloadedResult = await store.findItem(ITEM_ID);
+    const reloaded = reloadedResult.ok ? reloadedResult.value : null;
+    expect(reloaded?.status).toBe("queued");
+    expect(reloaded?.requeueReason).toContain("Stale branch");
     expect(deps.claude.runSession).not.toHaveBeenCalled();
   });
 

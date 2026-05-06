@@ -190,8 +190,8 @@ export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Prom
       }),
     requeueIfStillClaimed: async (itemId, reason, agentName) => {
       try {
-        const item = await findItem(itemId);
-        if (item.status === "in_progress") {
+        const itemResult = await findItem(itemId);
+        if (itemResult.ok && itemResult.value.status === "in_progress") {
           await safeRequeue(itemId, reason, agentName, (msg) =>
             log(`Warning: last-resort requeue for ${shortId(itemId)} failed: ${msg}`),
           );
