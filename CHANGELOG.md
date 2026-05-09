@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-05-09
+
+### Documentation
+
+- **hopper-coordinator skill: new "Dependency chains across tool calls" subsection covering shell-variable scope, post-add verification, claim race window, and recovery limits.**
+
 ## [2.1.0] - 2026-04-25
 
 ### Added

@@ -2,7 +2,7 @@
 name: hopper-coordinator
 description: Dispatch concrete, ready-to-execute work to background Claude Code agents via the hopper queue. Use this skill when the user wants to queue up substantive coding tasks for unattended processing in specific projects on their machine — not for planning, to-do tracking, or lightweight tasks.
 metadata:
-  version: "2.1.0"
+  version: "2.1.1"
   author: Stacey Vetzal
 ---
 
@@ -511,6 +511,50 @@ hopper add "Implement GET /api/orders endpoint with pagination. Add integration 
   --branch feat/orders \
   --after-item "$MIGRATION_ID"
 ```
+
+### Dependency chains across tool calls
+
+The example above relies on a bash variable (`$MIGRATION_ID`) holding a value across two `hopper add` invocations. **That only works inside a single shell session.** If your runtime executes each command in a fresh shell — most agent harnesses do, including the `Bash` tool in Claude Code — variables do not persist between calls. The second `hopper add` will see `--after-item ""`, hopper will silently accept the empty input, and the dependent item lands `queued` instead of `blocked`. Workers can claim it within seconds — well before you notice and try to reconcile.
+
+**Two safe patterns:**
+
+**1. Run the entire chain as one bash invocation.** If your harness lets you compose, do all the adds in one shell so the variable scope is preserved end-to-end. Then verify before exiting:
+
+```bash
+DEP_ID=$(hopper add "Parent task..." --dir <path> --branch <branch> --json | jq -r ".id")
+
+DEPENDENT_ID=$(hopper add "Dependent task..." \
+  --dir <path> --branch <branch> \
+  --after-item "$DEP_ID" \
+  --json | jq -r ".id")
+
+# Verify the dependency landed before the bash invocation ends
+hopper show "$DEPENDENT_ID" --json | jq "{status, dependsOn: (.dependsOn // []) | map(.[:8])}"
+# Expected: status="blocked", dependsOn includes the parent prefix.
+```
+
+**2. Persist the parent ID through a temp file.** When you genuinely need the chain to span multiple tool calls (e.g. you want to inspect state between adds):
+
+```bash
+# Call 1: capture parent id to disk
+hopper add "Parent..." --dir <path> --branch <branch> --json \
+  | jq -r ".id" > /tmp/hopper-dep-id
+
+# Call 2: read it back as a literal
+hopper add "Dependent..." \
+  --dir <path> --branch <branch> \
+  --after-item "$(cat /tmp/hopper-dep-id)" \
+  --json | jq "{status, dependsOn}"
+```
+
+**Always verify after creating an `--after-item` item.** Query `hopper show <id> --json | jq "{status, dependsOn}"`. If `status` is `queued` (not `blocked`) or `dependsOn` is empty, the dependency did not register — fix it BEFORE the worker claim race closes the window.
+
+**Recovery is limited.** Hopper has no `hopper depend` command to add a dependency to an existing item. If you forget `--after-item` and the item is already `in_progress`, your only options are:
+
+1. `hopper requeue <id> --reason "..."` to release the worker claim, then `hopper cancel <id>` and re-add with the dependency.
+2. Let it run if the work is independent enough to tolerate out-of-order execution.
+
+The race window between `add` and worker claim is short — typically seconds. Plan dependency chains atomically; do not split them across shell sessions hoping to fix things up afterwards.
 
 ### Shell command items
 
