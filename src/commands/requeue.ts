@@ -1,6 +1,7 @@
 import type { ParsedArgs } from "../cli.ts";
 import { requirePositional, stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
+import { isCommandError, unwrapOrError } from "../result.ts";
 import type { Item } from "../store.ts";
 import { requeueItem } from "../store.ts";
 
@@ -15,11 +16,11 @@ export async function requeueCommand(parsed: ParsedArgs): Promise<CommandResult<
 
   const agent = stringFlag(parsed, "agent");
 
-  const outcome = await requeueItem(idArg.value, reason, agent);
-  if (!outcome.ok) return { status: "error", message: outcome.error };
+  const item = unwrapOrError(await requeueItem(idArg.value, reason, agent));
+  if (isCommandError(item)) return item;
   return {
     status: "success",
-    data: outcome.value,
-    humanOutput: `Requeued: ${outcome.value.title}`,
+    data: item,
+    humanOutput: `Requeued: ${item.title}`,
   };
 }

@@ -10,6 +10,7 @@ import {
   removePreset,
   validatePresetName,
 } from "../presets.ts";
+import { isCommandError, unwrapOrError } from "../result.ts";
 
 export async function presetCommand(parsed: ParsedArgs): Promise<CommandResult> {
   const subcommand = parsed.positional[0];
@@ -40,41 +41,37 @@ async function presetAddCommand(parsed: ParsedArgs): Promise<CommandResult<Prese
     };
   }
 
-  const nameResult = validatePresetName(rawName);
-  if (!nameResult.ok) return { status: "error", message: nameResult.error };
-  const name = nameResult.value;
+  const name = unwrapOrError(validatePresetName(rawName));
+  if (isCommandError(name)) return name;
 
   const dir = stringFlag(parsed, "dir");
   const branch = stringFlag(parsed, "branch");
   const command = stringFlag(parsed, "command");
   const agent = stringFlag(parsed, "agent");
-  const typeResult = validateTaskType(stringFlag(parsed, "type"));
-  if (!typeResult.ok) {
-    return { status: "error", message: formatValidationError(typeResult.error) };
-  }
-  const type = typeResult.value;
-  const retriesResult = validateRetries(stringFlag(parsed, "retries"));
-  if (!retriesResult.ok) {
-    return { status: "error", message: formatValidationError(retriesResult.error) };
-  }
-  const retries = retriesResult.value;
+  const type = unwrapOrError(validateTaskType(stringFlag(parsed, "type")), formatValidationError);
+  if (isCommandError(type)) return type;
+  const retries_ = unwrapOrError(validateRetries(stringFlag(parsed, "retries")), formatValidationError);
+  if (isCommandError(retries_)) return retries_;
+  const retries = retries_;
   const force = parsed.flags.force === true;
 
-  const addResult = await addPreset(
-    {
-      name,
-      description,
-      ...(dir ? { workingDir: dir } : {}),
-      ...(branch ? { branch } : {}),
-      ...(command ? { command } : {}),
-      ...(type ? { type } : {}),
-      ...(agent ? { agent } : {}),
-      ...(retries !== undefined ? { retries } : {}),
-      createdAt: new Date().toISOString(),
-    },
-    force,
+  const addResult = unwrapOrError(
+    await addPreset(
+      {
+        name,
+        description,
+        ...(dir ? { workingDir: dir } : {}),
+        ...(branch ? { branch } : {}),
+        ...(command ? { command } : {}),
+        ...(type ? { type } : {}),
+        ...(agent ? { agent } : {}),
+        ...(retries !== undefined ? { retries } : {}),
+        createdAt: new Date().toISOString(),
+      },
+      force,
+    ),
   );
-  if (!addResult.ok) return { status: "error", message: addResult.error };
+  if (isCommandError(addResult)) return addResult;
 
   const preset = await findPreset(name);
 
@@ -134,8 +131,8 @@ async function presetRemoveCommand(
   if (!nameArg.ok) return nameArg.error;
   const name = nameArg.value;
 
-  const removeResult = await removePreset(name);
-  if (!removeResult.ok) return { status: "error", message: removeResult.error };
+  const removeResult = unwrapOrError(await removePreset(name));
+  if (isCommandError(removeResult)) return removeResult;
 
   return {
     status: "success",

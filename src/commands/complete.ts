@@ -2,6 +2,7 @@ import type { ParsedArgs } from "../cli.ts";
 import { requirePositional, stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
 import { formatDuration } from "../format.ts";
+import { isCommandError, unwrapOrError } from "../result.ts";
 import type { CompleteResult } from "../store.ts";
 import { completeItem } from "../store.ts";
 
@@ -12,9 +13,9 @@ export async function completeCommand(parsed: ParsedArgs): Promise<CommandResult
   const agent = stringFlag(parsed, "agent");
   const result = stringFlag(parsed, "result");
 
-  const outcome = await completeItem(tokenArg.value, agent, result);
-  if (!outcome.ok) return { status: "error", message: outcome.error };
-  const { completed: item, recurred } = outcome.value;
+  const outcome = unwrapOrError(await completeItem(tokenArg.value, agent, result));
+  if (isCommandError(outcome)) return outcome;
+  const { completed: item, recurred } = outcome;
 
   const duration =
     item.claimedAt && item.completedAt

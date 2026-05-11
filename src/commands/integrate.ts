@@ -7,6 +7,7 @@ import { toErrorMessage } from "../error-utils.ts";
 import { shortId } from "../format.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import { createGitGateway } from "../gateways/git-gateway.ts";
+import { isCommandError, unwrapOrError } from "../result.ts";
 import { findItem } from "../store.ts";
 
 export type IntegrateDryRunResult = {
@@ -39,9 +40,8 @@ export async function integrateCommand(
   const dryRun = booleanFlag(parsed, "dry-run");
   const keepWorktree = booleanFlag(parsed, "keep-worktree");
 
-  const itemOutcome = await findItem(idArg.value);
-  if (!itemOutcome.ok) return { status: "error", message: itemOutcome.error };
-  const item = itemOutcome.value;
+  const item = unwrapOrError(await findItem(idArg.value));
+  if (isCommandError(item)) return item;
 
   const { workingDir, branch } = item;
   if (!workingDir || !branch) {

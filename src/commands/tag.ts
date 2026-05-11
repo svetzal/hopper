@@ -2,6 +2,7 @@ import type { ParsedArgs } from "../cli.ts";
 import { requirePositional } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
 import { shortId } from "../format.ts";
+import { isCommandError, unwrapOrError } from "../result.ts";
 import type { Result } from "../result.ts";
 import type { Item } from "../store.ts";
 import { removeItemTags, updateItemTags } from "../store.ts";
@@ -21,16 +22,15 @@ async function tagAction(
     return { status: "error", message: usage };
   }
 
-  const tagResult = normalizeTags(rawTags);
-  if (!tagResult.ok) return { status: "error", message: tagResult.error };
-  const tags = tagResult.value;
+  const tags = unwrapOrError(normalizeTags(rawTags));
+  if (isCommandError(tags)) return tags;
 
-  const outcome = await storeFn(idArg.value, tags);
-  if (!outcome.ok) return { status: "error", message: outcome.error };
+  const item = unwrapOrError(await storeFn(idArg.value, tags));
+  if (isCommandError(item)) return item;
   return {
     status: "success",
-    data: outcome.value,
-    humanOutput: `${verb} ${shortId(outcome.value.id)}: ${tags.join(", ")}`,
+    data: item,
+    humanOutput: `${verb} ${shortId(item.id)}: ${tags.join(", ")}`,
   };
 }
 

@@ -16,6 +16,7 @@ import { shortId } from "../format.ts";
 import { findPreset } from "../presets.ts";
 import type { Priority } from "../priority.ts";
 import { parsePriority, priorityBadge } from "../priority.ts";
+import { isCommandError, unwrapOrError } from "../result.ts";
 import type { Item } from "../store.ts";
 import { addItem, loadItems } from "../store.ts";
 import { mergeTags, normalizeTags, tagBadge } from "../tags.ts";
@@ -76,21 +77,16 @@ export async function addCommand(
   const command = stringFlag(parsed, "command") ?? preset?.command;
 
   // 5a. Resolve and validate task type + agent
-  const typeResult = validateTaskType(stringFlag(parsed, "type") ?? preset?.type);
-  if (!typeResult.ok) {
-    return { status: "error", message: formatValidationError(typeResult.error) };
-  }
-  const type = typeResult.value;
+  const type = unwrapOrError(validateTaskType(stringFlag(parsed, "type") ?? preset?.type), formatValidationError);
+  if (isCommandError(type)) return type;
   let agent = stringFlag(parsed, "agent") ?? preset?.agent;
 
   // Parse --retries. Preset fallback is an already-validated integer, so we
   // only need to validate the CLI string form.
   const retriesRaw = stringFlag(parsed, "retries");
-  const retriesResult = validateRetries(retriesRaw);
-  if (!retriesResult.ok) {
-    return { status: "error", message: formatValidationError(retriesResult.error) };
-  }
-  const retries = retriesResult.value ?? preset?.retries;
+  const retries_ = unwrapOrError(validateRetries(retriesRaw), formatValidationError);
+  if (isCommandError(retries_)) return retries_;
+  const retries = retries_ ?? preset?.retries;
 
   // Auto-resolve a craftsperson for engineering items when the caller didn't
   // pin one explicitly. Failures are swallowed — a missing agent is always
@@ -105,70 +101,57 @@ export async function addCommand(
   }
 
   // 6. Validate dir/branch combination (accounting for task type)
-  const dirBranchResult = validateDirBranch(dir, branch, command, type);
-  if (!dirBranchResult.ok) {
-    return { status: "error", message: formatValidationError(dirBranchResult.error) };
-  }
+  const dirBranchResult = unwrapOrError(validateDirBranch(dir, branch, command, type), formatValidationError);
+  if (isCommandError(dirBranchResult)) return dirBranchResult;
 
   // 7. Parse priority
   let priority: Priority | undefined;
   const priorityFlag = stringFlag(parsed, "priority");
   if (priorityFlag) {
-    const priorityResult = parsePriority(priorityFlag);
-    if (!priorityResult.ok) {
-      return { status: "error", message: priorityResult.error };
-    }
-    priority = priorityResult.value;
+    const priorityResult = unwrapOrError(parsePriority(priorityFlag));
+    if (isCommandError(priorityResult)) return priorityResult;
+    priority = priorityResult;
   }
 
   // 8. Validate --times spec
   const everySpec = stringFlag(parsed, "every");
   const timesSpec = stringFlag(parsed, "times");
-  const timesResult = validateTimesSpec(timesSpec, everySpec);
-  if (!timesResult.ok) {
-    return { status: "error", message: formatValidationError(timesResult.error) };
-  }
+  const timesResult = unwrapOrError(validateTimesSpec(timesSpec, everySpec), formatValidationError);
+  if (isCommandError(timesResult)) return timesResult;
 
   // 9. Resolve scheduling
   const afterSpec = stringFlag(parsed, "after");
   const untilSpec = stringFlag(parsed, "until");
-  const schedulingResult = resolveScheduling(
-    everySpec,
-    afterSpec,
-    untilSpec,
-    timesResult.value,
-    new Date(),
+  const scheduling = unwrapOrError(
+    resolveScheduling(everySpec, afterSpec, untilSpec, timesResult, new Date()),
+    formatValidationError,
   );
-  if (!schedulingResult.ok) {
-    return { status: "error", message: formatValidationError(schedulingResult.error) };
-  }
+  if (isCommandError(scheduling)) return scheduling;
 
   // 10. Normalize tags
   const rawTags = parsed.arrayFlags.tag ?? [];
   let tags: string[] | undefined;
   const warnings: string[] = [];
   if (rawTags.length > 0 || preset?.tags?.length) {
-    const tagResult = normalizeTags(rawTags);
-    if (!tagResult.ok) return { status: "error", message: tagResult.error };
+    const tagResult = unwrapOrError(normalizeTags(rawTags));
+    if (isCommandError(tagResult)) return tagResult;
     const presetTags = preset?.tags ?? [];
-    tags = mergeTags(presetTags, tagResult.value);
+    tags = mergeTags(presetTags, tagResult);
   }
 
   // 11. Resolve dependencies (I/O)
   const afterItemIds = parsed.arrayFlags["after-item"] ?? [];
   let dependsOn: string[] | undefined;
-  let itemStatus = schedulingResult.value.status;
+  let itemStatus = scheduling.status;
 
   if (afterItemIds.length > 0) {
     const allItems = await loadItems();
-    const depResult = resolveDependencies(afterItemIds, allItems);
-    if (!depResult.ok) {
-      return { status: "error", message: formatValidationError(depResult.error) };
-    }
-    for (const warning of depResult.value.warnings) {
+    const depResult = unwrapOrError(resolveDependencies(afterItemIds, allItems), formatValidationError);
+    if (isCommandError(depResult)) return depResult;
+    for (const warning of depResult.warnings) {
       warnings.push(warning);
     }
-    dependsOn = depResult.value.resolvedIds;
+    dependsOn = depResult.resolvedIds;
     itemStatus = Status.BLOCKED;
   }
 
@@ -180,11 +163,11 @@ export async function addCommand(
     status: itemStatus,
     createdAt: new Date().toISOString(),
     priority,
-    scheduledAt: schedulingResult.value.scheduledAt,
+    scheduledAt: scheduling.scheduledAt,
     dir,
     branch,
     command,
-    recurrence: schedulingResult.value.recurrence,
+    recurrence: scheduling.recurrence,
     dependsOn,
     tags,
     type,
@@ -203,10 +186,10 @@ export async function addCommand(
   if (dependsOn) {
     const depBadge = dependsOn.map((id) => shortId(id)).join(", ");
     humanOutput = `Added: ${title}${pBadge}${tBadge} (blocked on: ${depBadge})${presetSuffix}`;
-  } else if (schedulingResult.value.recurrence) {
-    humanOutput = `Added: ${title}${pBadge}${tBadge} (recurring every ${schedulingResult.value.recurrence.interval}, next run: ${schedulingResult.value.scheduledAt ? new Date(schedulingResult.value.scheduledAt).toLocaleString() : "unknown"})${presetSuffix}`;
-  } else if (schedulingResult.value.scheduledAt) {
-    humanOutput = `Added: ${title}${pBadge}${tBadge} (scheduled for ${new Date(schedulingResult.value.scheduledAt).toLocaleString()})${presetSuffix}`;
+  } else if (scheduling.recurrence) {
+    humanOutput = `Added: ${title}${pBadge}${tBadge} (recurring every ${scheduling.recurrence.interval}, next run: ${scheduling.scheduledAt ? new Date(scheduling.scheduledAt).toLocaleString() : "unknown"})${presetSuffix}`;
+  } else if (scheduling.scheduledAt) {
+    humanOutput = `Added: ${title}${pBadge}${tBadge} (scheduled for ${new Date(scheduling.scheduledAt).toLocaleString()})${presetSuffix}`;
   } else {
     humanOutput = `Added: ${title}${pBadge}${tBadge}${presetSuffix}`;
   }

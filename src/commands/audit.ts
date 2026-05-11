@@ -13,6 +13,7 @@ import { booleanFlag, requirePositional, stringFlag } from "../command-flags.ts"
 import type { CommandResult } from "../command-result.ts";
 import type { ItemStatus } from "../constants.ts";
 import type { AuditGateway } from "../gateways/audit-gateway.ts";
+import { isCommandError, unwrapOrError } from "../result.ts";
 import { findItem } from "../store.ts";
 
 export type AuditPlanResult = { plan: string };
@@ -72,9 +73,8 @@ export async function auditCommand(
     }
   }
 
-  const itemOutcome = await findItem(idArg.value);
-  if (!itemOutcome.ok) return { status: "error", message: itemOutcome.error };
-  const item = itemOutcome.value;
+  const item = unwrapOrError(await findItem(idArg.value));
+  if (isCommandError(item)) return item;
   const { plan: planPath, result: resultPath } = gateway.paths(item.id);
 
   // ── --plan ────────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ import type { ParsedArgs } from "../cli.ts";
 import { stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
 import { filterAndSortItems, formatItemList } from "../list-workflow.ts";
+import { isCommandError, unwrapOrError } from "../result.ts";
 import type { Item } from "../store.ts";
 import { loadItems } from "../store.ts";
 
@@ -21,12 +22,8 @@ export async function listCommand(parsed: ParsedArgs): Promise<CommandResult<Ite
   const tagFilter = parsed.arrayFlags.tag ?? [];
   const typeFilter = stringFlag(parsed, "type");
 
-  const filterResult = filterAndSortItems(allItems, filter, priorityFilter, tagFilter, typeFilter);
-  if (!filterResult.ok) {
-    return { status: "error", message: filterResult.error };
-  }
-
-  const items = filterResult.value;
+  const items = unwrapOrError(filterAndSortItems(allItems, filter, priorityFilter, tagFilter, typeFilter));
+  if (isCommandError(items)) return items;
 
   return {
     status: "success",
