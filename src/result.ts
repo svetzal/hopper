@@ -29,9 +29,7 @@ export function unwrapOrError<T, E>(
   mapper?: (e: E) => string,
 ): T | CommandErrorResult {
   if (result.ok) return result.value;
-  const message = mapper
-    ? mapper(result.error)
-    : (result.error as unknown as string);
+  const message = mapper ? mapper(result.error) : (result.error as unknown as string);
   return { status: "error", message };
 }
 

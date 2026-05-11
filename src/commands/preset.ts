@@ -50,7 +50,10 @@ async function presetAddCommand(parsed: ParsedArgs): Promise<CommandResult<Prese
   const agent = stringFlag(parsed, "agent");
   const type = unwrapOrError(validateTaskType(stringFlag(parsed, "type")), formatValidationError);
   if (isCommandError(type)) return type;
-  const retries_ = unwrapOrError(validateRetries(stringFlag(parsed, "retries")), formatValidationError);
+  const retries_ = unwrapOrError(
+    validateRetries(stringFlag(parsed, "retries")),
+    formatValidationError,
+  );
   if (isCommandError(retries_)) return retries_;
   const retries = retries_;
   const force = parsed.flags.force === true;

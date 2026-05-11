@@ -77,7 +77,10 @@ export async function addCommand(
   const command = stringFlag(parsed, "command") ?? preset?.command;
 
   // 5a. Resolve and validate task type + agent
-  const type = unwrapOrError(validateTaskType(stringFlag(parsed, "type") ?? preset?.type), formatValidationError);
+  const type = unwrapOrError(
+    validateTaskType(stringFlag(parsed, "type") ?? preset?.type),
+    formatValidationError,
+  );
   if (isCommandError(type)) return type;
   let agent = stringFlag(parsed, "agent") ?? preset?.agent;
 
@@ -101,7 +104,10 @@ export async function addCommand(
   }
 
   // 6. Validate dir/branch combination (accounting for task type)
-  const dirBranchResult = unwrapOrError(validateDirBranch(dir, branch, command, type), formatValidationError);
+  const dirBranchResult = unwrapOrError(
+    validateDirBranch(dir, branch, command, type),
+    formatValidationError,
+  );
   if (isCommandError(dirBranchResult)) return dirBranchResult;
 
   // 7. Parse priority
@@ -146,7 +152,10 @@ export async function addCommand(
 
   if (afterItemIds.length > 0) {
     const allItems = await loadItems();
-    const depResult = unwrapOrError(resolveDependencies(afterItemIds, allItems), formatValidationError);
+    const depResult = unwrapOrError(
+      resolveDependencies(afterItemIds, allItems),
+      formatValidationError,
+    );
     if (isCommandError(depResult)) return depResult;
     for (const warning of depResult.warnings) {
       warnings.push(warning);

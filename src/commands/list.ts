@@ -22,7 +22,9 @@ export async function listCommand(parsed: ParsedArgs): Promise<CommandResult<Ite
   const tagFilter = parsed.arrayFlags.tag ?? [];
   const typeFilter = stringFlag(parsed, "type");
 
-  const items = unwrapOrError(filterAndSortItems(allItems, filter, priorityFilter, tagFilter, typeFilter));
+  const items = unwrapOrError(
+    filterAndSortItems(allItems, filter, priorityFilter, tagFilter, typeFilter),
+  );
   if (isCommandError(items)) return items;
 
   return {
