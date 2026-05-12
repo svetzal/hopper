@@ -1,13 +1,13 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ParsedArgs } from "../cli.ts";
-import { booleanFlag, requirePositional } from "../command-flags.ts";
+import { booleanFlag, unwrapPositional } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
 import { toErrorMessage } from "../error-utils.ts";
 import { shortId } from "../format.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import { createGitGateway } from "../gateways/git-gateway.ts";
-import { isCommandError, unwrapOrError } from "../result.ts";
+import { catchCommandError, unwrap } from "../result.ts";
 import { findItem } from "../store.ts";
 
 export type IntegrateDryRunResult = {
@@ -30,115 +30,117 @@ export type IntegrateResult = {
   worktreeRemoved: boolean;
 };
 
-export async function integrateCommand(
+export function integrateCommand(
   parsed: ParsedArgs,
   git: GitGateway = createGitGateway(),
 ): Promise<CommandResult<IntegrateDryRunResult | IntegrateResult>> {
-  const idArg = requirePositional(parsed, 0, "Usage: hopper integrate <item-id>");
-  if (!idArg.ok) return idArg.error;
+  return catchCommandError(
+    async (): Promise<CommandResult<IntegrateDryRunResult | IntegrateResult>> => {
+      const id = unwrapPositional(parsed, 0, "Usage: hopper integrate <item-id>");
 
-  const dryRun = booleanFlag(parsed, "dry-run");
-  const keepWorktree = booleanFlag(parsed, "keep-worktree");
+      const dryRun = booleanFlag(parsed, "dry-run");
+      const keepWorktree = booleanFlag(parsed, "keep-worktree");
 
-  const item = unwrapOrError(await findItem(idArg.value));
-  if (isCommandError(item)) return item;
+      const item = unwrap(await findItem(id));
 
-  const { workingDir, branch } = item;
-  if (!workingDir || !branch) {
-    return {
-      status: "error",
-      message: `Item ${shortId(item.id)} has no workingDir/branch; nothing to integrate.`,
-    };
-  }
-
-  const worktreePath = join(homedir(), ".hopper", "worktrees", item.id);
-
-  if (item.status !== "completed" && item.status !== "in_progress") {
-    return {
-      status: "error",
-      message: `Cannot integrate item with status '${item.status}'. Only 'completed' or 'in_progress' items can be integrated.`,
-    };
-  }
-
-  if (item.status === "in_progress") {
-    const worktreeExists = await Bun.file(worktreePath).exists();
-    if (!worktreeExists) {
-      return {
-        status: "error",
-        message: `Cannot integrate item with status '${item.status}'. Only 'completed' or 'in_progress' items can be integrated.`,
-      };
-    }
-  }
-
-  const commands = [
-    `git -C ${workingDir} checkout main`,
-    `git -C ${workingDir} merge ${branch} --no-edit`,
-    ...(keepWorktree
-      ? []
-      : [
-          `git -C ${workingDir} branch -d ${branch}`,
-          `git -C ${workingDir} worktree remove --force ${worktreePath}`,
-        ]),
-  ];
-
-  if (dryRun) {
-    return {
-      status: "success",
-      data: {
-        dryRun: true,
-        itemId: item.id,
-        workingDir,
-        branch,
-        targetBranch: "main",
-        commands,
-        keepWorktree,
-      },
-      humanOutput: `Dry run:\n${commands.map((c) => `  ${c}`).join("\n")}`,
-    };
-  }
-
-  await git.checkout(workingDir, "main");
-
-  const mergeResult = await git.mergeNoEdit(workingDir, branch);
-  if (mergeResult.exitCode !== 0) {
-    return {
-      status: "error",
-      message: `Merge failed: ${mergeResult.stderr.trim()}`,
-    };
-  }
-
-  const warnings: string[] = [];
-  let worktreeRemoved = false;
-
-  if (!keepWorktree) {
-    try {
-      await git.deleteBranch(workingDir, branch);
-    } catch (e) {
-      warnings.push(`Could not delete branch ${branch}: ${toErrorMessage(e)}`);
-    }
-
-    try {
-      const worktreeExists = await Bun.file(worktreePath).exists();
-      if (worktreeExists) {
-        await git.worktreeRemove(workingDir, worktreePath);
-        worktreeRemoved = true;
+      const { workingDir, branch } = item;
+      if (!workingDir || !branch) {
+        return {
+          status: "error",
+          message: `Item ${shortId(item.id)} has no workingDir/branch; nothing to integrate.`,
+        };
       }
-    } catch (e) {
-      warnings.push(`Could not remove worktree ${worktreePath}: ${toErrorMessage(e)}`);
-    }
-  }
 
-  return {
-    status: "success",
-    data: {
-      itemId: item.id,
-      workingDir,
-      branch,
-      targetBranch: "main",
-      keepWorktree,
-      worktreeRemoved,
+      const worktreePath = join(homedir(), ".hopper", "worktrees", item.id);
+
+      if (item.status !== "completed" && item.status !== "in_progress") {
+        return {
+          status: "error",
+          message: `Cannot integrate item with status '${item.status}'. Only 'completed' or 'in_progress' items can be integrated.`,
+        };
+      }
+
+      if (item.status === "in_progress") {
+        const worktreeExists = await Bun.file(worktreePath).exists();
+        if (!worktreeExists) {
+          return {
+            status: "error",
+            message: `Cannot integrate item with status '${item.status}'. Only 'completed' or 'in_progress' items can be integrated.`,
+          };
+        }
+      }
+
+      const commands = [
+        `git -C ${workingDir} checkout main`,
+        `git -C ${workingDir} merge ${branch} --no-edit`,
+        ...(keepWorktree
+          ? []
+          : [
+              `git -C ${workingDir} branch -d ${branch}`,
+              `git -C ${workingDir} worktree remove --force ${worktreePath}`,
+            ]),
+      ];
+
+      if (dryRun) {
+        return {
+          status: "success",
+          data: {
+            dryRun: true,
+            itemId: item.id,
+            workingDir,
+            branch,
+            targetBranch: "main",
+            commands,
+            keepWorktree,
+          },
+          humanOutput: `Dry run:\n${commands.map((c) => `  ${c}`).join("\n")}`,
+        };
+      }
+
+      await git.checkout(workingDir, "main");
+
+      const mergeResult = await git.mergeNoEdit(workingDir, branch);
+      if (mergeResult.exitCode !== 0) {
+        return {
+          status: "error",
+          message: `Merge failed: ${mergeResult.stderr.trim()}`,
+        };
+      }
+
+      const warnings: string[] = [];
+      let worktreeRemoved = false;
+
+      if (!keepWorktree) {
+        try {
+          await git.deleteBranch(workingDir, branch);
+        } catch (e) {
+          warnings.push(`Could not delete branch ${branch}: ${toErrorMessage(e)}`);
+        }
+
+        try {
+          const worktreeExists = await Bun.file(worktreePath).exists();
+          if (worktreeExists) {
+            await git.worktreeRemove(workingDir, worktreePath);
+            worktreeRemoved = true;
+          }
+        } catch (e) {
+          warnings.push(`Could not remove worktree ${worktreePath}: ${toErrorMessage(e)}`);
+        }
+      }
+
+      return {
+        status: "success",
+        data: {
+          itemId: item.id,
+          workingDir,
+          branch,
+          targetBranch: "main",
+          keepWorktree,
+          worktreeRemoved,
+        },
+        humanOutput: `Integrated ${shortId(item.id)} from ${branch} into main of ${workingDir}.`,
+        ...(warnings.length > 0 ? { warnings } : {}),
+      };
     },
-    humanOutput: `Integrated ${shortId(item.id)} from ${branch} into main of ${workingDir}.`,
-    ...(warnings.length > 0 ? { warnings } : {}),
-  };
+  );
 }

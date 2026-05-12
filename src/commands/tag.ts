@@ -1,9 +1,9 @@
 import type { ParsedArgs } from "../cli.ts";
-import { requirePositional } from "../command-flags.ts";
+import { unwrapPositional } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
 import { shortId } from "../format.ts";
 import type { Result } from "../result.ts";
-import { isCommandError, unwrapOrError } from "../result.ts";
+import { catchCommandError, unwrap } from "../result.ts";
 import type { Item } from "../store.ts";
 import { removeItemTags, updateItemTags } from "../store.ts";
 import { normalizeTags } from "../tags.ts";
@@ -14,24 +14,22 @@ async function tagAction(
   storeFn: (id: string, tags: string[]) => Promise<Result<Item>>,
   verb: string,
 ): Promise<CommandResult<Item>> {
-  const idArg = requirePositional(parsed, 0, usage);
-  if (!idArg.ok) return idArg.error;
+  return catchCommandError(async () => {
+    const id = unwrapPositional(parsed, 0, usage);
 
-  const rawTags = parsed.positional.slice(1);
-  if (rawTags.length === 0) {
-    return { status: "error", message: usage };
-  }
+    const rawTags = parsed.positional.slice(1);
+    if (rawTags.length === 0) {
+      return { status: "error", message: usage };
+    }
 
-  const tags = unwrapOrError(normalizeTags(rawTags));
-  if (isCommandError(tags)) return tags;
-
-  const item = unwrapOrError(await storeFn(idArg.value, tags));
-  if (isCommandError(item)) return item;
-  return {
-    status: "success",
-    data: item,
-    humanOutput: `${verb} ${shortId(item.id)}: ${tags.join(", ")}`,
-  };
+    const tags = unwrap(normalizeTags(rawTags));
+    const item = unwrap(await storeFn(id, tags));
+    return {
+      status: "success",
+      data: item,
+      humanOutput: `${verb} ${shortId(item.id)}: ${tags.join(", ")}`,
+    };
+  });
 }
 
 export function tagCommand(parsed: ParsedArgs): Promise<CommandResult<Item>> {

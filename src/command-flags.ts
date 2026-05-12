@@ -1,5 +1,6 @@
 import type { ParsedArgs } from "./cli.ts";
 import type { Result } from "./result.ts";
+import { CommandErrorSignal } from "./result.ts";
 
 /** Extract a string flag, returning undefined if it's boolean or missing. */
 export function stringFlag(parsed: ParsedArgs, name: string): string | undefined {
@@ -29,4 +30,14 @@ export function requirePositional(
     return { ok: false, error: { status: "error", message: usage } };
   }
   return { ok: true, value };
+}
+
+/**
+ * Require a positional argument at the given index, throwing `CommandErrorSignal` if missing.
+ * Use inside a `catchCommandError`-wrapped command body.
+ */
+export function unwrapPositional(parsed: ParsedArgs, index: number, usage: string): string {
+  const result = requirePositional(parsed, index, usage);
+  if (!result.ok) throw new CommandErrorSignal(result.error);
+  return result.value;
 }

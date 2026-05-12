@@ -1,3 +1,5 @@
+import type { CommandResult } from "./command-result.ts";
+
 export type Result<T, E = string> = { ok: true; value: T } | { ok: false; error: E };
 
 export function ok<T>(value: T): Result<T, never> {
@@ -44,4 +46,36 @@ export function isCommandError(v: unknown): v is CommandErrorResult {
     "status" in v &&
     (v as { status: unknown }).status === "error"
   );
+}
+
+/** Internal sentinel thrown by `unwrap`/`unwrapPositional`; caught only by `catchCommandError`. */
+export class CommandErrorSignal extends Error {
+  constructor(public readonly result: CommandErrorResult) {
+    super(result.message);
+    this.name = "CommandErrorSignal";
+  }
+}
+
+/** Unwraps a Result, returning the value on success or throwing `CommandErrorSignal` on failure. */
+export function unwrap<T>(result: Result<T, string>): T;
+export function unwrap<T, E>(result: Result<T, E>, mapper: (e: E) => string): T;
+export function unwrap<T, E>(result: Result<T, E>, mapper?: (e: E) => string): T {
+  if (result.ok) return result.value;
+  const message = mapper ? mapper(result.error) : (result.error as unknown as string);
+  throw new CommandErrorSignal({ status: "error", message });
+}
+
+/**
+ * Wraps a command body: catches any `CommandErrorSignal` thrown by `unwrap`/`unwrapPositional`
+ * and returns it as a `CommandResult` error. All other exceptions propagate normally.
+ */
+export async function catchCommandError<T>(
+  fn: () => Promise<CommandResult<T>>,
+): Promise<CommandResult<T>> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e instanceof CommandErrorSignal) return e.result;
+    throw e;
+  }
 }
