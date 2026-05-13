@@ -37,8 +37,8 @@ import {
   logCompleteOutcome,
   mergeAndPush,
   orchestrateWorktreeSetup,
-  safeRequeue,
   StaleEngineeringBranchError,
+  safeRequeue,
   teardownWorktree,
 } from "./worker-shared.ts";
 
