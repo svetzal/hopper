@@ -18,9 +18,9 @@ import {
 import { processEngineeringItem } from "./worker-engineering.ts";
 import {
   createLogger,
+  type LogFn,
   logClaimBanner,
   logCompleteOutcome,
-  type LogFn,
   mergeAndPush,
   orchestrateWorktreeSetup,
   safeRequeue,

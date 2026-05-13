@@ -32,9 +32,9 @@ import {
 } from "../worker-workflow.ts";
 import {
   createLogger,
+  type LogFn,
   logClaimBanner,
   logCompleteOutcome,
-  type LogFn,
   mergeAndPush,
   orchestrateWorktreeSetup,
   safeRequeue,
