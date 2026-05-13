@@ -4,7 +4,6 @@ import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import type { ClaimedItem, Item } from "../store.ts";
-import { completeItem } from "../store.ts";
 import { buildInvestigationOptions, buildInvestigationPrompt } from "../task-type-workflow.ts";
 import {
   buildCommitMessage,
@@ -19,6 +18,8 @@ import {
 import { processEngineeringItem } from "./worker-engineering.ts";
 import {
   createLogger,
+  logClaimBanner,
+  logCompleteOutcome,
   type LogFn,
   mergeAndPush,
   orchestrateWorktreeSetup,
@@ -54,19 +55,7 @@ async function handleCompletion(
   log("---------------------");
 
   if (action === "complete") {
-    log("Marking item complete...");
-    const completeOutcome = await completeItem(item.claimToken, agentName, finalResult);
-    if (completeOutcome.ok) {
-      const { completed, recurred } = completeOutcome.value;
-      log(`Completed: ${completed.title}`);
-      if (recurred) {
-        log(
-          `Re-queued: ${completed.title} (next run: ${recurred.scheduledAt ? new Date(recurred.scheduledAt).toLocaleString() : "unknown"})`,
-        );
-      }
-    } else {
-      log(`Complete failed: ${completeOutcome.error}`);
-    }
+    await logCompleteOutcome(item.claimToken, agentName, finalResult, log);
   } else {
     const sessionLabel = item.command ? "Command" : "Claude session";
     log(`${sessionLabel} failed for: ${item.title} (${item.id})`);
@@ -140,12 +129,11 @@ export async function processItem(
   const { git, claude, fs, shell } = deps;
   const log = createLogger(item.id, concurrency);
 
-  log(`Claimed: ${item.title}`);
-  log(`Token:   ${item.claimToken}`);
-  log(`ID:      ${item.id}`);
-  if (item.workingDir) log(`Dir:     ${item.workingDir}`);
-  if (item.branch) log(`Branch:  ${item.branch}`);
-  if (item.command) log(`Command: ${item.command}`);
+  const extras: string[] = [];
+  if (item.workingDir) extras.push(`Dir:     ${item.workingDir}`);
+  if (item.branch) extras.push(`Branch:  ${item.branch}`);
+  if (item.command) extras.push(`Command: ${item.command}`);
+  logClaimBanner(item, log, extras);
 
   const { auditDir, auditFile, resultFile } = resolveAuditPaths(item.id, hopperHome);
   await fs.ensureDir(auditDir);

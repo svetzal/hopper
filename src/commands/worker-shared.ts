@@ -8,7 +8,7 @@ import {
   resolveMergeCommitResult,
   resolveMergeStep,
 } from "../git-workflow.ts";
-import { type Item, requeueItem } from "../store.ts";
+import { type ClaimedItem, completeItem, type Item, requeueItem } from "../store.ts";
 
 export type LogFn = (message: string) => void;
 
@@ -35,6 +35,36 @@ export class StaleEngineeringBranchError extends Error {
         : `Work branch "${branch}" already exists but has diverged from the target branch; cannot safely reclaim.`,
     );
     this.name = "StaleEngineeringBranchError";
+  }
+}
+
+export async function logCompleteOutcome(
+  claimToken: string,
+  agentName: string,
+  finalResult: string,
+  log: LogFn,
+): Promise<void> {
+  log("Marking item complete...");
+  const completeOutcome = await completeItem(claimToken, agentName, finalResult);
+  if (completeOutcome.ok) {
+    const { completed, recurred } = completeOutcome.value;
+    log(`Completed: ${completed.title}`);
+    if (recurred) {
+      log(
+        `Re-queued: ${completed.title} (next run: ${recurred.scheduledAt ? new Date(recurred.scheduledAt).toLocaleString() : "unknown"})`,
+      );
+    }
+  } else {
+    log(`Complete failed: ${completeOutcome.error}`);
+  }
+}
+
+export function logClaimBanner(item: ClaimedItem, log: LogFn, extras?: string[]): void {
+  log(`Claimed: ${item.title}`);
+  log(`Token:   ${item.claimToken}`);
+  log(`ID:      ${item.id}`);
+  for (const extra of extras ?? []) {
+    log(extra);
   }
 }
 
