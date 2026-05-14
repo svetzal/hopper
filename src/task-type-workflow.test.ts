@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import type { Item } from "./store.ts";
 import {
   buildBranchSlugPrompt,
@@ -9,14 +9,17 @@ import {
   buildInvestigationPrompt,
   buildPlanOptions,
   buildPlanPrompt,
+  buildValidateFallbackPrompt,
   buildValidateOptions,
   buildValidatePrompt,
   EXECUTE_DISALLOWED_TOOLS,
   INVESTIGATION_TOOLS,
   normaliseBranchSlug,
   normaliseCommitMessage,
+  normaliseValidateFallback,
   PLAN_TOOLS,
   resolveValidateOutcome,
+  resolveValidateOutcomeWithFallback,
   VALIDATE_ALLOWED_TOOLS,
   VALIDATE_TOOLS,
 } from "./task-type-workflow.ts";
@@ -346,5 +349,170 @@ describe("normaliseCommitMessage", () => {
     expect(normaliseCommitMessage("Subject: Add flag")).toBe("Add flag");
     expect(normaliseCommitMessage("Commit: Add flag")).toBe("Add flag");
     expect(normaliseCommitMessage("Commit message: Add flag")).toBe("Add flag");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Haiku fallback assessor
+// ---------------------------------------------------------------------------
+
+describe("buildValidateFallbackPrompt", () => {
+  test("includes the verbatim result text in the prompt", () => {
+    const result = "Everything looks good but forgot the marker.";
+    const prompt = buildValidateFallbackPrompt(result);
+    expect(prompt).toContain(result);
+  });
+
+  test("instructs the model to respond with only PASS, FAIL, or UNCLEAR", () => {
+    const prompt = buildValidateFallbackPrompt("some output");
+    expect(prompt).toContain("PASS");
+    expect(prompt).toContain("FAIL");
+    expect(prompt).toContain("UNCLEAR");
+    expect(prompt.toLowerCase()).toContain("only one word");
+  });
+
+  test("describes PASS signal phrases in the prompt", () => {
+    const prompt = buildValidateFallbackPrompt("text");
+    expect(prompt.toLowerCase()).toContain("all checks pass");
+    expect(prompt.toLowerCase()).toContain("tests are green");
+  });
+
+  test("describes FAIL signal phrases in the prompt", () => {
+    const prompt = buildValidateFallbackPrompt("text");
+    expect(prompt.toLowerCase()).toContain("failed");
+    expect(prompt.toLowerCase()).toContain("broken");
+    expect(prompt.toLowerCase()).toContain("regression");
+  });
+});
+
+describe("normaliseValidateFallback", () => {
+  test("maps exact PASS token to PASS", () => {
+    expect(normaliseValidateFallback("PASS")).toBe("PASS");
+  });
+
+  test("maps exact FAIL token to FAIL", () => {
+    expect(normaliseValidateFallback("FAIL")).toBe("FAIL");
+  });
+
+  test("maps exact UNCLEAR token to UNCLEAR", () => {
+    expect(normaliseValidateFallback("UNCLEAR")).toBe("UNCLEAR");
+  });
+
+  test("trims surrounding whitespace before matching", () => {
+    expect(normaliseValidateFallback("  pass  ")).toBe("PASS");
+    expect(normaliseValidateFallback("  fail  ")).toBe("FAIL");
+    expect(normaliseValidateFallback("  unclear  ")).toBe("UNCLEAR");
+  });
+
+  test("is case-insensitive", () => {
+    expect(normaliseValidateFallback("Pass")).toBe("PASS");
+    expect(normaliseValidateFallback("Fail")).toBe("FAIL");
+  });
+
+  test("maps garbage or multi-word responses to UNCLEAR", () => {
+    expect(normaliseValidateFallback("I think it passes")).toBe("UNCLEAR");
+    expect(normaliseValidateFallback("UNKNOWN")).toBe("UNCLEAR");
+    expect(normaliseValidateFallback("")).toBe("UNCLEAR");
+  });
+});
+
+describe("resolveValidateOutcomeWithFallback", () => {
+  function makeClaudeMock(text = "PASS", exitCode = 0) {
+    return { generateText: mock(async () => ({ exitCode, text })) };
+  }
+
+  test("direct VALIDATE: PASS marker → no fallback invoked, fallbackUsed falsy, reason unchanged", async () => {
+    const claude = makeClaudeMock();
+    const outcome = await resolveValidateOutcomeWithFallback(
+      0,
+      "All good.\n\nVALIDATE: PASS\n",
+      claude,
+    );
+    expect(outcome.passed).toBe(true);
+    expect(outcome.reason).toBe("validate reported PASS");
+    expect(outcome.fallbackUsed).toBeFalsy();
+    expect(claude.generateText).not.toHaveBeenCalled();
+  });
+
+  test("direct VALIDATE: FAIL marker → no fallback invoked", async () => {
+    const claude = makeClaudeMock();
+    const outcome = await resolveValidateOutcomeWithFallback(
+      0,
+      "Errors found.\n\nVALIDATE: FAIL\n",
+      claude,
+    );
+    expect(outcome.passed).toBe(false);
+    expect(outcome.reason).toContain("FAIL");
+    expect(outcome.fallbackUsed).toBeFalsy();
+    expect(claude.generateText).not.toHaveBeenCalled();
+  });
+
+  test("exitCode !== 0 → no fallback invoked", async () => {
+    const claude = makeClaudeMock();
+    const outcome = await resolveValidateOutcomeWithFallback(1, "VALIDATE: PASS", claude);
+    expect(outcome.passed).toBe(false);
+    expect(outcome.reason).toContain("exited 1");
+    expect(outcome.fallbackUsed).toBeFalsy();
+    expect(claude.generateText).not.toHaveBeenCalled();
+  });
+
+  test("no marker + Haiku returns PASS → passed: true, reason mentions fallback, fallbackUsed: true", async () => {
+    const claude = makeClaudeMock("PASS");
+    const outcome = await resolveValidateOutcomeWithFallback(0, "Seems fine to me!", claude);
+    expect(outcome.passed).toBe(true);
+    expect(outcome.reason.toLowerCase()).toContain("fallback");
+    expect(outcome.fallbackUsed).toBe(true);
+    expect(claude.generateText).toHaveBeenCalledTimes(1);
+  });
+
+  test("no marker + Haiku returns FAIL → passed: false, reason mentions fallback", async () => {
+    const claude = makeClaudeMock("FAIL");
+    const outcome = await resolveValidateOutcomeWithFallback(0, "Something went wrong.", claude);
+    expect(outcome.passed).toBe(false);
+    expect(outcome.reason.toLowerCase()).toContain("fallback");
+    expect(outcome.fallbackUsed).toBe(true);
+  });
+
+  test("no marker + Haiku returns UNCLEAR → passed: false, reason mentions defaulting to FAIL", async () => {
+    const claude = makeClaudeMock("UNCLEAR");
+    const outcome = await resolveValidateOutcomeWithFallback(0, "Maybe it works?", claude);
+    expect(outcome.passed).toBe(false);
+    expect(outcome.reason.toLowerCase()).toContain("defaulting to fail");
+    expect(outcome.fallbackUsed).toBe(true);
+  });
+
+  test("no marker + Haiku returns whitespace-padded 'pass' → normalised to PASS → passed: true", async () => {
+    const claude = makeClaudeMock("  pass  ");
+    const outcome = await resolveValidateOutcomeWithFallback(0, "All clear.", claude);
+    expect(outcome.passed).toBe(true);
+    expect(outcome.fallbackUsed).toBe(true);
+  });
+
+  test("no marker + Haiku returns garbage like 'I think it passes' → UNCLEAR → safe-default FAIL", async () => {
+    const claude = makeClaudeMock("I think it passes");
+    const outcome = await resolveValidateOutcomeWithFallback(0, "The agent rambled.", claude);
+    expect(outcome.passed).toBe(false);
+    expect(outcome.reason.toLowerCase()).toContain("defaulting to fail");
+    expect(outcome.fallbackUsed).toBe(true);
+  });
+
+  test("no marker + claude.generateText rejects → caught → safe-default FAIL", async () => {
+    const claude = {
+      generateText: mock(async () => {
+        throw new Error("network error");
+      }),
+    };
+    const outcome = await resolveValidateOutcomeWithFallback(0, "No marker here.", claude);
+    expect(outcome.passed).toBe(false);
+    expect(outcome.reason.toLowerCase()).toContain("defaulting to fail");
+    expect(outcome.fallbackUsed).toBe(true);
+  });
+
+  test("no marker + Haiku exitCode !== 0 → safe-default FAIL", async () => {
+    const claude = makeClaudeMock("PASS", 1);
+    const outcome = await resolveValidateOutcomeWithFallback(0, "Something unclear.", claude);
+    expect(outcome.passed).toBe(false);
+    expect(outcome.reason.toLowerCase()).toContain("defaulting to fail");
+    expect(outcome.fallbackUsed).toBe(true);
   });
 });

@@ -1,4 +1,5 @@
 import type { ClaudeSessionOptions } from "./gateways/claude-argv.ts";
+import type { ClaudeGateway } from "./gateways/claude-gateway.ts";
 import type { Item } from "./store.ts";
 
 export type EngineeringPhase = "plan" | "execute" | "validate";
@@ -257,6 +258,104 @@ export function resolveValidateOutcome(
   if (passMatch && !failMatch) return { passed: true, reason: "validate reported PASS" };
   if (failMatch) return { passed: false, reason: "validate reported FAIL" };
   return { passed: false, reason: "validate phase did not emit a PASS/FAIL marker" };
+}
+
+const MISSING_MARKER_REASON = "validate phase did not emit a PASS/FAIL marker";
+
+/**
+ * Build the prompt that asks Haiku to classify a validate-phase output as
+ * PASS, FAIL, or UNCLEAR when the agent forgot to emit the required marker.
+ */
+export function buildValidateFallbackPrompt(resultText: string): string {
+  return (
+    `You are a validation assessor. An AI agent ran a validation phase and produced the text below, ` +
+    `but forgot to end its message with the required VALIDATE: PASS or VALIDATE: FAIL marker.\n\n` +
+    `Classify the agent's conclusion as one of:\n` +
+    `- PASS  — the agent concluded that validation passed (e.g. "all checks pass", "tests are green", "all validation passes")\n` +
+    `- FAIL  — the agent concluded that validation failed (e.g. "failed", "broken", "regression", "errors found")\n` +
+    `- UNCLEAR — the text is ambiguous or does not clearly indicate either outcome\n\n` +
+    `When in doubt, use UNCLEAR. Respond with ONLY one word: PASS, FAIL, or UNCLEAR — no other text.\n\n` +
+    `Agent output:\n${resultText}\n`
+  );
+}
+
+/**
+ * Normalise a raw Haiku response into one of the three recognised tokens.
+ * Anything that cannot be mapped to PASS or FAIL is treated as UNCLEAR.
+ */
+export function normaliseValidateFallback(raw: string): "PASS" | "FAIL" | "UNCLEAR" {
+  const token = raw.trim().toUpperCase();
+  if (token === "PASS") return "PASS";
+  if (token === "FAIL") return "FAIL";
+  return "UNCLEAR";
+}
+
+/**
+ * Resolve the validate outcome, falling back to a Haiku-based assessor when
+ * the validate phase did not emit a PASS/FAIL marker.
+ *
+ * The fallback is only invoked for the missing-marker case — non-zero exit
+ * codes and explicit PASS/FAIL markers are returned as-is.
+ */
+export async function resolveValidateOutcomeWithFallback(
+  exitCode: number,
+  resultText: string,
+  claude: Pick<ClaudeGateway, "generateText">,
+  log?: (msg: string) => void,
+): Promise<{ passed: boolean; reason: string; fallbackUsed?: boolean }> {
+  const primary = resolveValidateOutcome(exitCode, resultText);
+
+  if (primary.reason !== MISSING_MARKER_REASON) {
+    return primary;
+  }
+
+  log?.("Validate marker missing — invoking Haiku fallback assessor...");
+
+  try {
+    const { exitCode: haikusExitCode, text } = await claude.generateText(
+      buildValidateFallbackPrompt(resultText),
+      "haiku",
+    );
+
+    if (haikusExitCode !== 0) {
+      log?.("Haiku fallback assessor exited non-zero — defaulting to FAIL.");
+      return {
+        passed: false,
+        reason: "haiku fallback assessor could not classify (defaulting to FAIL)",
+        fallbackUsed: true,
+      };
+    }
+
+    const verdict = normaliseValidateFallback(text);
+
+    if (verdict === "PASS") {
+      log?.("Haiku fallback assessor reported PASS.");
+      return { passed: true, reason: "haiku fallback assessor reported PASS", fallbackUsed: true };
+    }
+
+    if (verdict === "FAIL") {
+      log?.("Haiku fallback assessor reported FAIL.");
+      return {
+        passed: false,
+        reason: "haiku fallback assessor reported FAIL",
+        fallbackUsed: true,
+      };
+    }
+
+    log?.("Haiku fallback assessor was UNCLEAR — defaulting to FAIL.");
+    return {
+      passed: false,
+      reason: "haiku fallback assessor could not classify (defaulting to FAIL)",
+      fallbackUsed: true,
+    };
+  } catch {
+    log?.("Haiku fallback assessor threw — defaulting to FAIL.");
+    return {
+      passed: false,
+      reason: "haiku fallback assessor could not classify (defaulting to FAIL)",
+      fallbackUsed: true,
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------

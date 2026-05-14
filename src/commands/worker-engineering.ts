@@ -22,7 +22,7 @@ import {
   buildValidateOptions,
   buildValidatePrompt,
   normaliseBranchSlug,
-  resolveValidateOutcome,
+  resolveValidateOutcomeWithFallback,
 } from "../task-type-workflow.ts";
 import {
   type EngineeringAuditPaths,
@@ -158,7 +158,10 @@ export async function runExecuteValidateLoop(
   const maxRetries = item.retries ?? 1;
   const maxAttempts = 1 + maxRetries;
   let attempt = 0;
-  let outcome: { passed: boolean; reason: string } = { passed: false, reason: "not run" };
+  let outcome: { passed: boolean; reason: string; fallbackUsed?: boolean } = {
+    passed: false,
+    reason: "not run",
+  };
   const executeResults: string[] = [];
   const validateResults: string[] = [];
 
@@ -224,7 +227,12 @@ export async function runExecuteValidateLoop(
       buildValidateOptions(),
     );
     validateResults.push(validateRun.result);
-    outcome = resolveValidateOutcome(validateRun.exitCode, validateRun.result);
+    outcome = await resolveValidateOutcomeWithFallback(
+      validateRun.exitCode,
+      validateRun.result,
+      claude,
+      log,
+    );
     await safeRecordPhase(
       item.id,
       {
@@ -234,6 +242,7 @@ export async function runExecuteValidateLoop(
         exitCode: validateRun.exitCode,
         passed: outcome.passed,
         attempt,
+        ...(outcome.fallbackUsed ? { fallbackUsed: true } : {}),
       },
       log,
     );

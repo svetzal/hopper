@@ -39,6 +39,12 @@ export interface PhaseRecord {
    * and validate phases ever run more than once per item.
    */
   attempt?: number;
+  /**
+   * True when the validate-phase outcome was resolved via the Haiku fallback
+   * assessor (i.e. the agent forgot to emit a VALIDATE: PASS/FAIL marker).
+   * Undefined / false for phases that resolved through the primary marker path.
+   */
+  fallbackUsed?: boolean;
 }
 
 export interface Item {
