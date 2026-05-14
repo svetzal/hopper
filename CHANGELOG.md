@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.3] - 2026-05-14
+
+### Added
+
+- **Haiku fallback assessor for missing VALIDATE markers.** When the validate agent's final message lacks a `VALIDATE: PASS/FAIL` marker, Hopper now routes through a Haiku-based assessment before failing closed. Haiku evaluates the final text for signals like "all checks pass" or "failed" and responds with PASS/FAIL/UNCLEAR; genuinely ambiguous results safely default to FAIL. Fallback invocation and decision are logged for observability.
+
+### Fixed
+
+- **`hopper integrate` now correctly detects worktree directories.** `Bun.file().exists()` is designed for files only and returns false for directories, causing in-progress items to be rejected even when their worktrees exist. Replaced with `node:fs/promises.stat()`. Error messages now distinguish between status-based and worktree-missing failures.
+- **Validate marker detection in multi-session audit logs.** `extractResult` now returns the last result event instead of the first. This handles cases where long-running commands trigger a `task_notification` resume, creating multiple init/result pairs in the audit log and previously masking the final outcome.
+
 ## [2.1.2] - 2026-05-14
 
 ### Changed
@@ -358,7 +369,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Release workflow: use macos-14 for x64 builds
 
-[Unreleased]: https://github.com/svetzal/hopper/compare/v2.1.2...HEAD
+[Unreleased]: https://github.com/svetzal/hopper/compare/v2.1.3...HEAD
+[2.1.3]: https://github.com/svetzal/hopper/compare/v2.1.2...v2.1.3
 [2.1.2]: https://github.com/svetzal/hopper/compare/v2.1.1...v2.1.2
 [2.1.1]: https://github.com/svetzal/hopper/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/svetzal/hopper/compare/v2.0.7...v2.1.0
