@@ -1,3 +1,4 @@
+import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ParsedArgs } from "../cli.ts";
@@ -30,9 +31,27 @@ export type IntegrateResult = {
   worktreeRemoved: boolean;
 };
 
+/**
+ * Tri-state result of a worktree path check:
+ * - "directory" — path exists and is a directory (valid worktree)
+ * - "file"      — path exists but is a regular file (invalid worktree)
+ * - "missing"   — path does not exist
+ */
+export type WorktreePathState = "directory" | "file" | "missing";
+
+async function defaultCheckWorktree(path: string): Promise<WorktreePathState> {
+  try {
+    const s = await stat(path);
+    return s.isDirectory() ? "directory" : "file";
+  } catch {
+    return "missing";
+  }
+}
+
 export function integrateCommand(
   parsed: ParsedArgs,
   git: GitGateway = createGitGateway(),
+  checkWorktree: (path: string) => Promise<WorktreePathState> = defaultCheckWorktree,
 ): Promise<CommandResult<IntegrateDryRunResult | IntegrateResult>> {
   return catchCommandError(
     async (): Promise<CommandResult<IntegrateDryRunResult | IntegrateResult>> => {
@@ -61,11 +80,13 @@ export function integrateCommand(
       }
 
       if (item.status === "in_progress") {
-        const worktreeExists = await Bun.file(worktreePath).exists();
-        if (!worktreeExists) {
+        const worktreeState = await checkWorktree(worktreePath);
+        if (worktreeState !== "directory") {
+          const reason =
+            worktreeState === "file" ? "path exists but is not a directory" : "path does not exist";
           return {
             status: "error",
-            message: `Cannot integrate item with status '${item.status}'. Only 'completed' or 'in_progress' items can be integrated.`,
+            message: `Cannot integrate item ${shortId(item.id)}: status is in_progress but worktree ${reason}: ${worktreePath}`,
           };
         }
       }
@@ -118,8 +139,8 @@ export function integrateCommand(
         }
 
         try {
-          const worktreeExists = await Bun.file(worktreePath).exists();
-          if (worktreeExists) {
+          const worktreeState = await checkWorktree(worktreePath);
+          if (worktreeState === "directory") {
             await git.worktreeRemove(workingDir, worktreePath);
             worktreeRemoved = true;
           }

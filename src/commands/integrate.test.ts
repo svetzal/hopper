@@ -175,6 +175,86 @@ describe("integrateCommand", () => {
     expect(git.worktreeRemove).not.toHaveBeenCalled();
   });
 
+  test("in_progress item with existing worktree directory proceeds", async () => {
+    const workingDir = "/repo";
+    const branch = "hopper/eng-task";
+    const item = makeItem({ status: "in_progress", workingDir, branch });
+    await addItem(item);
+
+    const git = makeMockGit();
+    const result = await integrateCommand(
+      makeParsed("integrate", [item.id]),
+      git,
+      async () => "directory",
+    );
+
+    expect(result.status).toBe("success");
+    if (result.status === "success") {
+      expect(git.checkout).toHaveBeenCalledWith(workingDir, "main");
+      expect(git.mergeNoEdit).toHaveBeenCalledWith(workingDir, branch);
+    }
+  });
+
+  test("in_progress item with missing worktree directory returns worktree-specific error", async () => {
+    const item = makeItem({
+      status: "in_progress",
+      workingDir: "/repo",
+      branch: "hopper/eng-task",
+    });
+    await addItem(item);
+
+    const result = await integrateCommand(
+      makeParsed("integrate", [item.id]),
+      makeMockGit(),
+      async () => "missing",
+    );
+
+    expect(result.status).toBe("error");
+    if (result.status === "error") {
+      expect(result.message).toContain("worktree");
+      expect(result.message).toContain("does not exist");
+      expect(result.message).not.toContain(
+        "Only 'completed' or 'in_progress' items can be integrated",
+      );
+    }
+  });
+
+  test("in_progress item with file at worktree path returns not-a-directory error", async () => {
+    const item = makeItem({
+      status: "in_progress",
+      workingDir: "/repo",
+      branch: "hopper/eng-task",
+    });
+    await addItem(item);
+
+    const result = await integrateCommand(
+      makeParsed("integrate", [item.id]),
+      makeMockGit(),
+      async () => "file",
+    );
+
+    expect(result.status).toBe("error");
+    if (result.status === "error") {
+      expect(result.message).toContain("not a directory");
+      expect(result.message).not.toContain(
+        "Only 'completed' or 'in_progress' items can be integrated",
+      );
+    }
+  });
+
+  test("cancelled item is rejected by status guard with status-based error message", async () => {
+    const item = makeItem({ status: "cancelled", workingDir: "/repo", branch: "hopper/abc" });
+    await addItem(item);
+
+    const result = await integrateCommand(makeParsed("integrate", [item.id]), makeMockGit());
+
+    expect(result.status).toBe("error");
+    if (result.status === "error") {
+      expect(result.message).toContain("Cannot integrate item with status 'cancelled'");
+      expect(result.message).toContain("Only 'completed' or 'in_progress' items can be integrated");
+    }
+  });
+
   test("returns success with warning when deleteBranch throws", async () => {
     const workingDir = "/repo";
     const branch = "hopper/branch-fail";
