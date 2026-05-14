@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-05-14
+
+### Changed
+
+- **Refactored command error handling to throw-based `unwrap` / `catchCommandError` pattern.** Eliminates ~24 two-line unwrap/guard blocks and 11 `requirePositional` guards across all command files. Command bodies are now straight-line code with no manual early returns for Result failures.
+- **Extracted `logCompleteOutcome` and `logClaimBanner` into `worker-shared`.** Removes verbatim duplicate blocks that existed in both `worker.ts` and `worker-engineering.ts`.
+- **Coordinator skill: clarified no-abort semantics for claims.** Added a "Claims are irrevocable" callout under the lifecycle diagram; rewrote the Cancelling and Requeuing sections to self-disclose the limitation. Fixes a misreading where `cancel`/`requeue` appeared to stop an in-flight worker session.
+
+### Maintenance
+
+- Dependency updates (@types/bun, @types/node, @biomejs/biome).
+
 ## [2.1.1] - 2026-05-09
 
 ### Documentation
@@ -346,7 +358,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Release workflow: use macos-14 for x64 builds
 
-[Unreleased]: https://github.com/svetzal/hopper/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/svetzal/hopper/compare/v2.1.2...HEAD
+[2.1.2]: https://github.com/svetzal/hopper/compare/v2.1.1...v2.1.2
+[2.1.1]: https://github.com/svetzal/hopper/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/svetzal/hopper/compare/v2.0.7...v2.1.0
 [2.0.7]: https://github.com/svetzal/hopper/compare/v2.0.6...v2.0.7
 [2.0.6]: https://github.com/svetzal/hopper/compare/v2.0.5...v2.0.6
