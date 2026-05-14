@@ -26,6 +26,14 @@ cancelled (terminal)
 Recurring items: completed --> new scheduled copy created automatically
 ```
 
+**Claims are irrevocable — hopper has no abort command.** Once a worker claims an item and the autonomous Claude session (or `--command` shell process) starts, hopper cannot stop it. The lifecycle arrows above describe queue-record state, not process state:
+
+- `hopper cancel` refuses to operate on IN_PROGRESS items. There is no `--force` flag.
+- `hopper requeue` flips the queue record back to QUEUED but does **not** signal the running session. The process keeps running until it finishes naturally; if another worker then claims the requeued copy, two sessions race on the same work.
+- The only way to actually halt an in-flight task is to kill the OS process from outside hopper (see "Investigating In-Progress Tasks"). That is a destructive recovery move, not a routine workflow, and should only happen after the user agrees.
+
+Plan dispatch accordingly: a QUEUED item is an instruction you can still retract; an IN_PROGRESS item is work in flight, and "I changed my mind" is no longer a valid reason to interfere. If you find yourself reaching for `cancel` or `requeue` to "stop" a claimed task, stop and re-read this section — you are about to do something that will not have the effect you expect.
+
 Items without a `--command` flag consume a full Claude Code session, so those should represent meaningful, well-defined work — not quick fixes or vague ideas. Items with `--command` run a shell command instead and are useful for automated maintenance, builds, or any scriptable task.
 
 Workers follow an **analyze → plan → execute → validate** cycle. Descriptions that include explicit validation criteria help workers verify their own work before finishing.
@@ -329,10 +337,13 @@ Avoid speculative MCP-hang narratives unless the audit output supports them. "St
 
 **Step 5 — decide with the user before killing processes.**
 
+Aborting a claimed task is a two-step operation: kill the OS process, then update the queue record. Neither step alone is sufficient — and `requeue` on its own never stops anything (see "Claims are irrevocable" near the top).
+
 Options when a task is genuinely stuck:
-1. Kill the Claude session PID → worker notices and auto-marks the item. May leave it as in_progress until the next worker tick; follow up with `hopper requeue` if needed.
-2. `hopper requeue <id> --reason "..."` → explicit requeue, worker claim is released, item re-enters the queue.
-3. If `hopper audit <id> --result` shows near-complete investigation work, you may have enough intel to synthesize findings manually instead of retrying — check with the user first.
+1. **Kill the Claude session PID first**, then once the process is confirmed gone, run `hopper requeue <id> --reason "..."` to release the claim and let the item re-enter the queue. The worker may auto-mark the item on its next tick; the explicit requeue makes the intent unambiguous and records why.
+2. If `hopper audit <id> --result` shows near-complete investigation work, you may have enough intel to synthesize findings manually instead of retrying — check with the user first.
+
+Do not `hopper requeue` a still-running session hoping the worker will notice; the existing process keeps going and a second worker can claim the requeued copy, racing the original.
 
 ### Cancelling Items
 
@@ -341,7 +352,7 @@ hopper cancel <id>
 hopper cancel <id> --json
 ```
 
-Cancels a QUEUED, SCHEDULED, or BLOCKED item. Cannot cancel items that are IN_PROGRESS or already COMPLETED. If other items depend on the cancelled item, they remain BLOCKED — consider cancelling or updating those too.
+Cancels a QUEUED, SCHEDULED, or BLOCKED item — i.e. items not yet picked up by a worker. **`cancel` cannot stop work in flight.** It refuses on IN_PROGRESS items (and already-COMPLETED ones); there is no `--force` and no companion command that aborts a claimed task. See "Claims are irrevocable — hopper has no abort command" near the top of this skill before reaching for a workaround. If other items depend on the cancelled item, they remain BLOCKED — consider cancelling or updating those too.
 
 ### Requeuing Items
 
@@ -350,7 +361,9 @@ hopper requeue <id> --reason "description of why"
 hopper requeue <id> --reason "..." --agent <name> --json
 ```
 
-Returns an IN_PROGRESS item back to QUEUED status. The `--reason` flag is required — it records why the work couldn't be completed. Only works on IN_PROGRESS items.
+Flips an IN_PROGRESS item's queue record back to QUEUED so a worker can re-claim it. The `--reason` flag is required — it records why the work couldn't be completed. Only works on IN_PROGRESS items.
+
+**Requeue is a queue-record operation, not a process control.** It does not signal the autonomous Claude session or `--command` shell process — that keeps running until it finishes or crashes. If a second worker then claims the requeued item before the original session ends, both sessions race on the same task. Only requeue after the original process is confirmed dead (see "Investigating In-Progress Tasks"). Requeue is not a way to "change your mind" about claimed work — see "Claims are irrevocable — hopper has no abort command" near the top of this skill.
 
 ### Integrating Completed Work
 
