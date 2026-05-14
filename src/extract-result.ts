@@ -2,11 +2,20 @@
  * Parses a JSONL stream from a Claude `--output-format stream-json` session
  * and returns the final result string.
  *
- * Each line is attempted as JSON. The first line whose `type` is `"result"`
- * and whose `result` field is a string is returned. Falls back to a sentinel
- * value when no result line is present (e.g. the session was interrupted).
+ * Each line is attempted as JSON. The **last** line whose `type` is `"result"`
+ * and whose `result` field is a string is returned. Using the last match
+ * handles multi-session transcripts — for example when a long-running Bash
+ * command causes Claude Code to emit a `task_notification` resume, producing
+ * two `init`/`result` segment pairs in the same audit log. The agent's actual
+ * final answer (including any `VALIDATE: PASS` marker) lives in the last
+ * segment. For single-segment sessions there is only one `result` line, so
+ * behaviour is unchanged.
+ *
+ * Falls back to a sentinel value when no result line is present (e.g. the
+ * session was interrupted).
  */
 export function extractResult(jsonlOutput: string): string {
+  let lastResult: string | undefined;
   for (const line of jsonlOutput.split("\n")) {
     try {
       const obj = JSON.parse(line) as unknown;
@@ -18,13 +27,13 @@ export function extractResult(jsonlOutput: string): string {
         "result" in obj &&
         typeof (obj as Record<string, unknown>).result === "string"
       ) {
-        return (obj as Record<string, unknown>).result as string;
+        lastResult = (obj as Record<string, unknown>).result as string;
       }
     } catch {
       // skip non-JSON lines
     }
   }
-  return "(see audit log for details)";
+  return lastResult ?? "(see audit log for details)";
 }
 
 /**
