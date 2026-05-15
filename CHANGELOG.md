@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.4] - 2026-05-15
+
+### Changed
+
+- **Refactored `src/store.ts`** as part of an automated maintenance pass.
+  Code organization improvements, no behavior change.
+
+### Maintenance
+
+- Bumped `@types/node` to `^25.8.0`.
+- Removed a stale subagent worktree gitlink (`agent-a89694f2`) whose branch
+  was already fully merged into main pre-v2.1.3.
+
 ## [2.1.3] - 2026-05-14
 
 ### Added
