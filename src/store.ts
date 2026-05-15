@@ -135,6 +135,27 @@ export async function saveItems(items: Item[]): Promise<void> {
   return gateway.save(items);
 }
 
+async function transact<W extends { items: Item[] }, T>(
+  workflow: (items: Item[]) => Result<W>,
+  map: (value: W) => T,
+): Promise<Result<T>> {
+  const items = await loadItems();
+  const outcome = workflow(items);
+  if (!outcome.ok) return outcome;
+  await saveItems(outcome.value.items);
+  return ok(map(outcome.value));
+}
+
+async function transactIfChanged(
+  workflow: (items: Item[]) => { items: Item[]; changed: boolean },
+): Promise<void> {
+  const items = await loadItems();
+  const outcome = workflow(items);
+  if (outcome.changed) {
+    await saveItems(outcome.items);
+  }
+}
+
 export async function addItem(item: Item): Promise<void> {
   const items = await loadItems();
   await saveItems(prependItem(items, item));
@@ -159,11 +180,10 @@ export async function completeItem(
   agent?: string,
   result?: string,
 ): Promise<Result<CompleteResult>> {
-  const items = await loadItems();
-  const outcome = complete(items, token, agent, result, new Date(), crypto.randomUUID());
-  if (!outcome.ok) return outcome;
-  await saveItems(outcome.value.items);
-  return ok({ completed: outcome.value.completed, recurred: outcome.value.recurred });
+  return transact(
+    (items) => complete(items, token, agent, result, new Date(), crypto.randomUUID()),
+    (v) => ({ completed: v.completed, recurred: v.recurred }),
+  );
 }
 
 export async function findItem(id: string): Promise<Result<Item>> {
@@ -176,11 +196,10 @@ export async function requeueItem(
   reason: string,
   agent?: string,
 ): Promise<Result<Item>> {
-  const items = await loadItems();
-  const outcome = requeue(items, id, reason, agent);
-  if (!outcome.ok) return outcome;
-  await saveItems(outcome.value.items);
-  return ok(outcome.value.requeued);
+  return transact(
+    (items) => requeue(items, id, reason, agent),
+    (v) => v.requeued,
+  );
 }
 
 export interface CancelResult {
@@ -189,30 +208,24 @@ export interface CancelResult {
 }
 
 export async function cancelItem(id: string): Promise<Result<CancelResult>> {
-  const items = await loadItems();
-  const outcome = cancel(items, id, new Date());
-  if (!outcome.ok) return outcome;
-  await saveItems(outcome.value.items);
-  return ok({
-    item: outcome.value.cancelled,
-    blockedDependentCount: outcome.value.blockedDependentCount,
-  });
+  return transact(
+    (items) => cancel(items, id, new Date()),
+    (v) => ({ item: v.cancelled, blockedDependentCount: v.blockedDependentCount }),
+  );
 }
 
 export async function updateItemTags(id: string, tags: string[]): Promise<Result<Item>> {
-  const items = await loadItems();
-  const outcome = addTags(items, id, tags);
-  if (!outcome.ok) return outcome;
-  await saveItems(outcome.value.items);
-  return ok(outcome.value.item);
+  return transact(
+    (items) => addTags(items, id, tags),
+    (v) => v.item,
+  );
 }
 
 export async function removeItemTags(id: string, tags: string[]): Promise<Result<Item>> {
-  const items = await loadItems();
-  const outcome = removeTags(items, id, tags);
-  if (!outcome.ok) return outcome;
-  await saveItems(outcome.value.items);
-  return ok(outcome.value.item);
+  return transact(
+    (items) => removeTags(items, id, tags),
+    (v) => v.item,
+  );
 }
 
 export interface ReprioritizeResult {
@@ -224,11 +237,10 @@ export async function reprioritizeItem(
   id: string,
   priority: "high" | "normal" | "low",
 ): Promise<Result<ReprioritizeResult>> {
-  const items = await loadItems();
-  const outcome = reprioritize(items, id, priority);
-  if (!outcome.ok) return outcome;
-  await saveItems(outcome.value.items);
-  return ok({ item: outcome.value.item, oldPriority: outcome.value.oldPriority });
+  return transact(
+    (items) => reprioritize(items, id, priority),
+    (v) => ({ item: v.item, oldPriority: v.oldPriority }),
+  );
 }
 
 /**
@@ -238,11 +250,7 @@ export async function reprioritizeItem(
  * aid, not a correctness-critical path.
  */
 export async function recordItemPhase(id: string, record: PhaseRecord): Promise<void> {
-  const items = await loadItems();
-  const outcome = appendPhase(items, id, record);
-  if (outcome.changed) {
-    await saveItems(outcome.items);
-  }
+  return transactIfChanged((items) => appendPhase(items, id, record));
 }
 
 /**
@@ -251,9 +259,5 @@ export async function recordItemPhase(id: string, record: PhaseRecord): Promise<
  * — callers should wrap in try/catch and swallow failures.
  */
 export async function setItemEngineeringBranchSlug(id: string, slug: string): Promise<void> {
-  const items = await loadItems();
-  const outcome = setEngineeringBranchSlug(items, id, slug);
-  if (outcome.changed) {
-    await saveItems(outcome.items);
-  }
+  return transactIfChanged((items) => setEngineeringBranchSlug(items, id, slug));
 }
