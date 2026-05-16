@@ -68,6 +68,18 @@ export function logClaimBanner(item: ClaimedItem, log: LogFn, extras?: string[])
   }
 }
 
+export async function safeVoid(
+  fn: () => Promise<void>,
+  label: string,
+  log?: LogFn,
+): Promise<void> {
+  try {
+    await fn();
+  } catch (e) {
+    log?.(`${label}: ${toErrorMessage(e)}`);
+  }
+}
+
 export async function safeRequeue(
   itemId: string,
   reason: string,

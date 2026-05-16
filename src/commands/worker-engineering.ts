@@ -39,6 +39,7 @@ import {
   orchestrateWorktreeSetup,
   StaleEngineeringBranchError,
   safeRequeue,
+  safeVoid,
   teardownWorktree,
 } from "./worker-shared.ts";
 
@@ -48,19 +49,11 @@ import {
  * take down an otherwise-healthy engineering run.
  */
 async function safeRecordPhase(itemId: string, record: PhaseRecord, log?: LogFn): Promise<void> {
-  try {
-    await recordItemPhase(itemId, record);
-  } catch (e) {
-    log?.(`Phase recording failed: ${toErrorMessage(e)}`);
-  }
+  return safeVoid(() => recordItemPhase(itemId, record), "Phase recording failed", log);
 }
 
 async function safePersistBranchSlug(itemId: string, slug: string, log?: LogFn): Promise<void> {
-  try {
-    await setItemEngineeringBranchSlug(itemId, slug);
-  } catch (e) {
-    log?.(`Slug persistence failed: ${toErrorMessage(e)}`);
-  }
+  return safeVoid(() => setItemEngineeringBranchSlug(itemId, slug), "Slug persistence failed", log);
 }
 
 async function resolveEngineeringBranchSlug(
