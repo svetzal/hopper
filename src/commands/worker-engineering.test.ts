@@ -148,15 +148,15 @@ describe("runExecuteValidateLoop", () => {
     };
     const fs = makeMockFs();
 
-    const result = await runExecuteValidateLoop(
+    const result = await runExecuteValidateLoop({
       item,
-      "/worktree",
-      "plan text",
-      makePaths(),
-      HOPPER_HOME,
-      { claude, fs },
-      noop,
-    );
+      worktreePath: "/worktree",
+      planText: "plan text",
+      paths: makePaths(),
+      hopperHome: HOPPER_HOME,
+      deps: { claude, fs },
+      log: noop,
+    });
 
     expect(result.passed).toBe(true);
     expect(result.executeResults).toHaveLength(1);
@@ -174,15 +174,15 @@ describe("runExecuteValidateLoop", () => {
     };
     const fs = makeMockFs();
 
-    const result = await runExecuteValidateLoop(
+    const result = await runExecuteValidateLoop({
       item,
-      "/worktree",
-      "plan text",
-      makePaths(),
-      HOPPER_HOME,
-      { claude, fs },
-      noop,
-    );
+      worktreePath: "/worktree",
+      planText: "plan text",
+      paths: makePaths(),
+      hopperHome: HOPPER_HOME,
+      deps: { claude, fs },
+      log: noop,
+    });
 
     expect(result.passed).toBe(false);
     // Validate should not have run
@@ -200,15 +200,15 @@ describe("runExecuteValidateLoop", () => {
     };
     const fs = makeMockFs();
 
-    const result = await runExecuteValidateLoop(
+    const result = await runExecuteValidateLoop({
       item,
-      "/worktree",
-      "plan text",
-      makePaths(),
-      HOPPER_HOME,
-      { claude, fs },
-      noop,
-    );
+      worktreePath: "/worktree",
+      planText: "plan text",
+      paths: makePaths(),
+      hopperHome: HOPPER_HOME,
+      deps: { claude, fs },
+      log: noop,
+    });
 
     expect(result.passed).toBe(false);
     // 2 attempts (1 + 1 retry): 2 execute and 2 validate results
@@ -233,15 +233,15 @@ describe("runExecuteValidateLoop", () => {
     };
     const fs = makeMockFs();
 
-    await runExecuteValidateLoop(
+    await runExecuteValidateLoop({
       item,
-      "/worktree",
-      "plan text",
-      makePaths(),
-      HOPPER_HOME,
-      { claude, fs },
-      noop,
-    );
+      worktreePath: "/worktree",
+      planText: "plan text",
+      paths: makePaths(),
+      hopperHome: HOPPER_HOME,
+      deps: { claude, fs },
+      log: noop,
+    });
 
     const remediationCall = sessionCalls.find(
       (p) => p.includes("EXECUTE phase") && p.includes("remediation"),
@@ -264,15 +264,15 @@ describe("runExecuteValidateLoop", () => {
     };
     const fs = makeMockFs();
 
-    const result = await runExecuteValidateLoop(
+    const result = await runExecuteValidateLoop({
       item,
-      "/worktree",
-      "plan text",
-      makePaths(),
-      HOPPER_HOME,
-      { claude, fs },
-      noop,
-    );
+      worktreePath: "/worktree",
+      planText: "plan text",
+      paths: makePaths(),
+      hopperHome: HOPPER_HOME,
+      deps: { claude, fs },
+      log: noop,
+    });
 
     expect(result.passed).toBe(true);
     expect(result.executeResults).toHaveLength(2);
@@ -290,15 +290,15 @@ describe("runExecuteValidateLoop", () => {
     };
     const fs = makeMockFs();
 
-    await runExecuteValidateLoop(
+    await runExecuteValidateLoop({
       item,
-      "/worktree",
-      "plan",
+      worktreePath: "/worktree",
+      planText: "plan",
       paths,
-      HOPPER_HOME,
-      { claude, fs },
-      noop,
-    );
+      hopperHome: HOPPER_HOME,
+      deps: { claude, fs },
+      log: noop,
+    });
 
     const execFailWriteMock = typedMock(fs.writeFile);
     const resultWrite = execFailWriteMock.mock.calls.find((c) => c[0] === paths.resultFile);

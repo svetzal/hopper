@@ -34,17 +34,20 @@ export interface WorkerDeps {
   shell?: ShellGateway;
 }
 
-async function handleCompletion(
-  item: ClaimedItem,
-  agentName: string,
-  exitCode: number,
-  result: string,
-  mergeNote: string,
-  workBranch: string | undefined,
-  fs: FsGateway,
-  resultFile: string,
-  log: LogFn,
-): Promise<void> {
+interface CompletionContext {
+  item: ClaimedItem;
+  agentName: string;
+  exitCode: number;
+  result: string;
+  mergeNote: string;
+  workBranch: string | undefined;
+  fs: FsGateway;
+  resultFile: string;
+  log: LogFn;
+}
+
+async function handleCompletion(ctx: CompletionContext): Promise<void> {
+  const { item, agentName, exitCode, result, mergeNote, workBranch, fs, resultFile, log } = ctx;
   const { action, result: finalResult } = resolveCompletionAction(exitCode, result, mergeNote);
   await fs.writeFile(resultFile, finalResult);
 
@@ -149,13 +152,13 @@ export async function processItem(
       worktreePath = workSetup.worktreePath;
       await fs.ensureDir(join(hopperHome, "worktrees"));
       log(`Setting up worktree at ${worktreePath}...`);
-      workBranch = await orchestrateWorktreeSetup(
+      workBranch = await orchestrateWorktreeSetup({
         git,
-        workSetup.repoDir,
-        workSetup.branch,
+        repoDir: workSetup.repoDir,
+        branch: workSetup.branch,
         worktreePath,
-        item.id,
-      );
+        itemId: item.id,
+      });
       log(`Work branch: ${workBranch}`);
       workDir = worktreePath;
     } else if (workSetup.type === "existing-dir") {
@@ -185,7 +188,7 @@ export async function processItem(
         ? await mergeAndPush(git, item, workBranch, log)
         : "";
 
-    await handleCompletion(
+    await handleCompletion({
       item,
       agentName,
       exitCode,
@@ -195,7 +198,7 @@ export async function processItem(
       fs,
       resultFile,
       log,
-    );
+    });
   } finally {
     // Belt-and-suspenders: clean up worktree if something threw mid-flight
     if (worktreePath && item.workingDir) {

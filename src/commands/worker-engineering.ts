@@ -134,15 +134,18 @@ interface ExecuteValidateResult {
   validateResults: readonly string[];
 }
 
-export async function runExecuteValidateLoop(
-  item: ClaimedItem,
-  worktreePath: string,
-  planText: string,
-  paths: EngineeringAuditPaths,
-  hopperHome: string,
-  deps: { claude: ClaudeGateway; fs: FsGateway },
-  log: LogFn,
-): Promise<ExecuteValidateResult> {
+export interface ExecuteValidateContext {
+  item: ClaimedItem;
+  worktreePath: string;
+  planText: string;
+  paths: EngineeringAuditPaths;
+  hopperHome: string;
+  deps: { claude: ClaudeGateway; fs: FsGateway };
+  log: LogFn;
+}
+
+export async function runExecuteValidateLoop(ctx: ExecuteValidateContext): Promise<ExecuteValidateResult> {
+  const { item, worktreePath, planText, paths, hopperHome, deps, log } = ctx;
   const { claude, fs } = deps;
   // One execute → validate attempt, then up to `maxRetries` remediation
   // attempts when validate reports FAIL. Each attempt writes its own
@@ -283,19 +286,22 @@ export async function commitEngineeringChanges(
   return { dirty };
 }
 
-export async function teardownMergeAndComplete(
-  item: ClaimedItem,
-  agentName: string,
-  worktreePath: string,
-  workBranch: string,
-  dirty: boolean,
-  planText: string,
-  executeResults: readonly string[],
-  validateResults: readonly string[],
-  paths: EngineeringAuditPaths,
-  deps: { git: GitGateway; fs: FsGateway },
-  log: LogFn,
-): Promise<void> {
+export interface TeardownContext {
+  item: ClaimedItem;
+  agentName: string;
+  worktreePath: string;
+  workBranch: string;
+  dirty: boolean;
+  planText: string;
+  executeResults: readonly string[];
+  validateResults: readonly string[];
+  paths: EngineeringAuditPaths;
+  deps: { git: GitGateway; fs: FsGateway };
+  log: LogFn;
+}
+
+export async function teardownMergeAndComplete(ctx: TeardownContext): Promise<void> {
+  const { item, agentName, worktreePath, workBranch, dirty, planText, executeResults, validateResults, paths, deps, log } = ctx;
   const { git, fs } = deps;
   await teardownWorktree(git, item.workingDir as string, worktreePath, log);
 
@@ -366,15 +372,15 @@ export async function processEngineeringItem(
   // last-resort safety net.
   try {
     log(`Setting up worktree at ${worktreePath}...`);
-    await orchestrateWorktreeSetup(
+    await orchestrateWorktreeSetup({
       git,
-      item.workingDir,
-      item.branch,
+      repoDir: item.workingDir,
+      branch: item.branch,
       worktreePath,
-      item.id,
-      workBranch,
+      itemId: item.id,
+      workBranchOverride: workBranch,
       log,
-    );
+    });
   } catch (err) {
     const reason =
       err instanceof StaleEngineeringBranchError
@@ -391,32 +397,32 @@ export async function processEngineeringItem(
   const { planText } = planResult;
 
   // --- Execute / Validate loop ----------------------------------------
-  const loopResult = await runExecuteValidateLoop(
+  const loopResult = await runExecuteValidateLoop({
     item,
     worktreePath,
     planText,
     paths,
     hopperHome,
-    { claude, fs },
+    deps: { claude, fs },
     log,
-  );
+  });
   if (!loopResult.passed) return;
 
   // --- Commit (Hopper + Haiku) -----------------------------------------
   const { dirty } = await commitEngineeringChanges(item, worktreePath, { git, claude }, log);
 
   // --- Worktree teardown + merge/push + complete -----------------------
-  await teardownMergeAndComplete(
+  await teardownMergeAndComplete({
     item,
     agentName,
     worktreePath,
     workBranch,
     dirty,
     planText,
-    loopResult.executeResults,
-    loopResult.validateResults,
+    executeResults: loopResult.executeResults,
+    validateResults: loopResult.validateResults,
     paths,
-    { git, fs },
+    deps: { git, fs },
     log,
-  );
+  });
 }

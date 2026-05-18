@@ -100,15 +100,18 @@ export function createLogger(itemId: string, concurrency: number): LogFn {
   return (message: string) => console.log(message);
 }
 
-export async function orchestrateWorktreeSetup(
-  git: GitGateway,
-  repoDir: string,
-  branch: string,
-  worktreePath: string,
-  itemId: string,
-  workBranchOverride?: string,
-  log?: LogFn,
-): Promise<string> {
+export interface WorktreeSetupContext {
+  git: GitGateway;
+  repoDir: string;
+  branch: string;
+  worktreePath: string;
+  itemId: string;
+  workBranchOverride?: string;
+  log?: LogFn;
+}
+
+export async function orchestrateWorktreeSetup(ctx: WorktreeSetupContext): Promise<string> {
+  const { git, repoDir, branch, worktreePath, itemId, workBranchOverride, log } = ctx;
   const localExists = await git.branchExists(repoDir, branch);
   const remoteExists = await git.remoteBranchExists(repoDir, branch);
   const branchAction = resolveBranchSetup(branch, { localExists, remoteExists });
