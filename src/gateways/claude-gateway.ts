@@ -4,6 +4,7 @@
 // extract-result.test.ts and claude-argv.test.ts, and integration behaviour
 // is covered by worker-workflow tests.
 import { extractResult, formatStderrEvent } from "../extract-result.ts";
+import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
 import { buildClaudeArgv, type ClaudeSessionOptions } from "./claude-argv.ts";
 
 export type { ClaudeSessionOptions };
@@ -18,25 +19,12 @@ function resolveClaudeBin(): string {
   return resolved;
 }
 
-export interface ClaudeGateway {
-  runSession(
-    prompt: string,
-    cwd: string,
-    auditFile: string,
-    options?: ClaudeSessionOptions,
-  ): Promise<{ exitCode: number; result: string }>;
-  /**
-   * One-shot text generation via `claude --print` with no tools and no
-   * permissions. Intended for cheap Haiku calls where Hopper itself needs a
-   * string (branch slug, commit message, agent selection) — never for agentic
-   * work.
-   */
-  generateText(
-    prompt: string,
-    model: string,
-    options?: { cwd?: string; appendSystemPrompt?: string },
-  ): Promise<{ exitCode: number; text: string }>;
-}
+/**
+ * Legacy alias for the runner-agnostic {@link AgentRunner}. Kept so existing
+ * imports keep compiling; new code should import `AgentRunner` directly from
+ * `./agent-runner.ts`.
+ */
+export type ClaudeGateway = AgentRunner;
 
 /**
  * Stream stdout from the claude subprocess to the audit file one line at a time.
@@ -91,7 +79,7 @@ async function runSession(
   prompt: string,
   cwd: string,
   auditFile: string,
-  options: ClaudeSessionOptions = {},
+  options: SessionOptions = {},
 ): Promise<{ exitCode: number; result: string }> {
   const argv = buildClaudeArgv(resolveClaudeBin(), prompt, options);
   const proc = Bun.spawn(argv, { cwd, stdout: "pipe", stderr: "pipe" });
@@ -171,3 +159,10 @@ async function generateText(
 export function createClaudeGateway(): ClaudeGateway {
   return { runSession, generateText };
 }
+
+/**
+ * Preferred alias of {@link createClaudeGateway} that emphasises the
+ * runner-agnostic interface. Use this in new call sites; `createClaudeGateway`
+ * stays around for existing imports.
+ */
+export const createClaudeRunner: () => AgentRunner = createClaudeGateway;
