@@ -132,6 +132,115 @@ describe("extractPhaseCost (opencode)", () => {
   });
 });
 
+describe("extractPhaseCost (opencode step_finish fallback)", () => {
+  // Mirrors the real-world failure mode observed in the May 2026 profile
+  // bake-off: `opencode export` post-session sometimes returns nothing,
+  // so the gateway never appends the synthetic opencode-export event.
+  // The per-step step_finish records are still present and carry full
+  // cost+token data — sum them as a fallback rather than reporting null.
+
+  test("sums cost + tokens across step_finish records when terminal event is absent", () => {
+    const jsonl = [
+      JSON.stringify({ type: "step_start", sessionID: "sess-1" }),
+      JSON.stringify({
+        type: "step_finish",
+        sessionID: "sess-1",
+        part: {
+          type: "step-finish",
+          cost: 0.01,
+          tokens: { input: 100, output: 20, reasoning: 5, cache: { read: 500, write: 0 } },
+        },
+      }),
+      JSON.stringify({ type: "text", part: { text: "..." } }),
+      JSON.stringify({
+        type: "step_finish",
+        sessionID: "sess-1",
+        part: {
+          type: "step-finish",
+          cost: 0.02,
+          tokens: { input: 200, output: 40, reasoning: 10, cache: { read: 1500, write: 0 } },
+        },
+      }),
+      JSON.stringify({
+        type: "step_finish",
+        sessionID: "sess-1",
+        part: {
+          type: "step-finish",
+          cost: 0.005,
+          tokens: { input: 50, output: 10, reasoning: 2, cache: { read: 800, write: 0 } },
+        },
+      }),
+    ].join("\n");
+
+    const cost = extractPhaseCost(jsonl);
+    expect(cost).not.toBeNull();
+    expect(cost?.costUsd).toBeCloseTo(0.035, 6);
+    expect(cost?.tokensIn).toBe(350);
+    expect(cost?.tokensOut).toBe(70);
+    expect(cost?.reasoningTokens).toBe(17);
+    expect(cost?.cacheRead).toBe(2800);
+    expect(cost?.cacheWrite).toBe(0);
+    expect(cost?.model).toBeUndefined();
+  });
+
+  test("prefers terminal opencode-export over step_finish fallback when both present", () => {
+    // In a healthy run, both are emitted. opencode-export is the canonical
+    // post-run aggregate and includes the model identifier, so it wins.
+    const jsonl = [
+      JSON.stringify({
+        type: "step_finish",
+        part: {
+          type: "step-finish",
+          cost: 0.5,
+          tokens: { input: 1, output: 1, cache: { read: 0, write: 0 } },
+        },
+      }),
+      JSON.stringify({
+        type: "opencode-export",
+        info: {
+          model: { id: "gpt-5.5", providerID: "openai" },
+          cost: 0.0123,
+          tokens: { input: 500, output: 1200, cache: { read: 2000, write: 800 } },
+        },
+      }),
+    ].join("\n");
+
+    const cost = extractPhaseCost(jsonl);
+    expect(cost?.costUsd).toBe(0.0123);
+    expect(cost?.model).toBe("openai/gpt-5.5");
+    expect(cost?.tokensIn).toBe(500);
+  });
+
+  test("still returns null when neither terminal event nor step_finish records exist", () => {
+    const jsonl = [
+      JSON.stringify({ type: "step_start", sessionID: "sess-1" }),
+      JSON.stringify({ type: "text", part: { text: "..." } }),
+      JSON.stringify({ type: "tool_use", part: { type: "tool", tool: "bash" } }),
+    ].join("\n");
+    expect(extractPhaseCost(jsonl)).toBeNull();
+  });
+
+  test("malformed step_finish records (no part / no tokens) coerce to zero, not throw", () => {
+    const jsonl = [
+      JSON.stringify({ type: "step_finish" }),
+      JSON.stringify({ type: "step_finish", part: {} }),
+      JSON.stringify({
+        type: "step_finish",
+        part: { type: "step-finish", cost: 0.01, tokens: { input: 10, output: 5 } },
+      }),
+    ].join("\n");
+
+    expect(extractPhaseCost(jsonl)).toEqual({
+      costUsd: 0.01,
+      tokensIn: 10,
+      tokensOut: 5,
+      reasoningTokens: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    });
+  });
+});
+
 describe("extractPhaseCost (edge cases)", () => {
   test("returns null for empty input", () => {
     expect(extractPhaseCost("")).toBeNull();

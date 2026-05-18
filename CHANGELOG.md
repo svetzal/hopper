@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.1] - 2026-05-18
+
+### Fixed
+
+- **`hopper show` no longer drops the execute-phase cost for opencode-runner
+  items when the terminal `opencode-export` event is missing.** Discovered
+  during the 5-profile Space Invaders bake-off: `opencode export` post-session
+  can return nothing on long runs, in which case the opencode gateway never
+  appends its synthetic terminal record, so `extractPhaseCost` returned `null`
+  and the phase silently dropped from `cost.phases`. The per-step
+  `step_finish` records still contain full `cost`/`tokens` fields, so
+  `extractPhaseCost` now falls back to summing them when no terminal event is
+  present. Effect on the bake-off case: the glm execute phase that previously
+  reported `$0.00` now reports `$2.20`, matching the audit-log ground truth.
+  Healthy runs (terminal event present) are unaffected — the terminal record
+  still wins. Claude-runner items are unaffected (they never emit
+  `step_finish`).
+
 ## [3.1.0] - 2026-05-18
 
 A small follow-up to 3.0 picking up profile ergonomics and `hopper list`

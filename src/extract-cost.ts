@@ -5,6 +5,13 @@
  *   - claude  `--output-format stream-json` ends with `{"type":"result", total_cost_usd, usage:{...}}`
  *   - opencode (synthesized by `opencode-gateway.ts`) appends `{"type":"opencode-export", info:{cost, tokens:{...}, model:{...}}}`
  *
+ * When the opencode terminal event is missing — `opencode export` can fail
+ * after long sessions, leaving no synthetic record — we fall back to summing
+ * per-step `step_finish` events. Those carry the same cost/tokens fields and
+ * are emitted incrementally throughout the run, so they're a faithful
+ * reconstruction of the aggregate. The model identifier is not available in
+ * step_finish records, so the fallback omits it.
+ *
  * Subscription/OAuth runs report cost as 0; that is honest data, not a bug, so
  * we surface zero without special-casing it here. Display copy can decide
  * whether to dim or omit zero-cost phases.
@@ -59,6 +66,9 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 export function extractPhaseCost(jsonlOutput: string): PhaseCost | null {
   if (!jsonlOutput) return null;
   let last: PhaseCost | null = null;
+  // Fallback aggregator: built as we see step_finish records so we can recover
+  // when the terminal opencode-export event is missing from the stream.
+  let stepFallback: PhaseCost | null = null;
 
   for (const line of jsonlOutput.split("\n")) {
     const trimmed = line.trim();
@@ -106,10 +116,24 @@ export function extractPhaseCost(jsonlOutput: string): PhaseCost | null {
       if (provider && id) cost.model = `${provider}/${id}`;
       else if (id) cost.model = id;
       last = cost;
+      continue;
+    }
+
+    if (obj.type === "step_finish") {
+      const part = isRecord(obj.part) ? obj.part : {};
+      const tokens = isRecord(part.tokens) ? part.tokens : {};
+      const cache = isRecord(tokens.cache) ? tokens.cache : {};
+      if (stepFallback === null) stepFallback = zeroCost();
+      stepFallback.costUsd += numberOr(part.cost, 0);
+      stepFallback.tokensIn += numberOr(tokens.input, 0);
+      stepFallback.tokensOut += numberOr(tokens.output, 0);
+      stepFallback.reasoningTokens += numberOr(tokens.reasoning, 0);
+      stepFallback.cacheRead += numberOr(cache.read, 0);
+      stepFallback.cacheWrite += numberOr(cache.write, 0);
     }
   }
 
-  return last;
+  return last ?? stepFallback;
 }
 
 /**
