@@ -48,6 +48,13 @@ export function buildClaudeArgv(
   if (options.appendSystemPrompt) {
     argv.push("--append-system-prompt", options.appendSystemPrompt);
   }
+  if (options.effort) {
+    // claude --effort accepts low|medium|high|xhigh|max. Map hopper's unified
+    // "minimal" to claude's nearest equivalent ("low"); everything else is
+    // forwarded verbatim so callers can still pass runner-native values.
+    const value = options.effort === "minimal" ? "low" : options.effort;
+    argv.push("--effort", value);
+  }
 
   // Terminate option parsing with `--` so even if a future flag ends up
   // variadic, the prompt is always the final positional and never gets

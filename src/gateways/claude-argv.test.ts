@@ -124,6 +124,31 @@ describe("buildClaudeArgv", () => {
     expect(argv[i + 1]).toBe("Extra guidance.");
   });
 
+  test("effort is forwarded as --effort", () => {
+    const argv = buildClaudeArgv("claude", "p", { effort: "high" });
+    const i = argv.indexOf("--effort");
+    expect(i).toBeGreaterThan(-1);
+    expect(argv[i + 1]).toBe("high");
+  });
+
+  test("effort=minimal maps to --effort low (claude has no minimal)", () => {
+    const argv = buildClaudeArgv("claude", "p", { effort: "minimal" });
+    const i = argv.indexOf("--effort");
+    expect(i).toBeGreaterThan(-1);
+    expect(argv[i + 1]).toBe("low");
+  });
+
+  test("effort passes through runner-native values (xhigh) verbatim", () => {
+    const argv = buildClaudeArgv("claude", "p", { effort: "xhigh" });
+    const i = argv.indexOf("--effort");
+    expect(argv[i + 1]).toBe("xhigh");
+  });
+
+  test("no effort means no --effort flag", () => {
+    const argv = buildClaudeArgv("claude", "p");
+    expect(argv.includes("--effort")).toBe(false);
+  });
+
   test("multiple options compose without mutual interference", () => {
     const argv = buildClaudeArgv("claude", "do it", {
       model: "opus",

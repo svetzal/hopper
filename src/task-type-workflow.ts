@@ -51,6 +51,7 @@ export function buildInvestigationPrompt(item: Item): string {
 export function buildInvestigationOptions(): ClaudeSessionOptions {
   return {
     model: "opus",
+    effort: "high",
     permissionMode: "plan",
     tools: [...INVESTIGATION_TOOLS],
   };
@@ -95,6 +96,7 @@ export function buildPlanPrompt(item: Item): string {
 export function buildPlanOptions(): ClaudeSessionOptions {
   return {
     model: "opus",
+    effort: "high",
     permissionMode: "plan",
     tools: [...PLAN_TOOLS],
   };
@@ -149,6 +151,7 @@ export function buildExecutePrompt(item: Item, planText: string): string {
 export function buildExecuteOptions(agent?: string): ClaudeSessionOptions {
   return {
     model: "sonnet",
+    effort: "medium",
     ...(agent ? { agent } : {}),
     disallowedTools: [...EXECUTE_DISALLOWED_TOOLS],
   };
@@ -233,6 +236,7 @@ export function buildValidatePrompt(item: Item, planText: string): string {
 export function buildValidateOptions(): ClaudeSessionOptions {
   return {
     model: "opus",
+    effort: "high",
     tools: [...VALIDATE_TOOLS],
     allowedTools: [...VALIDATE_ALLOWED_TOOLS],
     disallowedTools: [...EXECUTE_DISALLOWED_TOOLS],

@@ -57,6 +57,18 @@ export interface SessionOptions {
    * agent is set.
    */
   appendSystemPrompt?: string;
+  /**
+   * Reasoning effort / variant. Hopper's unified vocabulary is
+   * `"minimal" | "low" | "medium" | "high" | "max"`. Each runner translates:
+   * - claude → `--effort <value>` (claude has no `minimal`; the claude argv
+   *   builder maps `minimal` → `low`).
+   * - opencode → `--variant <value>` (provider-specific; opencode passes
+   *   the value through verbatim — supported levels depend on the model).
+   *
+   * Runner-native strings outside the unified set (e.g. claude's `xhigh`)
+   * are forwarded as-is; the CLI surfaces the error if invalid.
+   */
+  effort?: "minimal" | "low" | "medium" | "high" | "max" | (string & {});
   /** Continue an existing audit file rather than starting fresh. */
   append?: boolean;
 }

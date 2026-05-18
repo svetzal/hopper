@@ -78,6 +78,10 @@ describe("buildInvestigationOptions", () => {
     expect(tools).not.toContain("Write");
     expect(tools).not.toContain("Bash");
   });
+
+  test("uses high reasoning effort", () => {
+    expect(buildInvestigationOptions().effort).toBe("high");
+  });
 });
 
 describe("INVESTIGATION_TOOLS", () => {
@@ -140,6 +144,10 @@ describe("buildPlanOptions", () => {
     expect(opts.tools).not.toContain("Edit");
     expect(opts.tools).not.toContain("Bash");
   });
+
+  test("uses high reasoning effort", () => {
+    expect(buildPlanOptions().effort).toBe("high");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -178,6 +186,10 @@ describe("buildExecuteOptions", () => {
     expect(opts.disallowedTools).toContain("Bash(git commit:*)");
     expect(opts.disallowedTools).toContain("Bash(git push:*)");
     expect(opts.disallowedTools).toContain("Bash(git merge:*)");
+  });
+
+  test("uses medium reasoning effort", () => {
+    expect(buildExecuteOptions().effort).toBe("medium");
   });
 });
 
@@ -223,6 +235,10 @@ describe("buildValidateOptions", () => {
   test("explicitly denies git-mutating Bash patterns", () => {
     const opts = buildValidateOptions();
     expect(opts.disallowedTools).toEqual([...EXECUTE_DISALLOWED_TOOLS]);
+  });
+
+  test("uses high reasoning effort", () => {
+    expect(buildValidateOptions().effort).toBe("high");
   });
 });
 

@@ -83,4 +83,22 @@ describe("buildOpencodeArgv", () => {
     const idx = argv.indexOf("--format");
     expect(argv[idx + 1]).toBe("json");
   });
+
+  test("effort is forwarded as --variant", () => {
+    const argv = buildOpencodeArgv(BIN, "hi", { effort: "high" });
+    const idx = argv.indexOf("--variant");
+    expect(idx).toBeGreaterThan(-1);
+    expect(argv[idx + 1]).toBe("high");
+  });
+
+  test("effort passes through verbatim (no minimal→low remap for opencode)", () => {
+    const argv = buildOpencodeArgv(BIN, "hi", { effort: "minimal" });
+    const idx = argv.indexOf("--variant");
+    expect(argv[idx + 1]).toBe("minimal");
+  });
+
+  test("no effort means no --variant flag", () => {
+    const argv = buildOpencodeArgv(BIN, "hi");
+    expect(argv.includes("--variant")).toBe(false);
+  });
 });

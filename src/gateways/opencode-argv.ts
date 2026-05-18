@@ -43,6 +43,13 @@ export function buildOpencodeArgv(
     argv.push("--agent", options.agent);
   }
 
+  if (options.effort) {
+    // opencode --variant is provider-specific (e.g. minimal|low|medium|high|max
+    // on OpenAI gpt-5.x). Forward verbatim; the CLI errors if the level is
+    // unsupported for the chosen model.
+    argv.push("--variant", options.effort);
+  }
+
   if (cwd) {
     argv.push("--dir", cwd);
   }
