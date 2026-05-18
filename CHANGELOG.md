@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-05-18
+
+A small follow-up to 3.0 picking up profile ergonomics and `hopper list`
+clarity after exercising the new profile system end-to-end.
+
+### Added
+
+- **Per-tier effort overrides in profiles.** Profile model entries now
+  accept either the shorthand string form or an object
+  `{ "model": "...", "effort": "..." }` that pins reasoning effort for
+  that tier, overriding the per-phase workflow default (plan/validate
+  =high, execute=medium). Effort vocab: `minimal | low | medium | high
+  | max` (claude maps `minimal` → `low`; opencode forwards verbatim).
+  `hopper profiles` annotates overridden tiers with `(effort: <value>)`,
+  and `hopper profiles show <name>` now emits the raw file content so
+  shorthand stays shorthand. Shipped templates remain shorthand-only —
+  no behavioural change for existing profiles.
+- **Current phase in `hopper list`.** In-progress engineering items now
+  show `[in progress: plan]`, `[in progress: execute]`,
+  `[in progress: validate]`, or `[in progress: execute (retry N)]`
+  instead of an opaque `[in progress]`. Derived from existing `phases`
+  records — no schema change.
+
+### Fixed
+
+- **Openrouter profile model IDs.** The shipped openrouter template
+  had two model IDs opencode rejected at dispatch, leaving items stuck
+  in_progress: `claude-sonnet-4-6` → `claude-sonnet-4.6`, and
+  `gemini-2-flash` → `gemini-2.5-flash`.
+- **Failed-phase rendering in `hopper list`.** When execute exits
+  non-zero or validate fails past the retry budget the worker preserves
+  the worktree and bails — the item is stuck, not progressing. The
+  phase-status badge no longer pretends the next phase started; failed
+  items render as `[failed at <phase>]`.
+
+### Changed
+
+- **Default worker agent renamed `claude-worker` → `worker`.** The
+  worker has been runner-agnostic since 3.0 (each item dispatches via
+  its own profile); the old name showed up in `hopper list` as
+  misleading attribution on items running against opencode / OpenAI /
+  ollama / etc.
+
 ## [3.0.0] - 2026-05-18
 
 This is a **major release** that introduces a profile system for per-job
