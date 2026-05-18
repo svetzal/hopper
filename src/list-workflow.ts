@@ -84,36 +84,55 @@ export function filterAndSortItems(
 }
 
 /**
- * Infer which engineering phase an in-progress item is currently running, based
- * on the `phases` record (which is only written at phase *completion*). Returns
- * undefined for non-engineering items, items not in_progress, or completed
- * validate runs awaiting completion.
- *
- * Phase records are written when a phase ends, so the *next* phase is the one
- * currently running:
- *   - 0 records → plan
- *   - last record = plan → execute
- *   - last record = execute → validate
- *   - last record = validate (failed) → execute (retry N)
- *   - last record = validate (passed) → undefined (item about to complete)
+ * Phase status for an in-progress engineering item. `running` means the worker
+ * is actively in the named phase; `failed` means the worker bailed (preserving
+ * worktree + branch) and the item is stuck in_progress awaiting human action.
  */
-export function inferEngineeringPhase(item: Item): string | undefined {
+export type EngineeringPhaseStatus =
+  | { kind: "running"; phase: string }
+  | { kind: "failed"; phase: "plan" | "execute" | "validate" };
+
+/**
+ * Infer which engineering phase an in-progress item is currently running (or
+ * failed at), based on the `phases` record. Records are written at phase
+ * *completion*, so the next phase is the running one — unless the last phase
+ * exited non-zero or validate didn't pass within the retry budget, in which
+ * case the worker has bailed and the item is stuck.
+ *
+ * Returns undefined for non-engineering items, items not in_progress, or
+ * completed validate runs awaiting final completion.
+ */
+export function inferEngineeringPhase(item: Item): EngineeringPhaseStatus | undefined {
   if (item.type !== "engineering") return undefined;
   if (item.status !== Status.IN_PROGRESS) return undefined;
 
   const phases = item.phases ?? [];
-  if (phases.length === 0) return "plan";
+  if (phases.length === 0) return { kind: "running", phase: "plan" };
 
   const last = phases[phases.length - 1];
-  if (!last) return "plan";
+  if (!last) return { kind: "running", phase: "plan" };
 
-  if (last.name === "plan") return "execute";
-  if (last.name === "execute") return "validate";
-  if (last.name === "validate") {
-    if (last.passed) return undefined;
-    const executeAttempts = phases.filter((p) => p.name === "execute").length;
-    return `execute (retry ${executeAttempts})`;
+  // Terminal failure paths — worker preserves worktree + branch and stops.
+  // The item remains in_progress until a human requeues or cancels.
+  if (last.name === "plan" && last.exitCode !== 0) {
+    return { kind: "failed", phase: "plan" };
   }
+  if (last.name === "execute" && last.exitCode !== 0) {
+    return { kind: "failed", phase: "execute" };
+  }
+  if (last.name === "validate" && !last.passed) {
+    const executeAttempts = phases.filter((p) => p.name === "execute").length;
+    const maxAttempts = (item.retries ?? 1) + 1;
+    if (executeAttempts >= maxAttempts) {
+      return { kind: "failed", phase: "validate" };
+    }
+    return { kind: "running", phase: `execute (retry ${executeAttempts})` };
+  }
+
+  if (last.name === "plan") return { kind: "running", phase: "execute" };
+  if (last.name === "execute") return { kind: "running", phase: "validate" };
+  if (last.name === "validate" && last.passed) return undefined;
+
   return undefined;
 }
 
@@ -166,7 +185,9 @@ export function formatItemList(items: Item[]): string {
         : "";
     const inProgressBadge = (() => {
       const phase = inferEngineeringPhase(item);
-      return phase ? ` [in progress: ${phase}]` : " [in progress]";
+      if (!phase) return " [in progress]";
+      if (phase.kind === "failed") return ` [failed at ${phase.phase}]`;
+      return ` [in progress: ${phase.phase}]`;
     })();
     const badge =
       item.status === Status.IN_PROGRESS

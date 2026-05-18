@@ -286,6 +286,7 @@ describe("inferEngineeringPhase", () => {
     const item = makeItem({
       status: "in_progress",
       type: "engineering",
+      retries: 2,
       phases: [
         { name: "plan", startedAt: "x", endedAt: "y", exitCode: 0 },
         { name: "execute", startedAt: "x", endedAt: "y", exitCode: 0 },
@@ -294,7 +295,64 @@ describe("inferEngineeringPhase", () => {
         { name: "validate", startedAt: "x", endedAt: "y", exitCode: 0, passed: false },
       ],
     });
-    expect(inferEngineeringPhase(item)).toBe("execute (retry 2)");
+    expect(inferEngineeringPhase(item)).toEqual({
+      kind: "running",
+      phase: "execute (retry 2)",
+    });
+  });
+
+  test("returns failed at plan when plan exited non-zero", () => {
+    const item = makeItem({
+      status: "in_progress",
+      type: "engineering",
+      phases: [{ name: "plan", startedAt: "x", endedAt: "y", exitCode: 1 }],
+    });
+    expect(inferEngineeringPhase(item)).toEqual({ kind: "failed", phase: "plan" });
+  });
+
+  test("returns failed at execute when execute exited non-zero (worker bailed)", () => {
+    const item = makeItem({
+      status: "in_progress",
+      type: "engineering",
+      phases: [
+        { name: "plan", startedAt: "x", endedAt: "y", exitCode: 0 },
+        { name: "execute", startedAt: "x", endedAt: "y", exitCode: 1, attempt: 1 },
+      ],
+    });
+    expect(inferEngineeringPhase(item)).toEqual({ kind: "failed", phase: "execute" });
+  });
+
+  test("returns failed at validate after retry budget exhausted", () => {
+    const item = makeItem({
+      status: "in_progress",
+      type: "engineering",
+      // default retries = 1, so 2 execute attempts total
+      phases: [
+        { name: "plan", startedAt: "x", endedAt: "y", exitCode: 0 },
+        { name: "execute", startedAt: "x", endedAt: "y", exitCode: 0, attempt: 1 },
+        { name: "validate", startedAt: "x", endedAt: "y", exitCode: 0, passed: false },
+        { name: "execute", startedAt: "x", endedAt: "y", exitCode: 0, attempt: 2 },
+        { name: "validate", startedAt: "x", endedAt: "y", exitCode: 0, passed: false },
+      ],
+    });
+    expect(inferEngineeringPhase(item)).toEqual({ kind: "failed", phase: "validate" });
+  });
+
+  test("returns running with retry hint when validate failed but retries remain", () => {
+    const item = makeItem({
+      status: "in_progress",
+      type: "engineering",
+      retries: 2,
+      phases: [
+        { name: "plan", startedAt: "x", endedAt: "y", exitCode: 0 },
+        { name: "execute", startedAt: "x", endedAt: "y", exitCode: 0, attempt: 1 },
+        { name: "validate", startedAt: "x", endedAt: "y", exitCode: 0, passed: false },
+      ],
+    });
+    expect(inferEngineeringPhase(item)).toEqual({
+      kind: "running",
+      phase: "execute (retry 1)",
+    });
   });
 });
 

@@ -98,8 +98,8 @@ export const SHIPPED_PROFILES: Record<string, string> = {
       runner: "opencode",
       models: {
         deep: "openrouter/z-ai/glm-5.1",
-        balanced: "openrouter/anthropic/claude-sonnet-4-6",
-        fast: "openrouter/google/gemini-2-flash",
+        balanced: "openrouter/anthropic/claude-sonnet-4.6",
+        fast: "openrouter/google/gemini-2.5-flash",
         "glm-5.1": "openrouter/z-ai/glm-5.1",
       },
     },
