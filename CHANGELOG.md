@@ -7,6 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-05-18
+
+This is a **major release** that introduces a second agent runner (opencode)
+alongside Claude Code, abstracts model selection behind a vendor-agnostic
+tier vocabulary, and adds per-phase reasoning-effort control.
+
+### Added
+
+- **opencode runner.** `hopper worker --runner opencode` dispatches session
+  work through the [opencode](https://opencode.ai) CLI as an alternative to
+  Claude Code. The opencode runner translates Hopper's `SessionOptions` to
+  opencode's surface (no tool-allowlist flags exist on the opencode side;
+  craftsperson agents inline via `OPENCODE_CONFIG_CONTENT` synthesised from
+  `~/.claude/agents/<name>.md` bodies; final assistant text comes from
+  `opencode export <sessionID>` post-run; outcome decided on exit code AND
+  no error events in the stream because opencode's exit code alone is not a
+  reliable success signal). Fast-tier one-shots (branch slug, commit
+  message, validate-marker fallback) continue running on Claude Code
+  regardless of `--runner` choice — they're deterministic and gain nothing
+  from the opencode surface. See `docs/opencode-spike.md` for the empirical
+  CLI findings that shaped the implementation.
+- **`AgentRunner` interface.** New `src/gateways/agent-runner.ts` defines a
+  runner-agnostic contract (`runSession`, `generateText`) implemented by
+  both runners. The legacy type names `ClaudeGateway` and
+  `ClaudeSessionOptions` are kept as thin aliases for backwards
+  compatibility.
+- **Vendor-agnostic model tier vocabulary.** Hopper now addresses models
+  through three tiers — `deep`, `balanced`, `fast` — in
+  `src/gateways/model-tier.ts`. Claude translates tiers to its native
+  `opus`/`sonnet`/`haiku` aliases via a hard-coded map; opencode translates
+  via `~/.hopper/runner-config.json` to whatever provider/model you bind.
+  Worker log lines now name the tier (`Plan phase (deep, plan mode, …)`,
+  `Execute phase attempt 1/2 (balanced, …)`) so the output is honest
+  regardless of which runner is active.
+- **Per-phase reasoning effort.** New `SessionOptions.effort` field with
+  unified vocabulary `minimal | low | medium | high | max`. Claude forwards
+  as `--effort <value>` (mapping `minimal` → `low`); opencode forwards as
+  `--variant <value>`. Per-phase defaults set in `task-type-workflow.ts`:
+  plan / validate / investigation = `high`, execute = `medium`.
+  Runner-native strings (e.g. claude's `xhigh`) are forwarded verbatim.
+- **`~/.hopper/runner-config.json`** for per-user opencode model bindings.
+  Tier names map to runner-native provider/model identifiers; native IDs
+  with `/` in them pass through unchanged so callers can mix freely.
+- **Audit viewer support for opencode events.** `hopper audit <id> --tail`
+  now decodes opencode's `step_start`, `text`, `step_finish`, and synthetic
+  `opencode-export` events alongside claude's stream-json. The render path
+  is runner-agnostic.
+- **Opt-in integration test for the opencode runner.**
+  `src/gateways/opencode-gateway.integration.test.ts`, runnable via
+  `HOPPER_OPENCODE_IT=1 bun test …`. Skipped by default; defaults to the
+  free `opencode/deepseek-v4-flash-free` model so no credentials are
+  required.
+
+### Changed
+
+- **BREAKING: `~/.hopper/runner-config.json` schema.** Map keys changed
+  from `opus | sonnet | haiku` to `deep | balanced | fast`. Migration:
+  rename the keys in your file. Values (the provider/model identifiers on
+  the right-hand side) are unchanged.
+- **BREAKING: `SessionOptions.model` vocabulary.** Code that constructs
+  `SessionOptions` (e.g. custom worker integrations) should now pass
+  `"deep"`, `"balanced"`, or `"fast"` rather than `"opus"`, `"sonnet"`,
+  `"haiku"`. The legacy aliases still pass through verbatim on the claude
+  runner (claude accepts them natively) but no longer translate to the
+  configured opencode model — they will be sent to opencode as-is and
+  fail.
+- **Worker log lines** now use tier names (`deep` / `balanced` / `fast`)
+  rather than vendor aliases — so a `--runner opencode` worker that
+  resolves `deep` to `openai/gpt-5.5` no longer logs `(opus, …)`.
+
+### Fixed
+
+- **Empty-diff commit messages for fresh-from-scratch projects.** When the
+  execute phase generated an entire project with every file untracked,
+  `git diff HEAD` (used by `diffSummary`) excluded them, so the
+  commit-message model received an empty diff and frequently responded
+  with a meta-complaint that became the commit message verbatim. Added
+  `GitGateway.stageAll` and call it before `diffSummary` in
+  `commitEngineeringChanges`; `commitAll` still re-stages internally so
+  the change is safely idempotent.
+
+### Internal
+
+- Refactored the worker layer to accept typed context objects rather than
+  long positional parameter lists (`ExecuteValidateContext`, etc.).
+- Shared `streamToAuditFile` extracted to `src/gateways/audit-stream.ts`
+  and used by both runners.
+- Extracted pure helpers: `extract-opencode-result.ts`,
+  `craftsperson-body.ts`, `opencode-argv.ts`,
+  `opencode-config-content.ts`, `runner-config.ts`, `model-tier.ts`.
+
 ## [2.1.4] - 2026-05-15
 
 ### Changed
