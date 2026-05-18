@@ -2,7 +2,14 @@ import { describe, expect, mock, test } from "bun:test";
 import type { AgentCandidate } from "../craftsperson-resolver.ts";
 import type { AgentsGateway } from "../gateways/agents-gateway.ts";
 import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
+import type { Profile } from "../profile.ts";
 import { createAgentResolver } from "./add-agent-resolver.ts";
+
+const TEST_PROFILE: Profile = {
+  name: "test",
+  runner: "claude",
+  models: { deep: "opus", balanced: "sonnet", fast: "haiku" },
+};
 
 function makeAgentsGw(
   candidates: AgentCandidate[],
@@ -25,6 +32,7 @@ const INPUT = {
   title: "Add --quiet flag",
   description: "Silence info logs.",
   workingDir: "/repo",
+  profile: TEST_PROFILE,
 };
 
 describe("createAgentResolver", () => {

@@ -6,8 +6,8 @@ import {
   PROJECT_MARKERS,
   parseSelectionResponse,
 } from "../craftsperson-resolver.ts";
+import type { AgentRunner } from "../gateways/agent-runner.ts";
 import type { AgentsGateway } from "../gateways/agents-gateway.ts";
-import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { AgentResolver } from "./add.ts";
 
 /**
@@ -15,16 +15,18 @@ import type { AgentResolver } from "./add.ts";
  * `--agent` is specified for an engineering item.
  *
  * The resolver discovers candidates from the user's global + project-local
- * agents directories, probes project markers, and asks Haiku to pick the
- * best-fitting craftsperson. Any failure along the way (no agents installed,
- * Haiku call errored, JSON parse failed, returned name not in candidate set)
- * returns `null` — the item is enqueued without an agent and the worker runs
- * Claude's default.
+ * agents directories, probes project markers, and asks the profile's fast
+ * tier to pick the best-fitting craftsperson. The runner is the routing
+ * runner — the call lands on whichever underlying gateway the profile
+ * names. Any failure along the way (no agents installed, generateText
+ * errored, JSON parse failed, returned name not in candidate set) returns
+ * `null` — the item is enqueued without an agent and the worker runs the
+ * runner's default.
  */
-export function createAgentResolver(agents: AgentsGateway, claude: ClaudeGateway): AgentResolver {
+export function createAgentResolver(agents: AgentsGateway, runner: AgentRunner): AgentResolver {
   const globalAgentsDir = join(homedir(), ".claude", "agents");
 
-  return async ({ title, description, workingDir }) => {
+  return async ({ title, description, workingDir, profile }) => {
     try {
       const localAgentsDir = join(workingDir, ".claude", "agents");
       const candidates = await agents.discoverAgents(globalAgentsDir, localAgentsDir);
@@ -34,7 +36,7 @@ export function createAgentResolver(agents: AgentsGateway, claude: ClaudeGateway
       const markers = detectProjectMarkers(fileMap);
 
       const prompt = buildSelectionPrompt(title, description, markers, candidates);
-      const { exitCode, text } = await claude.generateText(prompt, "fast");
+      const { exitCode, text } = await runner.generateText(prompt, "fast", { profile });
       if (exitCode !== 0) return null;
 
       return parseSelectionResponse(text, candidates);

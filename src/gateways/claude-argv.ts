@@ -1,5 +1,5 @@
+import { resolveProfileModel } from "../profile.ts";
 import type { SessionOptions } from "./agent-runner.ts";
-import { resolveClaudeModel } from "./model-tier.ts";
 
 /**
  * Legacy alias for the runner-agnostic {@link SessionOptions}. Kept so
@@ -12,6 +12,12 @@ export type ClaudeSessionOptions = SessionOptions;
  * Construct the argv for a `claude --print` invocation.
  *
  * Returns an array suitable for `Bun.spawn(argv, ...)`. Pure — no I/O.
+ *
+ * Model resolution: {@link options.model} is looked up against the profile's
+ * `models` map (the anthropic-shipped profile maps `deep→opus`, etc.).
+ * Strings already containing `/` pass through verbatim. Without a profile,
+ * the model string forwards as-is — the claude CLI will surface invalid
+ * model names with its own error.
  */
 export function buildClaudeArgv(
   claudeBin: string,
@@ -28,7 +34,12 @@ export function buildClaudeArgv(
 
   argv.push("--output-format", "stream-json");
 
-  if (options.model) argv.push("--model", resolveClaudeModel(options.model));
+  if (options.model) {
+    const resolved = options.profile
+      ? (resolveProfileModel(options.model, options.profile) ?? options.model)
+      : options.model;
+    argv.push("--model", resolved);
+  }
   if (options.agent) argv.push("--agent", options.agent);
   // --tools, --allowedTools, --disallowedTools are all Commander-variadic on
   // the claude side. Passing each entry as its own argv token causes Commander

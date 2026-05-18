@@ -310,6 +310,7 @@ export function buildNewItem(params: {
   tags?: string[];
   type?: TaskType;
   agent?: string;
+  profile?: string;
   retries?: number;
 }): Item {
   return {
@@ -328,6 +329,7 @@ export function buildNewItem(params: {
     ...(params.tags?.length ? { tags: params.tags } : {}),
     ...(params.type ? { type: params.type } : {}),
     ...(params.agent ? { agent: params.agent } : {}),
+    ...(params.profile ? { profile: params.profile } : {}),
     ...(params.retries !== undefined ? { retries: params.retries } : {}),
   };
 }

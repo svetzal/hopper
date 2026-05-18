@@ -1,5 +1,6 @@
 import type { ClaudeSessionOptions } from "./gateways/claude-argv.ts";
 import type { ClaudeGateway } from "./gateways/claude-gateway.ts";
+import type { Profile } from "./profile.ts";
 import type { Item } from "./store.ts";
 
 export type EngineeringPhase = "plan" | "execute" | "validate";
@@ -305,6 +306,7 @@ export async function resolveValidateOutcomeWithFallback(
   exitCode: number,
   resultText: string,
   claude: Pick<ClaudeGateway, "generateText">,
+  profile: Profile,
   log?: (msg: string) => void,
 ): Promise<{ passed: boolean; reason: string; fallbackUsed?: boolean }> {
   const primary = resolveValidateOutcome(exitCode, resultText);
@@ -319,6 +321,7 @@ export async function resolveValidateOutcomeWithFallback(
     const { exitCode: fallbackExitCode, text } = await claude.generateText(
       buildValidateFallbackPrompt(resultText),
       "fast",
+      { profile },
     );
 
     if (fallbackExitCode !== 0) {

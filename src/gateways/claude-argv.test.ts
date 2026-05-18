@@ -1,5 +1,16 @@
 import { describe, expect, test } from "bun:test";
+import type { Profile } from "../profile.ts";
 import { buildClaudeArgv } from "./claude-argv.ts";
+
+const ANTHROPIC_PROFILE: Profile = {
+  name: "anthropic",
+  runner: "claude",
+  models: {
+    deep: "opus",
+    balanced: "sonnet",
+    fast: "haiku",
+  },
+};
 
 describe("buildClaudeArgv", () => {
   test("with no options, produces the legacy invocation", () => {
@@ -61,22 +72,29 @@ describe("buildClaudeArgv", () => {
     expect(argv[i + 1]).toBe("opus");
   });
 
-  test("tier 'deep' translates to claude's 'opus' alias", () => {
-    const argv = buildClaudeArgv("claude", "p", { model: "deep" });
+  test("tier 'deep' translates to claude's 'opus' alias via anthropic profile", () => {
+    const argv = buildClaudeArgv("claude", "p", { model: "deep", profile: ANTHROPIC_PROFILE });
     const i = argv.indexOf("--model");
     expect(argv[i + 1]).toBe("opus");
   });
 
-  test("tier 'balanced' translates to claude's 'sonnet' alias", () => {
-    const argv = buildClaudeArgv("claude", "p", { model: "balanced" });
+  test("tier 'balanced' translates to claude's 'sonnet' alias via anthropic profile", () => {
+    const argv = buildClaudeArgv("claude", "p", { model: "balanced", profile: ANTHROPIC_PROFILE });
     const i = argv.indexOf("--model");
     expect(argv[i + 1]).toBe("sonnet");
   });
 
-  test("tier 'fast' translates to claude's 'haiku' alias", () => {
-    const argv = buildClaudeArgv("claude", "p", { model: "fast" });
+  test("tier 'fast' translates to claude's 'haiku' alias via anthropic profile", () => {
+    const argv = buildClaudeArgv("claude", "p", { model: "fast", profile: ANTHROPIC_PROFILE });
     const i = argv.indexOf("--model");
     expect(argv[i + 1]).toBe("haiku");
+  });
+
+  test("without a profile, model passes through verbatim", () => {
+    const argv = buildClaudeArgv("claude", "p", { model: "deep" });
+    const i = argv.indexOf("--model");
+    // No profile means no resolution; the CLI will surface bad names itself.
+    expect(argv[i + 1]).toBe("deep");
   });
 
   test("native provider/model identifiers pass through unchanged", () => {

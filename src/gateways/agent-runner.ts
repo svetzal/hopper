@@ -6,10 +6,17 @@
  * construction, output parsing, model-id translation) live in their own
  * gateway modules (`claude-gateway.ts`, `opencode-gateway.ts`).
  *
+ * Profile selection ({@link SessionOptions.profile}) drives both *which*
+ * runner handles the call and *how* model aliases resolve. See
+ * `src/profile.ts` for the profile shape and `gateways/routing-runner.ts`
+ * for the per-call dispatch.
+ *
  * The legacy type names `ClaudeGateway` and `ClaudeSessionOptions` are now
  * thin aliases of {@link AgentRunner} and {@link SessionOptions} respectively,
  * preserved for backwards compatibility while callers migrate.
  */
+
+import type { Profile } from "../profile.ts";
 
 /**
  * Options that control how an agent session is invoked.
@@ -25,12 +32,23 @@
  */
 export interface SessionOptions {
   /**
-   * Model tier (`"deep"`, `"balanced"`, `"fast"`) or a runner-native model ID.
+   * Profile this session runs under. Tells the runner *which* gateway to
+   * invoke (`profile.runner`) and *how* to resolve {@link model} into a
+   * runner-native ID (`profile.models`).
    *
-   * Tier names are vendor-agnostic and translate per-runner: claude maps
-   * `deep|balanced|fast` to `opus|sonnet|haiku`; opencode maps them through
-   * `~/.hopper/runner-config.json` to whatever provider/model the user has
-   * bound. See `src/gateways/model-tier.ts`.
+   * Required at the gateway layer. The worker resolves it from
+   * `item.profile` before each call; the routing runner reads it to pick
+   * claude vs opencode. Callers that construct {@link SessionOptions}
+   * directly (CLI helpers, tests) must supply a profile.
+   */
+  profile?: Profile;
+  /**
+   * Model tier (`"deep"`, `"balanced"`, `"fast"`), a user-defined alias from
+   * the profile's `models` map, or a runner-native provider/model ID.
+   *
+   * Resolution: looked up against `profile.models`; strings containing `/`
+   * pass through verbatim; unmapped strings fall through to the underlying
+   * runner. See `src/profile.ts:resolveProfileModel`.
    */
   model?: string;
   /**
@@ -101,14 +119,18 @@ export interface AgentRunner {
    * cheap deterministic calls where hopper itself needs a string (branch
    * slug, commit message, validate-marker fallback) — never for agentic work.
    *
-   * In v1 the worker always calls this on a claude-backed runner regardless
-   * of the user's `--runner` choice, because the Haiku one-shot path has no
-   * benefit from opencode and avoids dragging the runner-config dependency
-   * into branch-slug generation.
+   * `model` accepts the same vocabulary as {@link SessionOptions.model}:
+   * tier names (`fast` typically), user aliases, or native IDs. Resolution
+   * uses the supplied {@link profile} (required) — the same one the
+   * surrounding session is running under.
    */
   generateText(
     prompt: string,
     model: string,
-    options?: { cwd?: string; appendSystemPrompt?: string },
+    options: {
+      profile: Profile;
+      cwd?: string;
+      appendSystemPrompt?: string;
+    },
   ): Promise<{ exitCode: number; text: string }>;
 }

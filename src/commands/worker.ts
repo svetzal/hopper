@@ -2,7 +2,9 @@ import { join } from "node:path";
 import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
+import type { ProfilesGateway } from "../gateways/profiles-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
+import type { Profile } from "../profile.ts";
 import type { ClaimedItem, Item } from "../store.ts";
 import { buildInvestigationOptions, buildInvestigationPrompt } from "../task-type-workflow.ts";
 import {
@@ -32,6 +34,7 @@ export interface WorkerDeps {
   claude?: ClaudeGateway;
   fs?: FsGateway;
   shell?: ShellGateway;
+  profiles?: ProfilesGateway;
 }
 
 interface CompletionContext {
@@ -100,37 +103,70 @@ async function executeWork(
   item: Item,
   workDir: string | undefined,
   auditFile: string,
-  deps: { claude: ClaudeGateway; shell: ShellGateway },
+  deps: { claude: ClaudeGateway; shell: ShellGateway; profile: Profile },
   log: LogFn,
 ): Promise<{ exitCode: number; result: string }> {
-  const { claude, shell } = deps;
+  const { claude, shell, profile } = deps;
   if (item.command) {
     log(`Starting command...\nAudit log: ${auditFile}`);
     return shell.runCommand(item.command, workDir ?? process.cwd(), auditFile);
   }
   if (item.type === "investigation") {
     const prompt = buildInvestigationPrompt(item);
-    const options = buildInvestigationOptions();
+    const options = { ...buildInvestigationOptions(), profile };
     log(`Starting investigation session (deep, read-only)...\nAudit log: ${auditFile}`);
     return claude.runSession(prompt, workDir ?? process.cwd(), auditFile, options);
   }
   const prompt = buildTaskPrompt(item);
   log(`Starting agent session...\nAudit log: ${auditFile}`);
-  return claude.runSession(prompt, workDir ?? process.cwd(), auditFile);
+  return claude.runSession(prompt, workDir ?? process.cwd(), auditFile, { profile });
 }
 
 export async function processItem(
   item: ClaimedItem,
   agentName: string,
   hopperHome: string,
-  deps: { git: GitGateway; claude: ClaudeGateway; fs: FsGateway; shell: ShellGateway },
+  deps: {
+    git: GitGateway;
+    claude: ClaudeGateway;
+    fs: FsGateway;
+    shell: ShellGateway;
+    profiles: ProfilesGateway;
+  },
   concurrency: number = 1,
 ): Promise<void> {
-  if (item.type === "engineering" && !item.command) {
-    return processEngineeringItem(item, agentName, hopperHome, deps, concurrency);
-  }
-  const { git, claude, fs, shell } = deps;
+  const { git, claude, fs, shell, profiles } = deps;
   const log = createLogger(item.id, concurrency);
+
+  // Resolve the per-item profile. Items added before the profile rollout have
+  // no `item.profile`, so we fall back to defaultProfile from config.json.
+  // A missing/broken profile is a hard error — we can't safely guess how to
+  // dispatch the runner.
+  const profileName = item.profile ?? (await profiles.loadConfig()).defaultProfile;
+  const profileResult = await profiles.loadProfile(profileName);
+  if (!profileResult.ok) {
+    log(
+      `Cannot start item ${item.id}: profile '${profileName}' could not be loaded — ${profileResult.error}`,
+    );
+    await safeRequeue(
+      item.id,
+      `profile '${profileName}' not loadable: ${profileResult.error}`,
+      agentName,
+      log,
+    );
+    return;
+  }
+  const profile = profileResult.profile;
+
+  if (item.type === "engineering" && !item.command) {
+    return processEngineeringItem(
+      item,
+      agentName,
+      hopperHome,
+      { git, claude, fs, profile },
+      concurrency,
+    );
+  }
 
   const extras: string[] = [];
   if (item.workingDir) extras.push(`Dir:     ${item.workingDir}`);
@@ -169,7 +205,7 @@ export async function processItem(
       item,
       workDir,
       auditFile,
-      { claude, shell },
+      { claude, shell, profile },
       log,
     );
 

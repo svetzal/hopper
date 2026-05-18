@@ -1,10 +1,33 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { ProfilesGateway } from "../gateways/profiles-gateway.ts";
 import { makeParsed, setupTempStoreDir } from "../test-helpers.ts";
 import type { TitleGenerator } from "../titler.ts";
 import { addCommand } from "./add.ts";
 
 function makeTitler(title = "Generated Title"): TitleGenerator {
   return { generateTitle: mock(async (_desc: string) => title) };
+}
+
+function makeStubProfilesGateway(): ProfilesGateway {
+  return {
+    configPath: () => "/tmp/config.json",
+    profilesDir: () => "/tmp/profiles",
+    profilePath: (n) => `/tmp/profiles/${n}.json`,
+    listProfileNames: async () => ["test"],
+    loadProfile: async (n) => ({
+      ok: true,
+      profile: {
+        name: n,
+        runner: "claude",
+        models: { deep: "opus", balanced: "sonnet", fast: "haiku" },
+      },
+    }),
+    loadAllProfiles: async () => ({ profiles: [], errors: [] }),
+    loadConfig: async () => ({ defaultProfile: "test" }),
+    writeConfig: async () => {},
+    writeProfile: async () => {},
+    bootstrap: async () => false,
+  };
 }
 
 describe("addCommand", () => {
@@ -14,7 +37,12 @@ describe("addCommand", () => {
   afterEach(storeDir.afterEach);
 
   test("returns error when no description is provided", async () => {
-    const result = await addCommand(makeParsed("add", []), makeTitler(), async () => "");
+    const result = await addCommand(
+      makeParsed("add", []),
+      makeTitler(),
+      makeStubProfilesGateway(),
+      async () => "",
+    );
 
     expect(result.status).toBe("error");
     if (result.status === "error") {
@@ -23,7 +51,11 @@ describe("addCommand", () => {
   });
 
   test("returns success with added item", async () => {
-    const result = await addCommand(makeParsed("add", ["Fix the login bug"]), makeTitler());
+    const result = await addCommand(
+      makeParsed("add", ["Fix the login bug"]),
+      makeTitler(),
+      makeStubProfilesGateway(),
+    );
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -35,6 +67,7 @@ describe("addCommand", () => {
     const result = await addCommand(
       makeParsed("add", ["Fix the login bug"]),
       makeTitler("Fix Login Bug"),
+      makeStubProfilesGateway(),
     );
 
     expect(result.status).toBe("success");
@@ -47,6 +80,7 @@ describe("addCommand", () => {
     const result = await addCommand(
       makeParsed("add", ["A task"], { priority: "critical" }),
       makeTitler(),
+      makeStubProfilesGateway(),
     );
 
     expect(result.status).toBe("error");
@@ -56,6 +90,7 @@ describe("addCommand", () => {
     const result = await addCommand(
       makeParsed("add", ["A task"], { dir: "/some/path" }),
       makeTitler(),
+      makeStubProfilesGateway(),
     );
 
     expect(result.status).toBe("error");
@@ -65,6 +100,7 @@ describe("addCommand", () => {
     const result = await addCommand(
       makeParsed("add", ["A task"], { priority: "high" }),
       makeTitler("High Task"),
+      makeStubProfilesGateway(),
     );
 
     expect(result.status).toBe("success");
@@ -77,6 +113,7 @@ describe("addCommand", () => {
     const result = await addCommand(
       makeParsed("add", ["A task"], {}, { tag: ["frontend"] }),
       makeTitler("Frontend Task"),
+      makeStubProfilesGateway(),
     );
 
     expect(result.status).toBe("success");
@@ -89,6 +126,7 @@ describe("addCommand", () => {
     const result = await addCommand(
       makeParsed("add", ["A task"], { every: "invalid-spec" }),
       makeTitler(),
+      makeStubProfilesGateway(),
     );
 
     expect(result.status).toBe("error");

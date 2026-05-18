@@ -1,9 +1,10 @@
 // Note: OpencodeGateway wraps the `opencode` CLI process and is not unit-tested
 // directly, as doing so requires the opencode binary to be installed. Its core
 // logic (argv construction, config-content synthesis, result extraction) is
-// covered by opencode-argv.test.ts, opencode-config-content.test.ts,
-// extract-opencode-result.test.ts, and runner-config.test.ts.
-import { homedir } from "node:os";
+// covered by opencode-argv.test.ts, opencode-config-content.test.ts, and
+// extract-opencode-result.test.ts.
+import { unlink } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { extractCraftspersonBody } from "../craftsperson-body.ts";
 import {
@@ -12,12 +13,11 @@ import {
   parseOpencodeExport,
   scanOpencodeStream,
 } from "../extract-opencode-result.ts";
+import type { Profile } from "../profile.ts";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
 import { streamToAuditFile } from "./audit-stream.ts";
-import { createClaudeRunner } from "./claude-gateway.ts";
 import { buildOpencodeArgv } from "./opencode-argv.ts";
 import { buildOpencodeConfigContent } from "./opencode-config-content.ts";
-import { loadRunnerConfig, type RunnerConfig } from "./runner-config.ts";
 
 function resolveOpencodeBin(): string {
   const resolved = Bun.which("opencode");
@@ -43,11 +43,6 @@ async function loadCraftspersonBody(name: string): Promise<string | null> {
 }
 
 interface OpencodeRunnerDeps {
-  /**
-   * Override the runner-config loader. The default reads
-   * `~/.hopper/runner-config.json` lazily on each call.
-   */
-  config?: RunnerConfig;
   /**
    * Override the craftsperson body loader (used in tests / for project-local
    * agent overrides). Default reads `~/.claude/agents/<name>.md`.
@@ -86,7 +81,6 @@ function buildRunSession(deps: OpencodeRunnerDeps) {
     options: SessionOptions = {},
   ): Promise<{ exitCode: number; result: string }> {
     const opencodeBin = resolveOpencodeBin();
-    const config = deps.config ?? (await loadRunnerConfig());
 
     // Build the inline agent config when a craftsperson is requested.
     let env: Record<string, string> | undefined;
@@ -103,7 +97,7 @@ function buildRunSession(deps: OpencodeRunnerDeps) {
       }
     }
 
-    const argv = buildOpencodeArgv(opencodeBin, prompt, options, config, cwd);
+    const argv = buildOpencodeArgv(opencodeBin, prompt, options, cwd);
     const proc = Bun.spawn(argv, {
       cwd,
       env,
@@ -111,22 +105,11 @@ function buildRunSession(deps: OpencodeRunnerDeps) {
       stderr: "pipe",
     });
 
-    // Optional session-separator preamble for `append` mode.
-    let preamble = "";
-    if (options.append) {
-      const existing = await Bun.file(auditFile)
-        .text()
-        .catch(() => "");
-      preamble = `${existing}${JSON.stringify({
-        type: "session-separator",
-        label: "opencode session",
-      })}\n`;
-    }
-
     const [output, stderrText] = await Promise.all([
-      streamToAuditFile(proc.stdout, auditFile, preamble),
+      streamToAuditFile(proc.stdout, auditFile, ""),
       new Response(proc.stderr).text(),
     ]);
+
     const rawExitCode = await proc.exited;
 
     // Capture stderr as a JSONL event so the audit stays machine-parseable.
@@ -172,25 +155,52 @@ function buildRunSession(deps: OpencodeRunnerDeps) {
 }
 
 /**
+ * Native generateText for the opencode runner — used for one-shot helpers
+ * (branch slug, commit message, validate-fallback) when a profile selects
+ * the opencode runner. Internally spawns `opencode run` with no agent and
+ * no tools, captures the JSONL stream to a temp audit file, and extracts
+ * the result via `opencode export`.
+ *
+ * Temp file lives under the OS temp dir and is unlinked after extraction.
+ * Failure modes (opencode missing, session never identified, export fails)
+ * surface as non-zero exit + empty text so the caller's graceful-degradation
+ * path (deterministic fallback strings) kicks in.
+ */
+async function opencodeGenerateText(
+  prompt: string,
+  model: string,
+  options: { profile: Profile; cwd?: string; appendSystemPrompt?: string },
+): Promise<{ exitCode: number; text: string }> {
+  const tmpAudit = join(
+    tmpdir(),
+    `hopper-opencode-gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jsonl`,
+  );
+  try {
+    const runner = buildRunSession({});
+    const { exitCode, result } = await runner(prompt, options.cwd ?? process.cwd(), tmpAudit, {
+      model,
+      profile: options.profile,
+      appendSystemPrompt: options.appendSystemPrompt,
+    });
+    return { exitCode, text: result.trim() };
+  } finally {
+    await unlink(tmpAudit).catch(() => undefined);
+  }
+}
+
+/**
  * Construct an opencode-backed {@link AgentRunner}.
  *
- * Optional `deps` lets tests / harness code substitute a fixed
- * {@link RunnerConfig} or a custom craftsperson loader. Production callers
- * pass nothing; the runner reads `~/.hopper/runner-config.json` and
- * `~/.claude/agents/<name>.md` on demand.
+ * Optional `deps` lets tests substitute a custom craftsperson loader.
+ * Production callers pass nothing.
  *
- * Note that `generateText` is **not** implemented on the opencode runner.
- * Hopper's Haiku one-shots (branch slug, commit message, validate fallback)
- * remain on Claude Code regardless of `--runner` choice — opencode adds no
- * value to those deterministic calls and bringing it into that path would
- * couple branch-slug generation to opencode's model-mapping configuration.
- * The opencode runner delegates `generateText` straight through to the
- * claude runner.
+ * Profile-aware: every call must include `options.profile` so model aliases
+ * (`deep`/`balanced`/`fast` or user-defined aliases) resolve correctly. The
+ * routing runner in `routing-runner.ts` ensures this.
  */
 export function createOpencodeRunner(deps: OpencodeRunnerDeps = {}): AgentRunner {
-  const claudeRunner = createClaudeRunner();
   return {
     runSession: buildRunSession(deps),
-    generateText: claudeRunner.generateText,
+    generateText: opencodeGenerateText,
   };
 }

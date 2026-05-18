@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
+import type { ProfilesGateway } from "../gateways/profiles-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import { ok } from "../result.ts";
 import type { CompleteResult, Item } from "../store.ts";
@@ -41,6 +42,28 @@ function makeMockFs(): FsGateway {
   };
 }
 
+function makeStubProfilesGateway(): ProfilesGateway {
+  return {
+    configPath: () => "/tmp/config.json",
+    profilesDir: () => "/tmp/profiles",
+    profilePath: (n) => `/tmp/profiles/${n}.json`,
+    listProfileNames: async () => ["test"],
+    loadProfile: async (n) => ({
+      ok: true,
+      profile: {
+        name: n,
+        runner: "claude",
+        models: { deep: "opus", balanced: "sonnet", fast: "haiku" },
+      },
+    }),
+    loadAllProfiles: async () => ({ profiles: [], errors: [] }),
+    loadConfig: async () => ({ defaultProfile: "test" }),
+    writeConfig: async () => {},
+    writeProfile: async () => {},
+    bootstrap: async () => false,
+  };
+}
+
 const HOPPER_HOME = "/tmp/test-hopper";
 
 describe("processItem", () => {
@@ -64,7 +87,7 @@ describe("processItem", () => {
     const claude = makeMockClaude(0, "All done.");
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() });
 
     expect(claude.runSession).toHaveBeenCalledTimes(1);
     expect(completeItemMock).toHaveBeenCalledWith("tok-1234", "test-agent", "All done.");
@@ -79,7 +102,7 @@ describe("processItem", () => {
     const fs = makeMockFs();
     const git = makeMockGit();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() });
 
     expect(completeItemMock).not.toHaveBeenCalled();
   });
@@ -93,7 +116,7 @@ describe("processItem", () => {
     const fs = makeMockFs();
     const git = makeMockGit();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() });
 
     expect(completeItemMock).not.toHaveBeenCalled();
     expect(requeueItemMock).toHaveBeenCalledTimes(1);
@@ -114,7 +137,7 @@ describe("processItem", () => {
     const fs = makeMockFs();
     const git = makeMockGit();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() });
 
     expect(completeItemMock).not.toHaveBeenCalled();
     expect(requeueItemMock).not.toHaveBeenCalled();
@@ -126,7 +149,7 @@ describe("processItem", () => {
     const fs = makeMockFs();
     const git = makeMockGit();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() });
 
     expect(completeItemMock).toHaveBeenCalledTimes(1);
     expect(requeueItemMock).not.toHaveBeenCalled();
@@ -138,7 +161,7 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() });
 
     expect(git.createWorktree).toHaveBeenCalledTimes(1);
     expect(git.worktreeRemove).toHaveBeenCalledTimes(1);
@@ -152,7 +175,7 @@ describe("processItem", () => {
     const claude = makeMockClaude(0, "Fixed the bug.");
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() });
 
     // Only one Claude session — no auto-commit session
     expect(claude.runSession).toHaveBeenCalledTimes(1);
@@ -198,8 +221,8 @@ describe("processItem", () => {
 
     // Run both concurrently
     await Promise.all([
-      processItem(item1, "agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() }, 2),
-      processItem(item2, "agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() }, 2),
+      processItem(item1, "agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() }, 2),
+      processItem(item2, "agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() }, 2),
     ]);
 
     // Both should have completed
@@ -223,7 +246,7 @@ describe("processItem", () => {
         item,
         "test-agent",
         HOPPER_HOME,
-        { git, claude, fs, shell: makeMockShell() },
+        { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() },
         2,
       );
     } finally {
@@ -253,7 +276,7 @@ describe("processItem", () => {
         item,
         "test-agent",
         HOPPER_HOME,
-        { git, claude, fs, shell: makeMockShell() },
+        { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() },
         1,
       );
     } finally {
@@ -271,7 +294,7 @@ describe("processItem", () => {
     const shell = makeMockShell(0, "hello");
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell, profiles: makeStubProfilesGateway() });
 
     expect(shell.runCommand).toHaveBeenCalledTimes(1);
     expect(claude.runSession).not.toHaveBeenCalled();
@@ -285,7 +308,7 @@ describe("processItem", () => {
     const shell = makeMockShell(1, "error output");
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell, profiles: makeStubProfilesGateway() });
 
     expect(shell.runCommand).toHaveBeenCalledTimes(1);
     expect(claude.runSession).not.toHaveBeenCalled();
@@ -299,7 +322,7 @@ describe("processItem", () => {
     const shell = makeMockShell(0, "build complete");
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell, profiles: makeStubProfilesGateway() });
 
     expect(git.createWorktree).toHaveBeenCalledTimes(1);
     expect(git.worktreeRemove).toHaveBeenCalledTimes(1);
@@ -315,7 +338,7 @@ describe("processItem", () => {
     const shell = makeMockShell(0, "file1 file2");
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell, profiles: makeStubProfilesGateway() });
 
     expect(git.createWorktree).not.toHaveBeenCalled();
     expect(shell.runCommand).toHaveBeenCalledTimes(1);
@@ -333,7 +356,7 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() });
 
     expect(git.createTrackingBranch).toHaveBeenCalledTimes(1);
     expect(git.createBranch).not.toHaveBeenCalled();
@@ -348,7 +371,7 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() });
 
     expect(git.createBranch).toHaveBeenCalledTimes(1);
     expect(git.createTrackingBranch).not.toHaveBeenCalled();
@@ -362,7 +385,7 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() });
 
     expect(git.createTrackingBranch).not.toHaveBeenCalled();
     expect(git.createBranch).not.toHaveBeenCalled();
@@ -380,7 +403,7 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() });
 
     expect(git.mergeFastForward).toHaveBeenCalledTimes(1);
     expect(checkoutCalls).toEqual(["main", "develop"]);
@@ -392,7 +415,7 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() });
 
     expect(git.pushTags).toHaveBeenCalledTimes(1);
     expect(git.pushTags).toHaveBeenCalledWith("/repo");
@@ -406,7 +429,7 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() });
 
     // Item should still complete despite tag push failure
     expect(completeItemMock).toHaveBeenCalled();
@@ -422,7 +445,7 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() });
 
     expect(git.pushTags).not.toHaveBeenCalled();
   });
@@ -433,7 +456,7 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() });
 
     expect(git.pushTags).not.toHaveBeenCalled();
   });
@@ -447,7 +470,7 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell() });
+    await processItem(item, "test-agent", HOPPER_HOME, { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() });
 
     expect(git.mergeAbort).toHaveBeenCalledTimes(1);
     expect(git.deleteBranch).not.toHaveBeenCalled();
@@ -524,6 +547,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     // All three phases ran
@@ -556,6 +580,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     const [, , workBranchArg] = callArgs(typedMock(git.createWorktree), 0);
@@ -584,6 +609,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     const [, , fallbackBranchArg] = callArgs(typedMock(git.createWorktree), 0);
@@ -606,6 +632,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     const writeMock = typedMock(fs.writeFile);
@@ -632,6 +659,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     // Only the plan phase ran
@@ -658,6 +686,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     // Plan + execute ran; validate did not
@@ -685,6 +714,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     expect(claude.runSession).toHaveBeenCalledTimes(3);
@@ -709,6 +739,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     expect(git.commitAll).not.toHaveBeenCalled();
@@ -730,6 +761,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     expect(git.commitAll).not.toHaveBeenCalled();
@@ -762,6 +794,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     const sessionCalls = typedMock(claude.runSession).mock.calls;
@@ -786,6 +819,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     const agentSessionCalls = typedMock(claude.runSession).mock.calls;
@@ -808,6 +842,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     expect(recordItemPhaseMock).toHaveBeenCalledTimes(3);
@@ -834,6 +869,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     const validateCall = recordItemPhaseMock.mock.calls.find((c) => c[1].name === "validate");
@@ -855,6 +891,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     const recorded = recordItemPhaseMock.mock.calls.map((c) => c[1].name);
@@ -891,6 +928,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     // plan + execute(1) + validate(1) + execute(2) + validate(2) = 5
@@ -931,6 +969,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     const remediationCalls = typedMock(claude.runSession).mock.calls;
@@ -961,6 +1000,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     // plan + 3 * (execute + validate) = 7
@@ -990,6 +1030,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     // plan + execute + validate = 3; no retry
@@ -1028,6 +1069,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     const retryAuditCalls = typedMock(claude.runSession).mock.calls;
@@ -1068,6 +1110,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     const recorded = recordItemPhaseMock.mock.calls.map((c) => c[1]);
@@ -1098,6 +1141,7 @@ describe("processItem", () => {
       claude,
       fs,
       shell: makeMockShell(),
+      profiles: makeStubProfilesGateway(),
     });
 
     const perPhaseAuditCalls = typedMock(claude.runSession).mock.calls;

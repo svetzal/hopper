@@ -4,12 +4,13 @@ import type { ParsedArgs } from "../cli.ts";
 import { toErrorMessage } from "../error-utils.ts";
 import { shortId } from "../format.ts";
 import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
-import { createClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import { createFsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import { createGitGateway } from "../gateways/git-gateway.ts";
-import { createOpencodeRunner } from "../gateways/opencode-gateway.ts";
+import type { ProfilesGateway } from "../gateways/profiles-gateway.ts";
+import { createProfilesGateway } from "../gateways/profiles-gateway.ts";
+import { createRoutingRunner } from "../gateways/routing-runner.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import { createShellGateway } from "../gateways/shell-gateway.ts";
 import type { ClaimedItem } from "../store.ts";
@@ -17,7 +18,6 @@ import { claimNextItem, findItem } from "../store.ts";
 import {
   resolveLoopAction,
   resolvePostClaimLoopAction,
-  resolveRunnerKind,
   resolveShutdownAction,
   resolveWorkerConfig,
   type WorkerConfig,
@@ -31,7 +31,13 @@ export interface WorkerLoopDeps {
     item: ClaimedItem,
     agentName: string,
     hopperHome: string,
-    deps: { git: GitGateway; claude: ClaudeGateway; fs: FsGateway; shell: ShellGateway },
+    deps: {
+      git: GitGateway;
+      claude: ClaudeGateway;
+      fs: FsGateway;
+      shell: ShellGateway;
+      profiles: ProfilesGateway;
+    },
     concurrency: number,
   ) => Promise<void>;
   sleep: (ms: number) => Promise<{ cancelled: boolean }>;
@@ -71,7 +77,13 @@ function createCancellableSleep(): {
 export async function runWorkerLoop(
   config: WorkerConfig,
   hopperHome: string,
-  gatewayDeps: { git: GitGateway; claude: ClaudeGateway; fs: FsGateway; shell: ShellGateway },
+  gatewayDeps: {
+    git: GitGateway;
+    claude: ClaudeGateway;
+    fs: FsGateway;
+    shell: ShellGateway;
+    profiles: ProfilesGateway;
+  },
   loopDeps: WorkerLoopDeps,
 ): Promise<void> {
   const { agentName, pollInterval, runOnce, concurrency } = config;
@@ -169,23 +181,28 @@ export async function runWorkerLoop(
 }
 
 export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Promise<void> {
-  const git = deps?.git ?? createGitGateway();
-  let claude: ClaudeGateway;
-  if (deps?.claude) {
-    claude = deps.claude;
-  } else {
-    const runnerResult = resolveRunnerKind(parsed.flags);
-    if (!runnerResult.ok) {
-      console.error(runnerResult.error);
-      process.exit(1);
-    }
-    claude = runnerResult.kind === "opencode" ? createOpencodeRunner() : createClaudeGateway();
+  // The legacy `--runner` flag was removed in 3.0.0. Per-item profiles now
+  // determine which runner handles each session; the worker is runner-agnostic
+  // by default. Surface a friendly error if anyone still passes the flag.
+  if ("runner" in parsed.flags) {
+    console.error(
+      "--runner was removed in hopper 3.0.0; runner selection is now per-item via profiles. " +
+        "Use `hopper add --profile <name>` to queue items against a specific profile.",
+    );
+    process.exit(1);
   }
+
+  const hopperHome = join(homedir(), ".hopper");
+  const git = deps?.git ?? createGitGateway();
+  const profiles = deps?.profiles ?? createProfilesGateway(hopperHome);
+  // Bootstrap on first run so a fresh ~/.hopper/ gets config.json + the four
+  // shipped profile templates (anthropic / openai / openrouter / ollama).
+  await profiles.bootstrap();
+  const claude = deps?.claude ?? createRoutingRunner();
   const fs = deps?.fs ?? createFsGateway();
   const shell = deps?.shell ?? createShellGateway();
 
   const config = resolveWorkerConfig(parsed.flags);
-  const hopperHome = join(homedir(), ".hopper");
   const { sleep, cancel } = createCancellableSleep();
 
   const log = (msg: string) => console.log(msg);
@@ -214,5 +231,5 @@ export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Prom
     },
   };
 
-  await runWorkerLoop(config, hopperHome, { git, claude, fs, shell }, loopDeps);
+  await runWorkerLoop(config, hopperHome, { git, claude, fs, shell, profiles }, loopDeps);
 }

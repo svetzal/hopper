@@ -13,9 +13,12 @@ import { stringFlag } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
 import { Status, TaskType } from "../constants.ts";
 import { shortId } from "../format.ts";
+import type { ProfilesGateway } from "../gateways/profiles-gateway.ts";
 import { findPreset } from "../presets.ts";
 import type { Priority } from "../priority.ts";
 import { parsePriority, priorityBadge } from "../priority.ts";
+import type { Profile } from "../profile.ts";
+import { isValidProfileName } from "../profile.ts";
 import { catchCommandError, unwrap } from "../result.ts";
 import type { Item } from "../store.ts";
 import { addItem, loadItems } from "../store.ts";
@@ -34,11 +37,13 @@ export type AgentResolver = (input: {
   title: string;
   description: string;
   workingDir: string;
+  profile: Profile;
 }) => Promise<string | null>;
 
 export function addCommand(
   parsed: ParsedArgs,
   titler: TitleGenerator,
+  profilesGateway: ProfilesGateway,
   readStdin: () => Promise<string> = () => new Response(Bun.stdin.stream()).text(),
   resolveAgent?: AgentResolver,
 ): Promise<CommandResult<Item>> {
@@ -84,6 +89,36 @@ export function addCommand(
     );
     let agent = stringFlag(parsed, "agent") ?? preset?.agent;
 
+    // 5b. Resolve profile — flag → preset → defaultProfile from config.json.
+    // Always bake the resolved name into the item so behaviour is deterministic
+    // across config edits and retries. Bootstraps profiles on first use when
+    // either ~/.hopper/config.json or ~/.hopper/profiles/ is missing.
+    await profilesGateway.bootstrap();
+    const profileFlag = stringFlag(parsed, "profile");
+    const hopperConfig = await profilesGateway.loadConfig();
+    const profileName = profileFlag ?? hopperConfig.defaultProfile;
+
+    if (!isValidProfileName(profileName)) {
+      return {
+        status: "error",
+        message: `Invalid profile name '${profileName}' — must match [a-z0-9_-]+`,
+      };
+    }
+
+    const profileResult = await profilesGateway.loadProfile(profileName);
+    if (!profileResult.ok) {
+      const available = await profilesGateway.listProfileNames();
+      const hint =
+        available.length > 0
+          ? `Available profiles: ${available.join(", ")}`
+          : "No profiles installed.";
+      return {
+        status: "error",
+        message: `Profile '${profileName}': ${profileResult.error}\n${hint}`,
+      };
+    }
+    const profile = profileResult.profile;
+
     // Parse --retries. Preset fallback is an already-validated integer, so we
     // only need to validate the CLI string form.
     const retriesRaw = stringFlag(parsed, "retries");
@@ -95,7 +130,7 @@ export function addCommand(
     // preferable to a wrong one, and the worker runs fine without.
     if (!agent && type === TaskType.ENGINEERING && dir && resolveAgent) {
       try {
-        const resolved = await resolveAgent({ title, description, workingDir: dir });
+        const resolved = await resolveAgent({ title, description, workingDir: dir, profile });
         if (resolved) agent = resolved;
       } catch {
         // failure swallowed — missing agent is preferable to a wrong one
@@ -167,6 +202,7 @@ export function addCommand(
       tags,
       type,
       agent,
+      profile: profile.name,
       retries,
     });
 

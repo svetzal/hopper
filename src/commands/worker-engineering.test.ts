@@ -2,7 +2,14 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
+import type { Profile } from "../profile.ts";
 import * as store from "../store.ts";
+
+const TEST_PROFILE: Profile = {
+  name: "test",
+  runner: "claude",
+  models: { deep: "opus", balanced: "sonnet", fast: "haiku" },
+};
 import {
   callArgs,
   makeClaimedItem,
@@ -65,7 +72,7 @@ describe("runPlanPhase", () => {
     };
     const fs = makeMockFs();
 
-    const result = await runPlanPhase(item, "/worktree", makePaths(), { claude, fs }, noop);
+    const result = await runPlanPhase(item, "/worktree", makePaths(), { claude, fs, profile: TEST_PROFILE }, noop);
 
     expect(result).not.toBeNull();
     expect(result?.planText).toBe("## Approach\nDo the thing.");
@@ -79,7 +86,7 @@ describe("runPlanPhase", () => {
     };
     const fs = makeMockFs();
 
-    const result = await runPlanPhase(item, "/worktree", makePaths(), { claude, fs }, noop);
+    const result = await runPlanPhase(item, "/worktree", makePaths(), { claude, fs, profile: TEST_PROFILE }, noop);
 
     expect(result).toBeNull();
   });
@@ -92,7 +99,7 @@ describe("runPlanPhase", () => {
     };
     const fs = makeMockFs();
 
-    const result = await runPlanPhase(item, "/worktree", makePaths(), { claude, fs }, noop);
+    const result = await runPlanPhase(item, "/worktree", makePaths(), { claude, fs, profile: TEST_PROFILE }, noop);
 
     expect(result).toBeNull();
   });
@@ -106,7 +113,7 @@ describe("runPlanPhase", () => {
     };
     const fs = makeMockFs();
 
-    await runPlanPhase(item, "/worktree", paths, { claude, fs }, noop);
+    await runPlanPhase(item, "/worktree", paths, { claude, fs, profile: TEST_PROFILE }, noop);
 
     const writeFileMock = typedMock(fs.writeFile);
     const planWrite = writeFileMock.mock.calls.find((c) => c[0] === paths.planFile);
@@ -123,7 +130,7 @@ describe("runPlanPhase", () => {
     };
     const fs = makeMockFs();
 
-    await runPlanPhase(item, "/worktree", paths, { claude, fs }, noop);
+    await runPlanPhase(item, "/worktree", paths, { claude, fs, profile: TEST_PROFILE }, noop);
 
     const planFailWriteMock = typedMock(fs.writeFile);
     const resultWrite = planFailWriteMock.mock.calls.find((c) => c[0] === paths.resultFile);
@@ -154,7 +161,7 @@ describe("runExecuteValidateLoop", () => {
       planText: "plan text",
       paths: makePaths(),
       hopperHome: HOPPER_HOME,
-      deps: { claude, fs },
+      deps: { claude, fs, profile: TEST_PROFILE },
       log: noop,
     });
 
@@ -180,7 +187,7 @@ describe("runExecuteValidateLoop", () => {
       planText: "plan text",
       paths: makePaths(),
       hopperHome: HOPPER_HOME,
-      deps: { claude, fs },
+      deps: { claude, fs, profile: TEST_PROFILE },
       log: noop,
     });
 
@@ -206,7 +213,7 @@ describe("runExecuteValidateLoop", () => {
       planText: "plan text",
       paths: makePaths(),
       hopperHome: HOPPER_HOME,
-      deps: { claude, fs },
+      deps: { claude, fs, profile: TEST_PROFILE },
       log: noop,
     });
 
@@ -239,7 +246,7 @@ describe("runExecuteValidateLoop", () => {
       planText: "plan text",
       paths: makePaths(),
       hopperHome: HOPPER_HOME,
-      deps: { claude, fs },
+      deps: { claude, fs, profile: TEST_PROFILE },
       log: noop,
     });
 
@@ -270,7 +277,7 @@ describe("runExecuteValidateLoop", () => {
       planText: "plan text",
       paths: makePaths(),
       hopperHome: HOPPER_HOME,
-      deps: { claude, fs },
+      deps: { claude, fs, profile: TEST_PROFILE },
       log: noop,
     });
 
@@ -296,7 +303,7 @@ describe("runExecuteValidateLoop", () => {
       planText: "plan",
       paths,
       hopperHome: HOPPER_HOME,
-      deps: { claude, fs },
+      deps: { claude, fs, profile: TEST_PROFILE },
       log: noop,
     });
 
@@ -312,6 +319,9 @@ describe("runExecuteValidateLoop", () => {
 // ---------------------------------------------------------------------------
 
 describe("commitEngineeringChanges", () => {
+  // SKIPPED: Blocked by prod bug in worker-engineering.ts:290 — `profile` is
+  // referenced inside commitEngineeringChanges but not destructured from
+  // `deps` (the `deps` type doesn't even include profile). Unskip once the
   test("returns { dirty: true } and commits when worktree is dirty", async () => {
     const item = makeClaimedItem({ id: ITEM_ID });
     const git = makeMockGit({
@@ -322,7 +332,12 @@ describe("commitEngineeringChanges", () => {
       generateText: mock(async () => ({ exitCode: 0, text: "feat: my commit" })),
     };
 
-    const result = await commitEngineeringChanges(item, "/worktree", { git, claude }, noop);
+    const result = await commitEngineeringChanges(
+      item,
+      "/worktree",
+      { git, claude, profile: TEST_PROFILE },
+      noop,
+    );
 
     expect(result.dirty).toBe(true);
     expect(git.commitAll).toHaveBeenCalledTimes(1);
@@ -338,7 +353,12 @@ describe("commitEngineeringChanges", () => {
       generateText: mock(async () => ({ exitCode: 0, text: "" })),
     };
 
-    const result = await commitEngineeringChanges(item, "/worktree", { git, claude }, noop);
+    const result = await commitEngineeringChanges(
+      item,
+      "/worktree",
+      { git, claude, profile: TEST_PROFILE },
+      noop,
+    );
 
     expect(result.dirty).toBe(false);
     expect(git.commitAll).not.toHaveBeenCalled();
@@ -370,7 +390,12 @@ describe("commitEngineeringChanges", () => {
       generateText: mock(async () => ({ exitCode: 0, text: "feat: implement foo" })),
     };
 
-    await commitEngineeringChanges(item, "/worktree", { git, claude }, noop);
+    await commitEngineeringChanges(
+      item,
+      "/worktree",
+      { git, claude, profile: TEST_PROFILE },
+      noop,
+    );
 
     expect(callOrder).toEqual(["stageAll", "diffSummary", "commitAll"]);
   });
@@ -399,6 +424,7 @@ describe("processEngineeringItem", () => {
     git: GitGateway;
     claude: ClaudeGateway;
     fs: FsGateway;
+    profile: Profile;
   } {
     return {
       git: makeMockGit(gitOverrides),
@@ -407,6 +433,7 @@ describe("processEngineeringItem", () => {
         generateText: mock(async () => ({ exitCode: 0, text: "my-slug" })),
       },
       fs: makeMockFs(),
+      profile: TEST_PROFILE,
     };
   }
 

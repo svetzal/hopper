@@ -1,5 +1,5 @@
+import { resolveProfileModel } from "../profile.ts";
 import type { SessionOptions } from "./agent-runner.ts";
-import { type RunnerConfig, resolveOpencodeModel } from "./runner-config.ts";
 
 /**
  * Construct the argv for an `opencode run --format json` invocation.
@@ -16,10 +16,11 @@ import { type RunnerConfig, resolveOpencodeModel } from "./runner-config.ts";
  *   stays machine-parseable.
  * - The prompt is a positional `message` argument. Like claude, we terminate
  *   option parsing with `--` so a future flag can't siphon it.
- * - Model tier names (`deep|balanced|fast` — see `model-tier.ts`) are
- *   translated through {@link RunnerConfig.opencode.models} before being
- *   passed via `--model`. Native provider/model identifiers (containing `/`)
- *   are passed through unchanged.
+ * - Model names (tier aliases like `fast`, user-defined aliases like
+ *   `qwen-bf16`, or native IDs like `openai/gpt-5.5`) are resolved through
+ *   the supplied profile's `models` map before being passed via `--model`.
+ *   Strings containing `/` (e.g. `openai/gpt-5.3-codex`) pass through
+ *   unchanged so callers can mix freely.
  * - The agent name, when set, is passed via `--agent`. The matching agent
  *   definition is expected to be available either in the user's
  *   `opencode.json` or injected via the `OPENCODE_CONFIG_CONTENT` env var
@@ -29,14 +30,15 @@ export function buildOpencodeArgv(
   opencodeBin: string,
   prompt: string,
   options: SessionOptions = {},
-  config: RunnerConfig = {},
   cwd?: string,
 ): string[] {
   const argv: string[] = [opencodeBin, "run", "--format", "json", "--dangerously-skip-permissions"];
 
-  const resolvedModel = resolveOpencodeModel(options.model, config);
-  if (resolvedModel) {
-    argv.push("--model", resolvedModel);
+  if (options.model && options.profile) {
+    const resolved = resolveProfileModel(options.model, options.profile);
+    if (resolved) argv.push("--model", resolved);
+  } else if (options.model) {
+    argv.push("--model", options.model);
   }
 
   if (options.agent) {

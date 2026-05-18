@@ -7,94 +7,110 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **Cost & token reporting in `hopper show`.** Engineering items now surface a
-  per-phase cost and token breakdown — pulled from data already captured in
-  the audit JSONL files. Cost comes from claude's terminal `result` event
-  (`total_cost_usd`, `usage.{input_tokens, output_tokens,
-  cache_creation_input_tokens, cache_read_input_tokens}`) and from
-  opencode's synthetic `opencode-export` event (`info.cost`, `info.tokens`,
-  `info.model`). Subscription/OAuth runs report `$0` honestly rather than
-  being filtered out — that's the provider's truth. Mixed-runner items
-  (claude plan, opencode execute) render side by side with the model label
-  per row. No schema migration; old completed items pick up the breakdown
-  retroactively next time `hopper show <id>` runs.
-
 ## [3.0.0] - 2026-05-18
 
-This is a **major release** that introduces a second agent runner (opencode)
-alongside Claude Code, abstracts model selection behind a vendor-agnostic
-tier vocabulary, and adds per-phase reasoning-effort control.
+This is a **major release** that introduces a profile system for per-job
+runner + model selection, alongside the new opencode runner (alternative to
+Claude Code), a vendor-agnostic tier vocabulary, and per-phase reasoning-effort
+control.
 
-Upgrading from 2.x? See [docs/migration-2.x-to-3.x.md](docs/migration-2.x-to-3.x.md)
-for step-by-step migration instructions and rollback advice. The TL;DR is
-two map-key renames in `~/.hopper/runner-config.json` — and if you've never
-edited that file, upgrading is a no-op.
+> **Note on re-issue.** A 3.0.0 tag was briefly cut on 2026-05-18 that included
+> opencode support but used a global `--runner` flag and a single
+> `~/.hopper/runner-config.json`. That tag was deleted and replaced before
+> reaching real-world use; the version shipped to users is the profile-system
+> 3.0.0 documented here.
+
+Upgrading from 2.x? See [docs/migration-2.x-to-3.x.md](docs/migration-2.x-to-3.x.md).
+The TL;DR: on first use, hopper bootstraps `~/.hopper/config.json` +
+`~/.hopper/profiles/{anthropic,openai,openrouter,ollama}.json`. New items are
+queued against `defaultProfile: openai` unless `--profile <name>` overrides.
+If you never set up an opencode runner pre-3.0, the upgrade is a no-op.
 
 ### Added
 
-- **opencode runner.** `hopper worker --runner opencode` dispatches session
-  work through the [opencode](https://opencode.ai) CLI as an alternative to
-  Claude Code. The opencode runner translates Hopper's `SessionOptions` to
-  opencode's surface (no tool-allowlist flags exist on the opencode side;
-  craftsperson agents inline via `OPENCODE_CONFIG_CONTENT` synthesised from
-  `~/.claude/agents/<name>.md` bodies; final assistant text comes from
-  `opencode export <sessionID>` post-run; outcome decided on exit code AND
-  no error events in the stream because opencode's exit code alone is not a
-  reliable success signal). Fast-tier one-shots (branch slug, commit
-  message, validate-marker fallback) continue running on Claude Code
-  regardless of `--runner` choice — they're deterministic and gain nothing
-  from the opencode surface. See `docs/opencode-spike.md` for the empirical
-  CLI findings that shaped the implementation.
-- **`AgentRunner` interface.** New `src/gateways/agent-runner.ts` defines a
-  runner-agnostic contract (`runSession`, `generateText`) implemented by
-  both runners. The legacy type names `ClaudeGateway` and
-  `ClaudeSessionOptions` are kept as thin aliases for backwards
-  compatibility.
-- **Vendor-agnostic model tier vocabulary.** Hopper now addresses models
+- **Per-job profiles.** Each engineering/investigation/task item is queued
+  against a named profile (`hopper add --profile <name>`) that bundles a
+  runner choice (`claude` | `opencode`) and a model-tier mapping. Profiles
+  live as individual files at `~/.hopper/profiles/<name>.json`; the worker
+  reads `item.profile` to decide which runner dispatches the call and how
+  `deep`/`balanced`/`fast` resolve. See [docs/profiles.md](docs/profiles.md)
+  for the design and the four shipped templates.
+- **Profile bootstrap.** On first `hopper add` or `hopper worker`, hopper
+  creates `~/.hopper/config.json` with `defaultProfile: "openai"` plus
+  shipped templates for `anthropic`, `openai`, `openrouter`, and `ollama`.
+  Existing files are never overwritten. The OpenAI default reflects
+  Anthropic's 2026-06-15 policy blocking third-party tools from running on
+  Anthropic subscription plans — direct API-key Anthropic users opt in via
+  `--profile anthropic`.
+- **`hopper profiles` commands.** `hopper profiles` lists every installed
+  profile (the default flagged with `*`) along with each profile's runner
+  + tier mapping. `hopper profiles show <name>` prints a profile's file
+  contents.
+- **Routing runner.** `src/gateways/routing-runner.ts` dispatches each
+  `runSession`/`generateText` call to the right underlying runner based on
+  the profile carried in `SessionOptions`. The worker holds a single
+  `AgentRunner` — runner selection is internal to the profile system.
+- **Native opencode `generateText`.** The opencode runner now implements
+  `generateText` directly (spawning `opencode run` with a temporary audit
+  file and reading the result via `opencode export`). Pre-3.0 opencode
+  runs delegated one-shots to Claude Code; profile-driven dispatch needs
+  each runner to stand alone.
+- **opencode runner** (originally introduced in the briefly-cut 3.0.0).
+  Session work routes through the [opencode](https://opencode.ai) CLI when
+  the item's profile selects `runner: "opencode"`. Tool-allowlist fields
+  are silently ignored (no equivalent on opencode); craftsperson agents
+  inline via `OPENCODE_CONFIG_CONTENT` synthesised from
+  `~/.claude/agents/<name>.md` bodies; outcome decided on exit code AND
+  no error events in the stream. See `docs/opencode-spike.md` for the
+  empirical CLI findings.
+- **Vendor-agnostic model tier vocabulary.** Hopper addresses models
   through three tiers — `deep`, `balanced`, `fast` — in
-  `src/gateways/model-tier.ts`. Claude translates tiers to its native
-  `opus`/`sonnet`/`haiku` aliases via a hard-coded map; opencode translates
-  via `~/.hopper/runner-config.json` to whatever provider/model you bind.
-  Worker log lines now name the tier (`Plan phase (deep, plan mode, …)`,
-  `Execute phase attempt 1/2 (balanced, …)`) so the output is honest
-  regardless of which runner is active.
-- **Per-phase reasoning effort.** New `SessionOptions.effort` field with
-  unified vocabulary `minimal | low | medium | high | max`. Claude forwards
-  as `--effort <value>` (mapping `minimal` → `low`); opencode forwards as
-  `--variant <value>`. Per-phase defaults set in `task-type-workflow.ts`:
-  plan / validate / investigation = `high`, execute = `medium`.
-  Runner-native strings (e.g. claude's `xhigh`) are forwarded verbatim.
-- **`~/.hopper/runner-config.json`** for per-user opencode model bindings.
-  Tier names map to runner-native provider/model identifiers; native IDs
-  with `/` in them pass through unchanged so callers can mix freely.
+  `src/profile.ts`. Each profile maps the tiers to runner-native model
+  identifiers in its `models` block. Additional alias keys (e.g.
+  `qwen-bf16`, `gpt-oss-large`) are allowed and resolvable the same way.
+  Worker log lines name the tier so output is honest regardless of which
+  runner is active.
+- **Per-phase reasoning effort.** `SessionOptions.effort` field with
+  unified vocabulary `minimal | low | medium | high | max`. Claude
+  forwards as `--effort <value>` (mapping `minimal` → `low`); opencode
+  forwards as `--variant <value>`. Per-phase defaults: plan / validate /
+  investigation = `high`, execute = `medium`. Runner-native strings (e.g.
+  claude's `xhigh`) forward verbatim.
+- **Per-phase cost & token reporting in `hopper show`.** Engineering items
+  display a `Cost & tokens` block summarising each phase's spend pulled
+  from data already captured in audit JSONL files. Subscription/OAuth
+  runs report `$0` honestly. Mixed-runner items (claude plan, opencode
+  execute) render side by side with the model label per row.
 - **Audit viewer support for opencode events.** `hopper audit <id> --tail`
-  now decodes opencode's `step_start`, `text`, `step_finish`, and synthetic
-  `opencode-export` events alongside claude's stream-json. The render path
-  is runner-agnostic.
+  decodes opencode's `step_start`, `text`, `step_finish`, and synthetic
+  `opencode-export` events alongside claude's stream-json. The render
+  path is runner-agnostic.
 - **Opt-in integration test for the opencode runner.**
   `src/gateways/opencode-gateway.integration.test.ts`, runnable via
-  `HOPPER_OPENCODE_IT=1 bun test …`. Skipped by default; defaults to the
-  free `opencode/deepseek-v4-flash-free` model so no credentials are
-  required.
+  `HOPPER_OPENCODE_IT=1 bun test …`.
 
 ### Changed
 
-- **BREAKING: `~/.hopper/runner-config.json` schema.** Map keys changed
-  from `opus | sonnet | haiku` to `deep | balanced | fast`. Migration:
-  rename the keys in your file. Values (the provider/model identifiers on
-  the right-hand side) are unchanged.
-- **BREAKING: `SessionOptions.model` vocabulary.** Code that constructs
-  `SessionOptions` (e.g. custom worker integrations) should now pass
-  `"deep"`, `"balanced"`, or `"fast"` rather than `"opus"`, `"sonnet"`,
-  `"haiku"`. The legacy aliases still pass through verbatim on the claude
-  runner (claude accepts them natively) but no longer translate to the
-  configured opencode model — they will be sent to opencode as-is and
-  fail.
-- **Worker log lines** now use tier names (`deep` / `balanced` / `fast`)
-  rather than vendor aliases — so a `--runner opencode` worker that
-  resolves `deep` to `openai/gpt-5.5` no longer logs `(opus, …)`.
+- **BREAKING: `--runner` flag removed.** Runner selection is no longer
+  worker-wide; it follows the item's profile. `hopper worker --runner X`
+  now fails with a clean error pointing at `--profile`. Workers are
+  runner-agnostic by default and dispatch per item.
+- **BREAKING: `~/.hopper/runner-config.json` removed.** Profile files at
+  `~/.hopper/profiles/<name>.json` replace it. The bootstrap procedure
+  creates equivalent profile templates on first use; nobody had a
+  hand-tuned `runner-config.json` against the briefly-cut prior 3.0.0
+  (delete it if you did).
+- **BREAKING: `SessionOptions.profile` required at the gateway layer.**
+  Every `runSession` and `generateText` call must carry the profile so
+  alias resolution works. The routing runner enforces this at dispatch
+  time. Existing test fixtures need a profile field; production callers
+  (the worker, the agent resolver) load profiles before invoking the
+  runner.
+- **`Item.profile` field** baked at `hopper add` time. Items added before
+  the profile rollout fall back to `defaultProfile` from `config.json` at
+  claim time.
+- **Worker log lines** use tier names (`deep` / `balanced` / `fast`) rather
+  than vendor aliases.
 
 ### Fixed
 
@@ -109,13 +125,23 @@ edited that file, upgrading is a no-op.
 
 ### Internal
 
+- New pure module `src/profile.ts`: profile shape, validation, name
+  vocabulary, and tier-resolution helper.
+- New gateway `src/gateways/profiles-gateway.ts`: per-file I/O over
+  `~/.hopper/profiles/`, plus bootstrap of shipped templates and
+  `config.json`.
+- New `src/gateways/routing-runner.ts`: profile-driven dispatch between
+  the claude and opencode runners.
 - Refactored the worker layer to accept typed context objects rather than
-  long positional parameter lists (`ExecuteValidateContext`, etc.).
+  long positional parameter lists (`ExecuteValidateContext`, etc.) and
+  thread `profile: Profile` through all phase calls.
 - Shared `streamToAuditFile` extracted to `src/gateways/audit-stream.ts`
   and used by both runners.
 - Extracted pure helpers: `extract-opencode-result.ts`,
   `craftsperson-body.ts`, `opencode-argv.ts`,
-  `opencode-config-content.ts`, `runner-config.ts`, `model-tier.ts`.
+  `opencode-config-content.ts`, `extract-cost.ts`.
+- Deleted: `src/gateways/runner-config.ts`, `src/gateways/model-tier.ts`
+  (`ModelTier` type moved into `src/profile.ts`).
 
 ## [2.1.4] - 2026-05-15
 

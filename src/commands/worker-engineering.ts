@@ -9,6 +9,7 @@ import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import { buildEngineeringBranchName } from "../git-workflow.ts";
+import type { Profile } from "../profile.ts";
 import type { ClaimedItem, Item, PhaseRecord } from "../store.ts";
 import { recordItemPhase, setItemEngineeringBranchSlug } from "../store.ts";
 import {
@@ -58,12 +59,13 @@ async function safePersistBranchSlug(itemId: string, slug: string, log?: LogFn):
 
 async function resolveEngineeringBranchSlug(
   claude: ClaudeGateway,
+  profile: Profile,
   item: Item,
   log?: LogFn,
 ): Promise<string | null> {
   try {
     const prompt = buildBranchSlugPrompt(item.title, item.description);
-    const { exitCode, text } = await claude.generateText(prompt, "fast");
+    const { exitCode, text } = await claude.generateText(prompt, "fast", { profile });
     if (exitCode !== 0) return null;
     return normaliseBranchSlug(text);
   } catch (e) {
@@ -74,13 +76,14 @@ async function resolveEngineeringBranchSlug(
 
 async function resolveEngineeringCommitMessage(
   claude: ClaudeGateway,
+  profile: Profile,
   item: Item,
   diffSummary: string,
   log?: LogFn,
 ): Promise<string> {
   try {
     const prompt = buildCommitMessagePrompt(item.title, item.description, diffSummary);
-    const { exitCode, text } = await claude.generateText(prompt, "fast");
+    const { exitCode, text } = await claude.generateText(prompt, "fast", { profile });
     return resolveEngineeringCommitFallback(item, text, exitCode);
   } catch (e) {
     log?.(`Commit message generation failed, using title: ${toErrorMessage(e)}`);
@@ -92,19 +95,17 @@ export async function runPlanPhase(
   item: Item,
   worktreePath: string,
   paths: EngineeringAuditPaths,
-  deps: { claude: ClaudeGateway; fs: FsGateway },
+  deps: { claude: ClaudeGateway; fs: FsGateway; profile: Profile },
   log: LogFn,
 ): Promise<{ planText: string } | null> {
-  const { claude, fs } = deps;
+  const { claude, fs, profile } = deps;
   log(`Plan phase (deep, plan mode, read-only)...\nAudit log: ${paths.planAuditFile}`);
   const planPrompt = buildPlanPrompt(item);
   const planStartedAt = new Date().toISOString();
-  const planRun = await claude.runSession(
-    planPrompt,
-    worktreePath,
-    paths.planAuditFile,
-    buildPlanOptions(),
-  );
+  const planRun = await claude.runSession(planPrompt, worktreePath, paths.planAuditFile, {
+    ...buildPlanOptions(),
+    profile,
+  });
   const planText = planRun.result.trim();
   await safeRecordPhase(
     item.id,
@@ -140,7 +141,7 @@ export interface ExecuteValidateContext {
   planText: string;
   paths: EngineeringAuditPaths;
   hopperHome: string;
-  deps: { claude: ClaudeGateway; fs: FsGateway };
+  deps: { claude: ClaudeGateway; fs: FsGateway; profile: Profile };
   log: LogFn;
 }
 
@@ -148,7 +149,7 @@ export async function runExecuteValidateLoop(
   ctx: ExecuteValidateContext,
 ): Promise<ExecuteValidateResult> {
   const { item, worktreePath, planText, paths, hopperHome, deps, log } = ctx;
-  const { claude, fs } = deps;
+  const { claude, fs, profile } = deps;
   // One execute → validate attempt, then up to `maxRetries` remediation
   // attempts when validate reports FAIL. Each attempt writes its own
   // per-attempt audit file and records phase entries so `hopper show`
@@ -184,12 +185,10 @@ export async function runExecuteValidateLoop(
         )
       : buildExecutePrompt(item, planText);
     const executeStartedAt = new Date().toISOString();
-    const executeRun = await claude.runSession(
-      executePrompt,
-      worktreePath,
-      executeAuditPath,
-      buildExecuteOptions(item.agent),
-    );
+    const executeRun = await claude.runSession(executePrompt, worktreePath, executeAuditPath, {
+      ...buildExecuteOptions(item.agent),
+      profile,
+    });
     executeResults.push(executeRun.result);
     await safeRecordPhase(
       item.id,
@@ -222,13 +221,14 @@ export async function runExecuteValidateLoop(
       buildValidatePrompt(item, planText),
       worktreePath,
       validateAuditPath,
-      buildValidateOptions(),
+      { ...buildValidateOptions(), profile },
     );
     validateResults.push(validateRun.result);
     outcome = await resolveValidateOutcomeWithFallback(
       validateRun.exitCode,
       validateRun.result,
       claude,
+      profile,
       log,
     );
     await safeRecordPhase(
@@ -270,10 +270,10 @@ export async function runExecuteValidateLoop(
 export async function commitEngineeringChanges(
   item: Item,
   worktreePath: string,
-  deps: { git: GitGateway; claude: ClaudeGateway },
+  deps: { git: GitGateway; claude: ClaudeGateway; profile: Profile },
   log: LogFn,
 ): Promise<{ dirty: boolean }> {
-  const { git, claude } = deps;
+  const { git, claude, profile } = deps;
   const dirty = await git.isWorktreeDirty(worktreePath);
   if (dirty) {
     // Stage before summarising — `git diff HEAD` excludes untracked files, so
@@ -283,7 +283,7 @@ export async function commitEngineeringChanges(
     await git.stageAll(worktreePath);
     log("Generating commit message...");
     const diff = await git.diffSummary(worktreePath);
-    const commitMsg = await resolveEngineeringCommitMessage(claude, item, diff, log);
+    const commitMsg = await resolveEngineeringCommitMessage(claude, profile, item, diff, log);
     log("Committing changes...");
     await git.commitAll(worktreePath, commitMsg);
     log("Committed.");
@@ -340,10 +340,10 @@ export async function processEngineeringItem(
   item: ClaimedItem,
   agentName: string,
   hopperHome: string,
-  deps: { git: GitGateway; claude: ClaudeGateway; fs: FsGateway },
+  deps: { git: GitGateway; claude: ClaudeGateway; fs: FsGateway; profile: Profile },
   concurrency: number = 1,
 ): Promise<void> {
-  const { git, claude, fs } = deps;
+  const { git, claude, fs, profile } = deps;
   const log = createLogger(item.id, concurrency);
 
   if (!item.workingDir || !item.branch) {
@@ -378,7 +378,7 @@ export async function processEngineeringItem(
     log(`Using cached branch slug: ${slug}`);
   } else {
     log("Generating branch slug...");
-    slug = await resolveEngineeringBranchSlug(claude, item, log);
+    slug = await resolveEngineeringBranchSlug(claude, profile, item, log);
     if (slug) {
       await safePersistBranchSlug(item.id, slug, log);
     }
@@ -411,7 +411,7 @@ export async function processEngineeringItem(
   }
 
   // --- Plan phase -------------------------------------------------------
-  const planResult = await runPlanPhase(item, worktreePath, paths, { claude, fs }, log);
+  const planResult = await runPlanPhase(item, worktreePath, paths, { claude, fs, profile }, log);
   if (!planResult) return;
   const { planText } = planResult;
 
@@ -422,13 +422,18 @@ export async function processEngineeringItem(
     planText,
     paths,
     hopperHome,
-    deps: { claude, fs },
+    deps: { claude, fs, profile },
     log,
   });
   if (!loopResult.passed) return;
 
   // --- Commit (Hopper + Haiku) -----------------------------------------
-  const { dirty } = await commitEngineeringChanges(item, worktreePath, { git, claude }, log);
+  const { dirty } = await commitEngineeringChanges(
+    item,
+    worktreePath,
+    { git, claude, profile },
+    log,
+  );
 
   // --- Worktree teardown + merge/push + complete -----------------------
   await teardownMergeAndComplete({

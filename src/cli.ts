@@ -10,6 +10,7 @@ import { completeCommand } from "./commands/complete.ts";
 import { integrateCommand } from "./commands/integrate.ts";
 import { listCommand } from "./commands/list.ts";
 import { presetCommand } from "./commands/preset.ts";
+import { profilesCommand } from "./commands/profiles.ts";
 import { reprioritizeCommand } from "./commands/reprioritize.ts";
 import { requeueCommand } from "./commands/requeue.ts";
 import { showCommand } from "./commands/show.ts";
@@ -18,9 +19,10 @@ import { workerCommand } from "./commands/worker-loop.ts";
 import { VERSION } from "./constants.ts";
 import { createAgentsGateway } from "./gateways/agents-gateway.ts";
 import { createAuditGateway } from "./gateways/audit-gateway.ts";
-import { createClaudeGateway } from "./gateways/claude-gateway.ts";
 import { createGitGateway } from "./gateways/git-gateway.ts";
 import { createLlmGateway } from "./gateways/llm-gateway.ts";
+import { createProfilesGateway } from "./gateways/profiles-gateway.ts";
+import { createRoutingRunner } from "./gateways/routing-runner.ts";
 import { createTitleGenerator } from "./titler.ts";
 
 export interface ParsedArgs {
@@ -127,19 +129,14 @@ Usage:
   hopper init                        Install Claude Code skill files (local repo)
   hopper init --global               Install skill files to ~/.claude/skills/
   hopper init --force                Overwrite even if installed skill is newer
-  hopper worker                      Run the worker loop (default: claude)
+  hopper worker                      Run the worker loop (runner-agnostic; each
+                                     item dispatches per its profile)
   hopper worker --once               Process one item then exit
   hopper worker --agent <name>       Set agent name (default: claude-worker)
   hopper worker --interval <sec>     Poll interval in seconds (default: 60)
   hopper worker --concurrency <n>    Run up to N items in parallel (default: 4)
-  hopper worker --runner <name>      Agent runner: claude (default) or opencode.
-                                     With --runner opencode, session work is
-                                     dispatched via the opencode CLI; Haiku
-                                     one-shots (branch slug, commit message,
-                                     validate-marker fallback) still go via
-                                     claude. Requires opencode installed and
-                                     ~/.hopper/runner-config.json with at least
-                                     opencode.models.{deep,balanced,fast}.
+  hopper profiles                    List installed profiles
+  hopper profiles show <name>        Print a profile file's contents
 
 Options:
   --after     Schedule item for later (e.g. 1h, 30m, tomorrow 9am)
@@ -151,6 +148,8 @@ Options:
   --branch    Git branch for the task (add command, required with --dir unless --command is set)
   --type      Task type: investigation, engineering, task (add command)
   --agent     Agent for claim/complete/worker; or craftsperson override (add command)
+  --profile   Profile name for the item (add command). Defaults to defaultProfile
+              from ~/.hopper/config.json. See 'hopper profiles' for installed.
   --dry-run         Print commands without executing them (integrate)
   --keep-worktree   Skip worktree and branch cleanup after merge (integrate)
   --json      Output as JSON
@@ -177,8 +176,12 @@ async function main(): Promise<void> {
       const apiKey = process.env.OPENAI_API_KEY ?? "";
       const llm = apiKey ? createLlmGateway(apiKey) : undefined;
       const titler = createTitleGenerator(llm);
-      const agentResolver = createAgentResolver(createAgentsGateway(), createClaudeGateway());
-      await runCommand((p) => addCommand(p, titler, undefined, agentResolver), parsed);
+      const profilesGateway = createProfilesGateway();
+      const agentResolver = createAgentResolver(createAgentsGateway(), createRoutingRunner());
+      await runCommand(
+        (p) => addCommand(p, titler, profilesGateway, undefined, agentResolver),
+        parsed,
+      );
       break;
     }
     case "list":
@@ -223,6 +226,11 @@ async function main(): Promise<void> {
     case "preset":
       await runCommand(presetCommand, parsed);
       break;
+    case "profiles": {
+      const profiles = createProfilesGateway();
+      await runCommand((p) => profilesCommand(p, profiles), parsed);
+      break;
+    }
     case "init": {
       const { initCommand } = await import("./commands/init.ts");
       await initCommand(

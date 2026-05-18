@@ -1,34 +1,59 @@
 # Migrating from hopper 2.x to 3.x
 
-Hopper 3.0.0 introduces a second agent runner (opencode), a vendor-agnostic
-model tier vocabulary, and per-phase reasoning effort. Two changes break
-backwards compatibility — both small, both mechanical to fix.
+Hopper 3.0 reworks runner and model selection into per-job **profiles**,
+removes the global `--runner` flag from the worker, and introduces
+per-phase reasoning effort. The full feature surface — profiles, the four
+shipped templates, on-disk shape — is covered in
+[Profiles](/profiles); this guide focuses on what changes for someone
+upgrading from 2.x.
 
 For the full list of additions and internal refactors, see the
 [3.0.0 entry in CHANGELOG.md](https://github.com/svetzal/hopper/blob/main/CHANGELOG.md#300---2026-05-18).
 
 ## TL;DR
 
-If you've never touched `~/.hopper/runner-config.json` and you don't have
-custom code that constructs `SessionOptions` directly, **upgrading is a
-no-op**. Default workflows (`hopper add` / `hopper worker` with the claude
-runner) behave identically to 2.x.
+- `~/.hopper/runner-config.json` is gone. Per-job **profiles** at
+  `~/.hopper/profiles/<name>.json` replace it.
+- `hopper worker --runner <name>` is gone. The worker is runner-agnostic
+  and dispatches per item based on `item.profile`.
+- `hopper add` takes a new `--profile <name>` flag; absent, it falls
+  back to `defaultProfile` in `~/.hopper/config.json`.
+- The first `hopper add` after upgrade **bootstraps** `~/.hopper/`
+  automatically: writes `config.json` plus four shipped profile
+  templates (`anthropic`, `openai`, `openrouter`, `ollama`).
+- The default profile is **`openai`**, not `anthropic` — see
+  [Profiles → Why `openai` is the default](/profiles#why-openai-is-the-default).
+- Model tier vocabulary (`deep` / `balanced` / `fast`) is unchanged from
+  the original 3.0 cut.
 
-If either of those applies to you, two small renames are all that's needed:
+## For 2.x users with no `~/.hopper/runner-config.json`
 
-| Where | 2.x | 3.x |
-|---|---|---|
-| `~/.hopper/runner-config.json` map keys | `opus`, `sonnet`, `haiku` | `deep`, `balanced`, `fast` |
-| `SessionOptions.model` (in custom code) | `"opus"`, `"sonnet"`, `"haiku"` | `"deep"`, `"balanced"`, `"fast"` |
+**Upgrade is a no-op.** You never customised runner bindings in 2.x, so
+there's nothing to migrate.
 
-## Breaking change 1 — `~/.hopper/runner-config.json` keys
+The first time you run `hopper add` after upgrading, hopper writes the
+default config and the four shipped profile templates. Queued items use
+the `openai` profile unless you pass `--profile <name>` or change
+`defaultProfile` in `~/.hopper/config.json`.
 
-This file (only relevant if you use `--runner opencode`) used to key its
-opencode model map by the Anthropic-flavoured aliases `opus`/`sonnet`/`haiku`.
-Hopper 3.x addresses models through a vendor-agnostic tier vocabulary —
-`deep`/`balanced`/`fast` — so the runner-config keys had to follow.
+If you want to keep using Claude Code with a direct Anthropic API key:
 
-**Before (2.x):**
+```bash
+# One-time, per-job
+hopper add "..." --profile anthropic
+
+# Or change the default once
+echo '{"defaultProfile": "anthropic"}' > ~/.hopper/config.json
+```
+
+That's the whole migration.
+
+## For 2.x users who had a `~/.hopper/runner-config.json`
+
+If you customised the 2.x opencode binding, port the model map into a
+profile file.
+
+A 2.x runner-config like this:
 
 ```json
 {
@@ -42,104 +67,103 @@ Hopper 3.x addresses models through a vendor-agnostic tier vocabulary —
 }
 ```
 
-**After (3.x):**
+…becomes a profile file at `~/.hopper/profiles/openai.json`:
 
 ```json
 {
-  "opencode": {
-    "models": {
-      "deep":     "openai/gpt-5.5",
-      "balanced": "openai/gpt-5.4",
-      "fast":     "openai/gpt-5.4-mini"
-    }
+  "runner": "opencode",
+  "models": {
+    "deep":     "openai/gpt-5.5",
+    "balanced": "openai/gpt-5.4",
+    "fast":     "openai/gpt-5.4-mini"
   }
 }
 ```
 
-Only the keys change. The right-hand-side identifiers (provider/model) are
-unchanged.
+Two changes:
 
-### Migration
+- The wrapping `"opencode": { ... }` envelope is gone; `runner` is a
+  top-level field naming `"opencode"` or `"claude"`.
+- The model-map keys move from the Anthropic-flavoured aliases
+  (`opus`/`sonnet`/`haiku`) to the canonical tier vocabulary
+  (`deep`/`balanced`/`fast`). The right-hand-side identifiers don't
+  change.
+
+After porting, delete the old file:
 
 ```bash
-# Back up first.
-cp ~/.hopper/runner-config.json ~/.hopper/runner-config.json.bak
-
-# Then rename the three keys. If you've added other tier aliases beyond
-# the canonical three (e.g. literal `"gpt-5.5": "openai/gpt-5.5"` as an
-# explicit-override entry), leave those untouched.
+rm ~/.hopper/runner-config.json
 ```
 
-If you forget, opencode will receive the unmapped string verbatim and fail
-with `Provider not found: opus` (or similar). It's loud — no silent
-behaviour change.
+Then run `hopper profiles` to confirm hopper sees your new file:
 
-## Breaking change 2 — `SessionOptions.model` vocabulary
+```text
+Default profile: openai
 
-Only relevant if you have **custom code** that constructs `SessionOptions`
-directly — typically a bespoke worker integration or extension. The
-built-in `hopper worker`, `hopper add`, audit viewer, and all CLI flows do
-not need changes.
+* openai  (opencode)
+      deep:     openai/gpt-5.5
+      balanced: openai/gpt-5.4
+      fast:     openai/gpt-5.4-mini
+  ...
+```
 
-**Before (2.x):**
+> If you happened to install the originally-cut 3.0.0 (since deleted and
+> re-pushed) and wrote a `runner-config.json` against it, the same
+> procedure applies: delete the runner-config, let `hopper add` bootstrap
+> the profiles directory on first invocation, then edit the shipped
+> templates to taste. There is no in-place migration tool — by design.
+
+## `--runner` flag removed
+
+`hopper worker --runner opencode` no longer exists. The worker is
+runner-agnostic: it inspects each item's `profile` field and dispatches
+through whichever runner that profile names. A single worker can drain a
+queue containing items dispatched to claude, opencode-against-OpenAI,
+and opencode-against-ollama simultaneously.
+
+If you still pass `--runner` (typically from an old shell alias or a
+launchd plist), the worker exits with a clear message:
+
+```text
+--runner was removed in hopper 3.0.0; runner selection is now per-item
+via profiles. Use `hopper add --profile <name>` to queue items against
+a specific profile.
+```
+
+Remove the flag from your alias / launchd plist / Makefile and the
+worker starts normally.
+
+## `SessionOptions` API change
+
+**Only relevant if you have custom code that constructs `SessionOptions`
+directly** — typically a bespoke worker integration or extension. The
+built-in `hopper worker`, `hopper add`, audit viewer, and all CLI flows
+do not need changes.
+
+`SessionOptions` (defined in `src/gateways/agent-runner.ts`) now carries
+an optional `profile` field of type `Profile` from `src/profile.ts`. The
+worker fills it from `item.profile` before each phase. Callers that
+construct `SessionOptions` manually must supply a profile too — the
+runner uses it to resolve model aliases against the profile's `models`
+map.
+
+Likewise, `AgentRunner.generateText` now takes a required `profile` on
+its options object:
 
 ```ts
-const opts: SessionOptions = {
-  model: "opus",
-  permissionMode: "plan",
-};
+const result = await runner.generateText(prompt, "fast", {
+  profile,         // required in 3.x
+  cwd: workingDir,
+});
 ```
 
-**After (3.x):**
+This is the only SDK-level break in 3.0. In practice nearly no one calls
+these gateways directly — they're internal.
 
-```ts
-const opts: SessionOptions = {
-  model: "deep",
-  permissionMode: "plan",
-};
-```
+## Per-phase reasoning effort
 
-### Per-runner translation behaviour
-
-- **claude runner**: tier names map through a hard-coded table in
-  `src/gateways/model-tier.ts` (`deep`→`opus`, `balanced`→`sonnet`,
-  `fast`→`haiku`). The legacy alias strings (`"opus"`, `"sonnet"`,
-  `"haiku"`) still pass through verbatim to the `claude` CLI, which
-  accepts them natively — so on the claude runner the 2.x code keeps
-  working. You only need to update if you also intend to run the same
-  options through the opencode runner.
-- **opencode runner**: tier names resolve through
-  `~/.hopper/runner-config.json`. The legacy alias strings (`"opus"`,
-  etc.) no longer translate — they will be forwarded to opencode as-is
-  and fail with a "Provider not found" error.
-
-### Runner-native escape hatch (unchanged)
-
-Both runners still pass through anything that looks like a native
-identifier (contains `/`, or is a known vendor alias). So you can mix
-freely:
-
-```ts
-{ model: "deep" }                        // tier → runner-native
-{ model: "openai/gpt-5.3-codex" }        // explicit provider/model
-{ model: "claude-opus-4-7" }             // explicit claude model name
-```
-
-## New optional features in 3.x
-
-These are additive — no migration required to keep using hopper as before,
-but worth knowing they exist.
-
-### `--runner opencode`
-
-`hopper worker --runner opencode` dispatches session work through the
-[opencode](https://opencode.ai) CLI instead of Claude Code. Fast-tier
-one-shots (branch slug, commit message, validate-marker fallback) continue
-running on Claude Code regardless. Requires opencode v1.15+ on `PATH` and
-the model-binding entries described above. See `README.md` and
-[`docs/opencode-spike.md`](opencode-spike.md) for the full design.
-
-### Per-phase reasoning effort
+This is the same feature that landed in the original 3.0 cut, kept here
+for completeness:
 
 `SessionOptions.effort` accepts `"minimal" | "low" | "medium" | "high" |
 "max"` and is forwarded as `--effort` (claude) or `--variant` (opencode).
@@ -147,12 +171,9 @@ The built-in task-type workflows set sensible defaults
 (plan/validate/investigation = `high`, execute = `medium`); pass an
 `effort` field on a custom `SessionOptions` to override.
 
-### Vendor-honest worker log lines
-
-Worker phase log lines now use tier names (`Plan phase (deep, …)`,
-`Execute phase attempt 1/2 (balanced, …)`) rather than vendor aliases.
-Under `--runner opencode` this prevents the log from claiming a session is
-running on opus when it's actually on `openai/gpt-5.5`.
+Worker phase log lines name the tier rather than the vendor alias —
+`Plan phase (deep, …)`, `Execute phase attempt 1/2 (balanced, …)` —
+so a run on `openai/gpt-5.5` no longer pretends to be running on `opus`.
 
 ## Rolling back
 
@@ -168,22 +189,27 @@ cp build/hopper ~/.local/bin/hopper
 codesign --force --sign - ~/.local/bin/hopper
 ```
 
-Restore your runner-config.json backup if you'd renamed the keys:
-
-```bash
-cp ~/.hopper/runner-config.json.bak ~/.hopper/runner-config.json
-```
+To resume using 2.x against your old configuration, recreate
+`~/.hopper/runner-config.json` from the profile file you ported above —
+re-wrap the model map in `{ "opencode": { ... } }` and rename the keys
+from `deep`/`balanced`/`fast` back to `opus`/`sonnet`/`haiku`.
 
 Queue state (`~/.hopper/items.json`) and audit history are
 forward-and-backward compatible across 2.x and 3.x — neither schema
-changed in this release. Worktree state likewise.
+changed in the runner-config / profile rework. Worktree state likewise.
+
+> Items queued under 3.x carry a `profile` field that 2.x doesn't read.
+> Old hoppers will dispatch them as if the field weren't there, which
+> means they'll run on whatever `--runner` the 2.x worker was started
+> with. For most rollbacks this is fine; just be aware that "the profile
+> I picked at add-time" stops being honoured the moment you downgrade.
 
 ## Bug-fix worth noting
 
-3.0.0 also fixes a bug that affected from-scratch project generation in
-2.x: the engineering commit-message step sometimes received an empty diff
+3.0 fixes a bug that affected from-scratch project generation in 2.x:
+the engineering commit-message step sometimes received an empty diff
 (because `git diff HEAD` excludes untracked files) and Haiku responded
 with a meta-complaint that became the commit message. If you've seen
 commits with messages like *"I don't see a diff summary in your message
 — the 'Diff summary:' section is empty…"*, that's the same bug. It's
-fixed in 3.0.0 with no migration needed.
+fixed in 3.0 with no migration needed.

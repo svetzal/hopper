@@ -4,10 +4,10 @@
 // extract-result.test.ts and claude-argv.test.ts, and integration behaviour
 // is covered by worker-workflow tests.
 import { extractResult, formatStderrEvent } from "../extract-result.ts";
+import { type Profile, resolveProfileModel } from "../profile.ts";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
 import { streamToAuditFile } from "./audit-stream.ts";
 import { buildClaudeArgv, type ClaudeSessionOptions } from "./claude-argv.ts";
-import { resolveClaudeModel } from "./model-tier.ts";
 
 export type { ClaudeSessionOptions };
 
@@ -74,18 +74,19 @@ async function runSession(
 async function generateText(
   prompt: string,
   model: string,
-  options: { cwd?: string; appendSystemPrompt?: string } = {},
+  options: { profile: Profile; cwd?: string; appendSystemPrompt?: string },
 ): Promise<{ exitCode: number; text: string }> {
   // Plain text output, no tools, no permissions. Just a model speaking to itself.
   // Note: the prompt goes after `--` so Commander's variadic `--tools` handler
   // on the claude side cannot siphon it into its value list. (See
   // src/gateways/claude-argv.ts for the same reasoning applied to runSession.)
+  const resolvedModel = resolveProfileModel(model, options.profile) ?? model;
   const argv = [
     resolveClaudeBin(),
     "--print",
     "--dangerously-skip-permissions",
     "--model",
-    resolveClaudeModel(model),
+    resolvedModel,
     "--tools",
     "",
   ];

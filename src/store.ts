@@ -86,6 +86,14 @@ export interface Item {
    */
   agent?: string;
   /**
+   * Profile name baked at add-time. Identifies which `~/.hopper/profiles/<name>.json`
+   * the worker loads to pick the runner (claude vs opencode) and resolve
+   * model aliases. New in 3.0.0; items added before the profile rollout
+   * fall back to `defaultProfile` from `~/.hopper/config.json` at claim
+   * time.
+   */
+  profile?: string;
+  /**
    * Per-phase runtime records for engineering items. Written incrementally as
    * each phase completes, so `hopper show` can render in-flight progress.
    */

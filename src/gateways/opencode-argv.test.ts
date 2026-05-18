@@ -1,8 +1,18 @@
 import { describe, expect, test } from "bun:test";
+import type { Profile } from "../profile.ts";
 import { buildOpencodeArgv } from "./opencode-argv.ts";
-import type { RunnerConfig } from "./runner-config.ts";
 
 const BIN = "/usr/local/bin/opencode";
+
+const OPENAI_PROFILE: Profile = {
+  name: "openai",
+  runner: "opencode",
+  models: {
+    deep: "openai/gpt-5.5",
+    balanced: "openai/gpt-5.4",
+    fast: "openai/gpt-5.4-mini",
+  },
+};
 
 describe("buildOpencodeArgv", () => {
   test("minimal invocation: just the subcommand, format, skip-permissions, and prompt", () => {
@@ -23,24 +33,26 @@ describe("buildOpencodeArgv", () => {
     expect(argv[argv.length - 1]).toBe("a tricky --prompt-looking string");
   });
 
-  test("translates a model tier through the runner-config map", () => {
-    const config: RunnerConfig = {
-      opencode: {
-        models: {
-          deep: "openai/gpt-5.5",
-        },
-      },
-    };
-    const argv = buildOpencodeArgv(BIN, "hi", { model: "deep" }, config);
+  test("translates a model tier through the profile's models map", () => {
+    const argv = buildOpencodeArgv(BIN, "hi", { model: "deep", profile: OPENAI_PROFILE });
     const modelIdx = argv.indexOf("--model");
     expect(modelIdx).toBeGreaterThan(-1);
     expect(argv[modelIdx + 1]).toBe("openai/gpt-5.5");
   });
 
   test("passes a native provider/model identifier through unchanged", () => {
-    const argv = buildOpencodeArgv(BIN, "hi", { model: "openrouter/anthropic/claude-haiku-4.5" });
+    const argv = buildOpencodeArgv(BIN, "hi", {
+      model: "openrouter/anthropic/claude-haiku-4.5",
+      profile: OPENAI_PROFILE,
+    });
     const modelIdx = argv.indexOf("--model");
     expect(argv[modelIdx + 1]).toBe("openrouter/anthropic/claude-haiku-4.5");
+  });
+
+  test("forwards model verbatim when no profile is supplied", () => {
+    const argv = buildOpencodeArgv(BIN, "hi", { model: "openai/gpt-5.5" });
+    const modelIdx = argv.indexOf("--model");
+    expect(argv[modelIdx + 1]).toBe("openai/gpt-5.5");
   });
 
   test("does not include --model when no model is set", () => {
@@ -55,7 +67,7 @@ describe("buildOpencodeArgv", () => {
   });
 
   test("passes the cwd via --dir when provided", () => {
-    const argv = buildOpencodeArgv(BIN, "hi", {}, {}, "/tmp/work");
+    const argv = buildOpencodeArgv(BIN, "hi", {}, "/tmp/work");
     const idx = argv.indexOf("--dir");
     expect(argv[idx + 1]).toBe("/tmp/work");
   });

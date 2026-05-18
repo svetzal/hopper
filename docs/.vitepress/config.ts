@@ -15,6 +15,7 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: "Home", link: "/" },
+      { text: "Profiles", link: "/profiles" },
       { text: "Migration", link: "/migration-2.x-to-3.x" },
       { text: "Opencode spike", link: "/opencode-spike" },
       {
@@ -32,6 +33,12 @@ export default defineConfig({
         text: "Getting started",
         items: [
           { text: "Overview", link: "/" },
+        ],
+      },
+      {
+        text: "Configuration",
+        items: [
+          { text: "Profiles", link: "/profiles" },
         ],
       },
       {

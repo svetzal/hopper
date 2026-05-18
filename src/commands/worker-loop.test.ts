@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
+import type { ProfilesGateway } from "../gateways/profiles-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import type { ClaimedItem } from "../store.ts";
 import { callArgs, makeClaimedItem, typedMock } from "../test-helpers.ts";
@@ -12,17 +13,41 @@ const noop = mock(async () => {});
 
 const HOPPER_HOME = "/tmp/test-hopper";
 
+function makeStubProfilesGateway(): ProfilesGateway {
+  return {
+    configPath: () => "/tmp/config.json",
+    profilesDir: () => "/tmp/profiles",
+    profilePath: (n) => `/tmp/profiles/${n}.json`,
+    listProfileNames: async () => ["test"],
+    loadProfile: async (n) => ({
+      ok: true,
+      profile: {
+        name: n,
+        runner: "claude",
+        models: { deep: "opus", balanced: "sonnet", fast: "haiku" },
+      },
+    }),
+    loadAllProfiles: async () => ({ profiles: [], errors: [] }),
+    loadConfig: async () => ({ defaultProfile: "test" }),
+    writeConfig: async () => {},
+    writeProfile: async () => {},
+    bootstrap: async () => false,
+  };
+}
+
 function makeGatewayDeps(): {
   git: GitGateway;
   claude: ClaudeGateway;
   fs: FsGateway;
   shell: ShellGateway;
+  profiles: ProfilesGateway;
 } {
   return {
     git: {} as GitGateway,
     claude: {} as ClaudeGateway,
     fs: {} as FsGateway,
     shell: {} as ShellGateway,
+    profiles: makeStubProfilesGateway(),
   };
 }
 
