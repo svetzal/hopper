@@ -13,6 +13,11 @@ This is a **major release** that introduces a second agent runner (opencode)
 alongside Claude Code, abstracts model selection behind a vendor-agnostic
 tier vocabulary, and adds per-phase reasoning-effort control.
 
+Upgrading from 2.x? See [docs/migration-2.x-to-3.x.md](docs/migration-2.x-to-3.x.md)
+for step-by-step migration instructions and rollback advice. The TL;DR is
+two map-key renames in `~/.hopper/runner-config.json` — and if you've never
+edited that file, upgrading is a no-op.
+
 ### Added
 
 - **opencode runner.** `hopper worker --runner opencode` dispatches session

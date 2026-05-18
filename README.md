@@ -134,6 +134,8 @@ To use the opencode runner, create `~/.hopper/runner-config.json`:
 
 Tier names not in the map (or any value containing `/`) are passed through to opencode unchanged, so you can mix tier names with native `provider/model` IDs in any `SessionOptions.model` field.
 
+> Upgrading from hopper 2.x? The runner-config keys were `opus`/`sonnet`/`haiku` before 3.0 and now follow the tier vocabulary above. See [`docs/migration-2.x-to-3.x.md`](docs/migration-2.x-to-3.x.md) for the step-by-step rename and full migration notes.
+
 `docs/opencode-spike.md` documents the empirical opencode CLI surface and the design decisions that shaped the runner.
 
 ## Agent Integration
