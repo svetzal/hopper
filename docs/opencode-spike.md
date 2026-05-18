@@ -189,8 +189,8 @@ Implication: a hopper runner can either call `opencode export <id>` (clean,
 official) or read the SQLite directly (faster, but couples to undocumented
 schema). The export route is strongly preferred.
 
-`--continue` resumes the last session in the current directory; `--session
-<id>` resumes a specific one; `--fork` branches from a continuation point.
+`--continue` resumes the last session in the current directory;
+`--session <id>` resumes a specific one; `--fork` branches from a continuation point.
 These will only matter for hopper if we want to mirror Claude's
 `session-separator` append behaviour — likely not for v1 (each hopper task is
 its own session).

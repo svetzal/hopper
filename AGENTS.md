@@ -114,6 +114,38 @@ To upgrade: `brew upgrade hopper`
 
 Trunk-based development: `main` is the only long-lived branch. All work lands on `main` via direct commit. Feature branches are not pushed to `origin`. Pull requests are not used. Short-lived local working branches (e.g. from hopper worktrees) are merged to `main` and deleted locally before work is considered complete.
 
+## Documentation site
+
+Hopper publishes a [VitePress](https://vitepress.dev) site to GitHub Pages
+at <https://svetzal.github.io/hopper/>. Source lives in `docs/`:
+
+- `docs/index.md` — landing page
+- `docs/migration-2.x-to-3.x.md` — upgrade guide
+- `docs/opencode-spike.md` — empirical findings from the opencode CLI investigation
+- `docs/.vitepress/config.ts` — site config (nav, sidebar, theme)
+
+Local commands:
+
+```bash
+bun run docs:dev      # live-reload server on http://localhost:5173
+bun run docs:build    # static build into docs/.vitepress/dist
+bun run docs:preview  # serve the production build for spot-checking
+```
+
+`.github/workflows/docs.yml` builds and deploys on every push to `main`
+that touches `docs/**` (or the workflow file itself, or
+`package.json`/`bun.lock`). The deployment is idempotent and uses
+`actions/deploy-pages@v4`; the `pages` concurrency group ensures only one
+deploy runs at a time.
+
+**Markdown gotcha**: VitePress runs markdown through Vue's compiler, so
+bare `<id>` / `<name>` placeholders outside of fenced code or inline
+backticks get parsed as HTML and fail the build. Keep angle-bracket
+placeholders inside backticks (`` `<id>` ``) or escape them
+(`\<id\>`). Single-line inline code only — backticks don't span
+newlines, and a stray cross-line ` `…\n…` ` will likewise break the
+build.
+
 ## Release process
 
 The version number lives in three places that must stay in sync:

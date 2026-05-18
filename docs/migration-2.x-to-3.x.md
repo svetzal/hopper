@@ -5,7 +5,7 @@ model tier vocabulary, and per-phase reasoning effort. Two changes break
 backwards compatibility — both small, both mechanical to fix.
 
 For the full list of additions and internal refactors, see the
-[3.0.0 entry in CHANGELOG.md](../CHANGELOG.md#300---2026-05-18).
+[3.0.0 entry in CHANGELOG.md](https://github.com/svetzal/hopper/blob/main/CHANGELOG.md#300---2026-05-18).
 
 ## TL;DR
 
