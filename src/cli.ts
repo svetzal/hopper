@@ -132,7 +132,7 @@ Usage:
   hopper worker                      Run the worker loop (runner-agnostic; each
                                      item dispatches per its profile)
   hopper worker --once               Process one item then exit
-  hopper worker --agent <name>       Set agent name (default: claude-worker)
+  hopper worker --agent <name>       Set agent name (default: worker)
   hopper worker --interval <sec>     Poll interval in seconds (default: 60)
   hopper worker --concurrency <n>    Run up to N items in parallel (default: 4)
   hopper profiles                    List installed profiles

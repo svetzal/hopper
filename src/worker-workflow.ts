@@ -186,7 +186,7 @@ export interface WorkerConfig {
 
 export function resolveWorkerConfig(flags: Record<string, string | boolean>): WorkerConfig {
   return {
-    agentName: typeof flags.agent === "string" ? flags.agent : "claude-worker",
+    agentName: typeof flags.agent === "string" ? flags.agent : "worker",
     pollInterval: typeof flags.interval === "string" ? parseInt(flags.interval, 10) : 60,
     runOnce: flags.once === true,
     concurrency: typeof flags.concurrency === "string" ? parseInt(flags.concurrency, 10) : 4,

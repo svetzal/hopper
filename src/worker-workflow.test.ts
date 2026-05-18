@@ -231,7 +231,7 @@ describe("worker-workflow", () => {
   describe("resolveWorkerConfig", () => {
     test("returns defaults when no flags provided", () => {
       expect(resolveWorkerConfig({})).toEqual({
-        agentName: "claude-worker",
+        agentName: "worker",
         pollInterval: 60,
         runOnce: false,
         concurrency: 4,
@@ -255,7 +255,7 @@ describe("worker-workflow", () => {
     });
 
     test("ignores boolean-typed agent flag (falls back to default)", () => {
-      expect(resolveWorkerConfig({ agent: true }).agentName).toBe("claude-worker");
+      expect(resolveWorkerConfig({ agent: true }).agentName).toBe("worker");
     });
 
     test("ignores boolean-typed interval flag (falls back to default)", () => {
