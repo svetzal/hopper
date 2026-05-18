@@ -63,7 +63,7 @@ async function resolveEngineeringBranchSlug(
 ): Promise<string | null> {
   try {
     const prompt = buildBranchSlugPrompt(item.title, item.description);
-    const { exitCode, text } = await claude.generateText(prompt, "haiku");
+    const { exitCode, text } = await claude.generateText(prompt, "fast");
     if (exitCode !== 0) return null;
     return normaliseBranchSlug(text);
   } catch (e) {
@@ -80,7 +80,7 @@ async function resolveEngineeringCommitMessage(
 ): Promise<string> {
   try {
     const prompt = buildCommitMessagePrompt(item.title, item.description, diffSummary);
-    const { exitCode, text } = await claude.generateText(prompt, "haiku");
+    const { exitCode, text } = await claude.generateText(prompt, "fast");
     return resolveEngineeringCommitFallback(item, text, exitCode);
   } catch (e) {
     log?.(`Commit message generation failed, using title: ${toErrorMessage(e)}`);
@@ -96,7 +96,7 @@ export async function runPlanPhase(
   log: LogFn,
 ): Promise<{ planText: string } | null> {
   const { claude, fs } = deps;
-  log(`Plan phase (opus, plan mode, read-only)...\nAudit log: ${paths.planAuditFile}`);
+  log(`Plan phase (deep, plan mode, read-only)...\nAudit log: ${paths.planAuditFile}`);
   const planPrompt = buildPlanPrompt(item);
   const planStartedAt = new Date().toISOString();
   const planRun = await claude.runSession(
@@ -170,7 +170,7 @@ export async function runExecuteValidateLoop(
     const executeAuditPath = resolveAttemptAuditPath(item.id, hopperHome, "execute", attempt);
     const isRemediation = attempt > 1;
     log(
-      `Execute phase attempt ${attempt}/${maxAttempts} (sonnet${
+      `Execute phase attempt ${attempt}/${maxAttempts} (balanced${
         item.agent ? `, agent: ${item.agent}` : ""
       }${isRemediation ? ", remediation" : ""})...\nAudit log: ${executeAuditPath}`,
     );
@@ -215,7 +215,7 @@ export async function runExecuteValidateLoop(
     // --- Validate ----------------------------------------------------------
     const validateAuditPath = resolveAttemptAuditPath(item.id, hopperHome, "validate", attempt);
     log(
-      `Validate phase attempt ${attempt}/${maxAttempts} (opus, read-only git)...\nAudit log: ${validateAuditPath}`,
+      `Validate phase attempt ${attempt}/${maxAttempts} (deep, read-only git)...\nAudit log: ${validateAuditPath}`,
     );
     const validateStartedAt = new Date().toISOString();
     const validateRun = await claude.runSession(

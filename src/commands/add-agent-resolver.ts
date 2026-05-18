@@ -34,7 +34,7 @@ export function createAgentResolver(agents: AgentsGateway, claude: ClaudeGateway
       const markers = detectProjectMarkers(fileMap);
 
       const prompt = buildSelectionPrompt(title, description, markers, candidates);
-      const { exitCode, text } = await claude.generateText(prompt, "haiku");
+      const { exitCode, text } = await claude.generateText(prompt, "fast");
       if (exitCode !== 0) return null;
 
       return parseSelectionResponse(text, candidates);

@@ -1,4 +1,5 @@
 import type { SessionOptions } from "./agent-runner.ts";
+import { resolveClaudeModel } from "./model-tier.ts";
 
 /**
  * Legacy alias for the runner-agnostic {@link SessionOptions}. Kept so
@@ -27,7 +28,7 @@ export function buildClaudeArgv(
 
   argv.push("--output-format", "stream-json");
 
-  if (options.model) argv.push("--model", options.model);
+  if (options.model) argv.push("--model", resolveClaudeModel(options.model));
   if (options.agent) argv.push("--agent", options.agent);
   // --tools, --allowedTools, --disallowedTools are all Commander-variadic on
   // the claude side. Passing each entry as its own argv token causes Commander

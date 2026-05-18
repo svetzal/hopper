@@ -7,14 +7,14 @@ describe("parseRunnerConfig", () => {
       JSON.stringify({
         opencode: {
           models: {
-            opus: "amazon-bedrock/global.anthropic.claude-opus-4-7",
-            sonnet: "amazon-bedrock/anthropic.claude-sonnet-4-6",
+            deep: "openai/gpt-5.5",
+            balanced: "openai/gpt-5.4",
           },
         },
       }),
     );
-    expect(cfg.opencode?.models?.opus).toBe("amazon-bedrock/global.anthropic.claude-opus-4-7");
-    expect(cfg.opencode?.models?.sonnet).toBe("amazon-bedrock/anthropic.claude-sonnet-4-6");
+    expect(cfg.opencode?.models?.deep).toBe("openai/gpt-5.5");
+    expect(cfg.opencode?.models?.balanced).toBe("openai/gpt-5.4");
   });
 
   test("returns {} for invalid JSON", () => {
@@ -37,20 +37,18 @@ describe("resolveOpencodeModel", () => {
   const config: RunnerConfig = {
     opencode: {
       models: {
-        opus: "amazon-bedrock/global.anthropic.claude-opus-4-7",
-        sonnet: "amazon-bedrock/anthropic.claude-sonnet-4-6",
+        deep: "openai/gpt-5.5",
+        balanced: "openai/gpt-5.4",
       },
     },
   };
 
-  test("maps a known alias to its configured opencode model ID", () => {
-    expect(resolveOpencodeModel("opus", config)).toBe(
-      "amazon-bedrock/global.anthropic.claude-opus-4-7",
-    );
+  test("maps a known tier to its configured opencode model ID", () => {
+    expect(resolveOpencodeModel("deep", config)).toBe("openai/gpt-5.5");
   });
 
-  test("returns the alias unchanged when not in the map", () => {
-    expect(resolveOpencodeModel("haiku", config)).toBe("haiku");
+  test("returns the tier name unchanged when not in the map", () => {
+    expect(resolveOpencodeModel("fast", config)).toBe("fast");
   });
 
   test("passes provider/model identifiers through unchanged", () => {
@@ -63,8 +61,8 @@ describe("resolveOpencodeModel", () => {
     expect(resolveOpencodeModel(undefined, config)).toBeUndefined();
   });
 
-  test("returns the alias unchanged when no config is present", () => {
-    expect(resolveOpencodeModel("opus", {})).toBe("opus");
-    expect(resolveOpencodeModel("opus", { opencode: {} })).toBe("opus");
+  test("returns the tier name unchanged when no config is present", () => {
+    expect(resolveOpencodeModel("deep", {})).toBe("deep");
+    expect(resolveOpencodeModel("deep", { opencode: {} })).toBe("deep");
   });
 });

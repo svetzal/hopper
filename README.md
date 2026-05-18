@@ -111,7 +111,12 @@ hopper cancel a3       # matches if unambiguous
 The `hopper worker` loop can dispatch session work to either of two agent runners:
 
 - **`--runner claude`** (default) — uses the [Claude Code](https://www.anthropic.com/claude/claude-code) CLI. Hopper passes craftsperson references via `--agent`, tool allowlists/denylists via `--tools`/`--allowedTools`/`--disallowedTools`, and parses the canonical `{"type":"result"}` event from claude's stream-json output.
-- **`--runner opencode`** — uses the [opencode](https://opencode.ai) CLI. Tool allowlists/denylists and `permission-mode` are silently ignored (opencode has no equivalent CLI flags); craftsperson definitions are inlined via the `OPENCODE_CONFIG_CONTENT` env var at invocation time, sourced from `~/.claude/agents/<name>.md` bodies. Final result text is extracted by calling `opencode export <sessionID>` after the run completes. Hopper's Haiku one-shots (branch slug, commit message, validate-marker fallback) continue running on Claude Code regardless of `--runner` choice.
+- **`--runner opencode`** — uses the [opencode](https://opencode.ai) CLI. Tool allowlists/denylists and `permission-mode` are silently ignored (opencode has no equivalent CLI flags); craftsperson definitions are inlined via the `OPENCODE_CONFIG_CONTENT` env var at invocation time, sourced from `~/.claude/agents/<name>.md` bodies. Final result text is extracted by calling `opencode export <sessionID>` after the run completes. Hopper's fast-tier one-shots (branch slug, commit message, validate-marker fallback) continue running on Claude Code regardless of `--runner` choice.
+
+Hopper addresses models through a vendor-agnostic three-tier vocabulary — `deep`, `balanced`, `fast` — chosen per phase in `src/task-type-workflow.ts`. Each runner translates:
+
+- claude → `deep|balanced|fast` map to its native `opus|sonnet|haiku` aliases (hard-coded in `src/gateways/model-tier.ts`).
+- opencode → tiers resolve through `~/.hopper/runner-config.json` to whatever provider/model you've bound.
 
 To use the opencode runner, create `~/.hopper/runner-config.json`:
 
@@ -119,15 +124,15 @@ To use the opencode runner, create `~/.hopper/runner-config.json`:
 {
   "opencode": {
     "models": {
-      "opus":   "amazon-bedrock/global.anthropic.claude-opus-4-7",
-      "sonnet": "amazon-bedrock/anthropic.claude-sonnet-4-6",
-      "haiku":  "amazon-bedrock/anthropic.claude-haiku-4-5-20251001-v1:0"
+      "deep":     "openai/gpt-5.5",
+      "balanced": "openai/gpt-5.4",
+      "fast":     "openai/gpt-5.4-mini"
     }
   }
 }
 ```
 
-Aliases not in the map (or any value containing `/`) are passed through to opencode unchanged, so you can mix logical aliases with native `provider/model` IDs.
+Tier names not in the map (or any value containing `/`) are passed through to opencode unchanged, so you can mix tier names with native `provider/model` IDs in any `SessionOptions.model` field.
 
 `docs/opencode-spike.md` documents the empirical opencode CLI surface and the design decisions that shaped the runner.
 

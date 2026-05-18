@@ -60,8 +60,8 @@ describe("buildInvestigationPrompt", () => {
 });
 
 describe("buildInvestigationOptions", () => {
-  test("uses opus model for strong reasoning on open-ended questions", () => {
-    expect(buildInvestigationOptions().model).toBe("opus");
+  test("uses the deep tier for strong reasoning on open-ended questions", () => {
+    expect(buildInvestigationOptions().model).toBe("deep");
   });
 
   test("uses plan permission mode to prevent mutations", () => {
@@ -131,9 +131,9 @@ describe("buildPlanPrompt", () => {
 });
 
 describe("buildPlanOptions", () => {
-  test("uses opus in plan permission mode with read-only tools", () => {
+  test("uses the deep tier in plan permission mode with read-only tools", () => {
     const opts = buildPlanOptions();
-    expect(opts.model).toBe("opus");
+    expect(opts.model).toBe("deep");
     expect(opts.permissionMode).toBe("plan");
     expect(opts.tools).toEqual([...PLAN_TOOLS]);
   });
@@ -169,9 +169,9 @@ describe("buildExecutePrompt", () => {
 });
 
 describe("buildExecuteOptions", () => {
-  test("defaults to sonnet and forwards agent when provided", () => {
+  test("defaults to the balanced tier and forwards agent when provided", () => {
     const opts = buildExecuteOptions("typescript-bun-cli-craftsperson");
-    expect(opts.model).toBe("sonnet");
+    expect(opts.model).toBe("balanced");
     expect(opts.agent).toBe("typescript-bun-cli-craftsperson");
   });
 
@@ -217,9 +217,9 @@ describe("buildValidatePrompt", () => {
 });
 
 describe("buildValidateOptions", () => {
-  test("uses opus with a tool set that includes read-only git", () => {
+  test("uses the deep tier with a tool set that includes read-only git", () => {
     const opts = buildValidateOptions();
-    expect(opts.model).toBe("opus");
+    expect(opts.model).toBe("deep");
     expect(opts.tools).toEqual([...VALIDATE_TOOLS]);
     expect(opts.allowedTools).toEqual([...VALIDATE_ALLOWED_TOOLS]);
   });

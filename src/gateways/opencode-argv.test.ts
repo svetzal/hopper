@@ -23,18 +23,18 @@ describe("buildOpencodeArgv", () => {
     expect(argv[argv.length - 1]).toBe("a tricky --prompt-looking string");
   });
 
-  test("translates a model alias through the runner-config map", () => {
+  test("translates a model tier through the runner-config map", () => {
     const config: RunnerConfig = {
       opencode: {
         models: {
-          opus: "amazon-bedrock/global.anthropic.claude-opus-4-7",
+          deep: "openai/gpt-5.5",
         },
       },
     };
-    const argv = buildOpencodeArgv(BIN, "hi", { model: "opus" }, config);
+    const argv = buildOpencodeArgv(BIN, "hi", { model: "deep" }, config);
     const modelIdx = argv.indexOf("--model");
     expect(modelIdx).toBeGreaterThan(-1);
-    expect(argv[modelIdx + 1]).toBe("amazon-bedrock/global.anthropic.claude-opus-4-7");
+    expect(argv[modelIdx + 1]).toBe("openai/gpt-5.5");
   });
 
   test("passes a native provider/model identifier through unchanged", () => {

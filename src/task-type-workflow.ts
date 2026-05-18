@@ -50,7 +50,7 @@ export function buildInvestigationPrompt(item: Item): string {
  */
 export function buildInvestigationOptions(): ClaudeSessionOptions {
   return {
-    model: "opus",
+    model: "deep",
     effort: "high",
     permissionMode: "plan",
     tools: [...INVESTIGATION_TOOLS],
@@ -95,7 +95,7 @@ export function buildPlanPrompt(item: Item): string {
 
 export function buildPlanOptions(): ClaudeSessionOptions {
   return {
-    model: "opus",
+    model: "deep",
     effort: "high",
     permissionMode: "plan",
     tools: [...PLAN_TOOLS],
@@ -150,7 +150,7 @@ export function buildExecutePrompt(item: Item, planText: string): string {
 
 export function buildExecuteOptions(agent?: string): ClaudeSessionOptions {
   return {
-    model: "sonnet",
+    model: "balanced",
     effort: "medium",
     ...(agent ? { agent } : {}),
     disallowedTools: [...EXECUTE_DISALLOWED_TOOLS],
@@ -235,7 +235,7 @@ export function buildValidatePrompt(item: Item, planText: string): string {
 
 export function buildValidateOptions(): ClaudeSessionOptions {
   return {
-    model: "opus",
+    model: "deep",
     effort: "high",
     tools: [...VALIDATE_TOOLS],
     allowedTools: [...VALIDATE_ALLOWED_TOOLS],
@@ -267,7 +267,7 @@ export function resolveValidateOutcome(
 const MISSING_MARKER_REASON = "validate phase did not emit a PASS/FAIL marker";
 
 /**
- * Build the prompt that asks Haiku to classify a validate-phase output as
+ * Build the prompt that asks the fast model to classify a validate-phase output as
  * PASS, FAIL, or UNCLEAR when the agent forgot to emit the required marker.
  */
 export function buildValidateFallbackPrompt(resultText: string): string {
@@ -284,7 +284,7 @@ export function buildValidateFallbackPrompt(resultText: string): string {
 }
 
 /**
- * Normalise a raw Haiku response into one of the three recognised tokens.
+ * Normalise a raw fallback-assessor response into one of the three recognised tokens.
  * Anything that cannot be mapped to PASS or FAIL is treated as UNCLEAR.
  */
 export function normaliseValidateFallback(raw: string): "PASS" | "FAIL" | "UNCLEAR" {
@@ -295,7 +295,7 @@ export function normaliseValidateFallback(raw: string): "PASS" | "FAIL" | "UNCLE
 }
 
 /**
- * Resolve the validate outcome, falling back to a Haiku-based assessor when
+ * Resolve the validate outcome, falling back to a fast-model assessor when
  * the validate phase did not emit a PASS/FAIL marker.
  *
  * The fallback is only invoked for the missing-marker case — non-zero exit
@@ -313,19 +313,19 @@ export async function resolveValidateOutcomeWithFallback(
     return primary;
   }
 
-  log?.("Validate marker missing — invoking Haiku fallback assessor...");
+  log?.("Validate marker missing — invoking fast fallback assessor...");
 
   try {
-    const { exitCode: haikusExitCode, text } = await claude.generateText(
+    const { exitCode: fallbackExitCode, text } = await claude.generateText(
       buildValidateFallbackPrompt(resultText),
-      "haiku",
+      "fast",
     );
 
-    if (haikusExitCode !== 0) {
-      log?.("Haiku fallback assessor exited non-zero — defaulting to FAIL.");
+    if (fallbackExitCode !== 0) {
+      log?.("Fallback assessor exited non-zero — defaulting to FAIL.");
       return {
         passed: false,
-        reason: "haiku fallback assessor could not classify (defaulting to FAIL)",
+        reason: "fallback assessor could not classify (defaulting to FAIL)",
         fallbackUsed: true,
       };
     }
@@ -333,37 +333,37 @@ export async function resolveValidateOutcomeWithFallback(
     const verdict = normaliseValidateFallback(text);
 
     if (verdict === "PASS") {
-      log?.("Haiku fallback assessor reported PASS.");
-      return { passed: true, reason: "haiku fallback assessor reported PASS", fallbackUsed: true };
+      log?.("Fallback assessor reported PASS.");
+      return { passed: true, reason: "fallback assessor reported PASS", fallbackUsed: true };
     }
 
     if (verdict === "FAIL") {
-      log?.("Haiku fallback assessor reported FAIL.");
+      log?.("Fallback assessor reported FAIL.");
       return {
         passed: false,
-        reason: "haiku fallback assessor reported FAIL",
+        reason: "fallback assessor reported FAIL",
         fallbackUsed: true,
       };
     }
 
-    log?.("Haiku fallback assessor was UNCLEAR — defaulting to FAIL.");
+    log?.("Fallback assessor was UNCLEAR — defaulting to FAIL.");
     return {
       passed: false,
-      reason: "haiku fallback assessor could not classify (defaulting to FAIL)",
+      reason: "fallback assessor could not classify (defaulting to FAIL)",
       fallbackUsed: true,
     };
   } catch {
-    log?.("Haiku fallback assessor threw — defaulting to FAIL.");
+    log?.("Fallback assessor threw — defaulting to FAIL.");
     return {
       passed: false,
-      reason: "haiku fallback assessor could not classify (defaulting to FAIL)",
+      reason: "fallback assessor could not classify (defaulting to FAIL)",
       fallbackUsed: true,
     };
   }
 }
 
 // ---------------------------------------------------------------------------
-// Haiku one-shot helpers (branch slug + commit message)
+// Fast-model one-shot helpers (branch slug + commit message)
 // ---------------------------------------------------------------------------
 
 export function buildBranchSlugPrompt(title: string, description: string): string {
@@ -376,7 +376,7 @@ export function buildBranchSlugPrompt(title: string, description: string): strin
 }
 
 /**
- * Normalise a raw Haiku response into a safe kebab-case slug.
+ * Normalise a raw branch-slug response into a safe kebab-case slug.
  *
  * Returns `null` when the response cannot be coerced into something usable —
  * the caller should then fall back to the deterministic `<id-prefix>` branch
@@ -413,7 +413,7 @@ export function buildCommitMessagePrompt(
 
 /**
  * Strip common LLM response artifacts (fenced code blocks, leading "Commit:"
- * labels) from a Haiku-generated commit message.
+ * labels) from a generated commit message.
  */
 export function normaliseCommitMessage(raw: string): string {
   let text = raw.trim();

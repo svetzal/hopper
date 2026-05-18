@@ -16,10 +16,10 @@ import { type RunnerConfig, resolveOpencodeModel } from "./runner-config.ts";
  *   stays machine-parseable.
  * - The prompt is a positional `message` argument. Like claude, we terminate
  *   option parsing with `--` so a future flag can't siphon it.
- * - Model aliases (`opus|sonnet|haiku`) are translated through
- *   {@link RunnerConfig.opencode.models} before being passed via `--model`.
- *   Native provider/model identifiers (containing `/`) are passed through
- *   unchanged.
+ * - Model tier names (`deep|balanced|fast` — see `model-tier.ts`) are
+ *   translated through {@link RunnerConfig.opencode.models} before being
+ *   passed via `--model`. Native provider/model identifiers (containing `/`)
+ *   are passed through unchanged.
  * - The agent name, when set, is passed via `--agent`. The matching agent
  *   definition is expected to be available either in the user's
  *   `opencode.json` or injected via the `OPENCODE_CONFIG_CONTENT` env var

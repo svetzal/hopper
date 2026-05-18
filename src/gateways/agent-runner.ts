@@ -24,7 +24,14 @@
  * actual translation behaviour.
  */
 export interface SessionOptions {
-  /** Model alias (`"opus"`, `"sonnet"`, `"haiku"`) or a runner-native model ID. */
+  /**
+   * Model tier (`"deep"`, `"balanced"`, `"fast"`) or a runner-native model ID.
+   *
+   * Tier names are vendor-agnostic and translate per-runner: claude maps
+   * `deep|balanced|fast` to `opus|sonnet|haiku`; opencode maps them through
+   * `~/.hopper/runner-config.json` to whatever provider/model the user has
+   * bound. See `src/gateways/model-tier.ts`.
+   */
   model?: string;
   /**
    * Agent name. For claude: passed via `--agent`, referencing a craftsperson

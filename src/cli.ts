@@ -139,7 +139,7 @@ Usage:
                                      validate-marker fallback) still go via
                                      claude. Requires opencode installed and
                                      ~/.hopper/runner-config.json with at least
-                                     opencode.models.{opus,sonnet,haiku}.
+                                     opencode.models.{deep,balanced,fast}.
 
 Options:
   --after     Schedule item for later (e.g. 1h, 30m, tomorrow 9am)

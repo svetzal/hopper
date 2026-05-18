@@ -111,7 +111,7 @@ async function executeWork(
   if (item.type === "investigation") {
     const prompt = buildInvestigationPrompt(item);
     const options = buildInvestigationOptions();
-    log(`Starting investigation session (opus, read-only)...\nAudit log: ${auditFile}`);
+    log(`Starting investigation session (deep, read-only)...\nAudit log: ${auditFile}`);
     return claude.runSession(prompt, workDir ?? process.cwd(), auditFile, options);
   }
   const prompt = buildTaskPrompt(item);

@@ -6,17 +6,17 @@ import { join } from "node:path";
  *
  * Lives at `~/.hopper/runner-config.json`. Missing or malformed → all callers
  * fall back to runner-native defaults (i.e. opencode reads its own
- * `opencode.json`, claude takes hopper's hard-coded `opus|sonnet|haiku`
- * aliases). The file is optional; nothing breaks without it.
+ * `opencode.json`, claude takes hopper's hard-coded tier translation in
+ * `model-tier.ts`). The file is optional; nothing breaks without it.
  *
  * Example:
  * ```json
  * {
  *   "opencode": {
  *     "models": {
- *       "opus":   "amazon-bedrock/global.anthropic.claude-opus-4-7",
- *       "sonnet": "amazon-bedrock/anthropic.claude-sonnet-4-6",
- *       "haiku":  "amazon-bedrock/anthropic.claude-haiku-4-5-20251001-v1:0"
+ *       "deep":     "openai/gpt-5.5",
+ *       "balanced": "openai/gpt-5.4",
+ *       "fast":     "openai/gpt-5.4-mini"
  *     }
  *   }
  * }
@@ -25,9 +25,10 @@ import { join } from "node:path";
 export interface RunnerConfig {
   opencode?: {
     /**
-     * Map from hopper's logical model alias (`opus`, `sonnet`, `haiku`) to a
-     * runner-native opencode model ID. Used by the opencode argv builder
-     * whenever {@link SessionOptions.model} contains an alias.
+     * Map from hopper's vendor-agnostic model tier (`deep`, `balanced`,
+     * `fast` — see `model-tier.ts`) to a runner-native opencode model ID.
+     * Used by the opencode argv builder whenever {@link SessionOptions.model}
+     * contains a tier name.
      */
     models?: Record<string, string>;
   };
@@ -65,12 +66,12 @@ export async function loadRunnerConfig(path: string = DEFAULT_PATH): Promise<Run
 }
 
 /**
- * Resolve a hopper logical model alias against the opencode model map. If the
- * alias isn't mapped (or the map is missing), returns the alias unchanged so
- * opencode itself can decide whether the string is a valid model ID. Pass
- * through any value that already looks like a provider/model identifier
- * (contains `/`) so the caller can mix aliases and native IDs in the same
- * {@link SessionOptions.model} field.
+ * Resolve a hopper model tier (or any string) against the opencode model
+ * map. If the value isn't mapped (or the map is missing), returns the value
+ * unchanged so opencode itself can decide whether the string is a valid
+ * model ID. Pass through any value that already looks like a provider/model
+ * identifier (contains `/`) so the caller can mix tier names and native IDs
+ * in the same {@link SessionOptions.model} field.
  */
 export function resolveOpencodeModel(
   alias: string | undefined,

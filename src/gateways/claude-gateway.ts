@@ -7,6 +7,7 @@ import { extractResult, formatStderrEvent } from "../extract-result.ts";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
 import { streamToAuditFile } from "./audit-stream.ts";
 import { buildClaudeArgv, type ClaudeSessionOptions } from "./claude-argv.ts";
+import { resolveClaudeModel } from "./model-tier.ts";
 
 export type { ClaudeSessionOptions };
 
@@ -84,7 +85,7 @@ async function generateText(
     "--print",
     "--dangerously-skip-permissions",
     "--model",
-    model,
+    resolveClaudeModel(model),
     "--tools",
     "",
   ];

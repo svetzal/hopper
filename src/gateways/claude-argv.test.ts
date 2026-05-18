@@ -54,11 +54,35 @@ describe("buildClaudeArgv", () => {
     expect(argv[argv.length - 1]).toBe("MY_PROMPT");
   });
 
-  test("model is passed via --model", () => {
+  test("native model alias is passed verbatim via --model", () => {
     const argv = buildClaudeArgv("claude", "p", { model: "opus" });
     const i = argv.indexOf("--model");
     expect(i).toBeGreaterThan(-1);
     expect(argv[i + 1]).toBe("opus");
+  });
+
+  test("tier 'deep' translates to claude's 'opus' alias", () => {
+    const argv = buildClaudeArgv("claude", "p", { model: "deep" });
+    const i = argv.indexOf("--model");
+    expect(argv[i + 1]).toBe("opus");
+  });
+
+  test("tier 'balanced' translates to claude's 'sonnet' alias", () => {
+    const argv = buildClaudeArgv("claude", "p", { model: "balanced" });
+    const i = argv.indexOf("--model");
+    expect(argv[i + 1]).toBe("sonnet");
+  });
+
+  test("tier 'fast' translates to claude's 'haiku' alias", () => {
+    const argv = buildClaudeArgv("claude", "p", { model: "fast" });
+    const i = argv.indexOf("--model");
+    expect(argv[i + 1]).toBe("haiku");
+  });
+
+  test("native provider/model identifiers pass through unchanged", () => {
+    const argv = buildClaudeArgv("claude", "p", { model: "claude-opus-4-7" });
+    const i = argv.indexOf("--model");
+    expect(argv[i + 1]).toBe("claude-opus-4-7");
   });
 
   test("agent is passed via --agent", () => {
