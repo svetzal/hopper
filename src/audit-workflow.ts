@@ -23,6 +23,7 @@ export type DecodedEvent = {
     | "result"
     | "stderr"
     | "start"
+    | "step"
     | "other";
   /** assistant | user — present when derived from a message turn. */
   role?: "assistant" | "user";
@@ -222,7 +223,7 @@ export function decodeEvents(inputs: PhaseInput[], n: number): DecodedEvent[] {
 
       const topType = obj.type as string | undefined;
 
-      if (topType === "result") {
+      if (topType === "result" || topType === "opencode-export") {
         all.push({ phase: input.phase, kind: "result" });
         continue;
       }
@@ -231,8 +232,61 @@ export function decodeEvents(inputs: PhaseInput[], n: number): DecodedEvent[] {
         all.push({ phase: input.phase, kind: "stderr", textPreview: text.slice(0, 120) });
         continue;
       }
+      if (topType === "error") {
+        // Opencode error event: `error.data.message` carries the human-readable
+        // string. Map to the `stderr` kind so the renderer treats it like an
+        // out-of-band failure indicator rather than chat content.
+        const errObj = isRecord(obj.error) ? obj.error : {};
+        const data = isRecord(errObj.data) ? errObj.data : {};
+        const message = typeof data.message === "string" ? data.message : "";
+        const name = typeof errObj.name === "string" ? errObj.name : undefined;
+        all.push({
+          phase: input.phase,
+          kind: "stderr",
+          name,
+          textPreview: message.slice(0, 120),
+        });
+        continue;
+      }
       if (topType === "start") {
         all.push({ phase: input.phase, kind: "start" });
+        continue;
+      }
+      if (topType === "step_start" || topType === "step_finish") {
+        // Opencode emits incremental step markers around each assistant turn.
+        // Surface them so the tail view shows session progress without pretending
+        // they are full claude-style `start` events.
+        all.push({ phase: input.phase, kind: "step", name: topType });
+        continue;
+      }
+      if (topType === "text") {
+        // Opencode text event: the actual text lives at `part.text` rather than
+        // inside a message-block array.
+        const part = isRecord(obj.part) ? obj.part : {};
+        const text = typeof part.text === "string" ? part.text : "";
+        all.push({
+          phase: input.phase,
+          kind: "text",
+          role: "assistant",
+          textPreview: text.slice(0, 120),
+        });
+        continue;
+      }
+      if (topType === "tool_use") {
+        // Opencode top-level tool_use event. Shape: `part.tool` carries the
+        // tool name (lowercase), `part.state.input` carries the args (and
+        // typically a `command` for bash, `filePath` for file tools).
+        const part = isRecord(obj.part) ? obj.part : {};
+        const tool = typeof part.tool === "string" ? part.tool : undefined;
+        const state = isRecord(part.state) ? part.state : {};
+        const toolInput = isRecord(state.input) ? state.input : undefined;
+        all.push({
+          phase: input.phase,
+          kind: "tool_use",
+          role: "assistant",
+          name: tool,
+          input: toolInput,
+        });
         continue;
       }
       if (topType === "system") {

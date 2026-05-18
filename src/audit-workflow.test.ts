@@ -381,6 +381,96 @@ describe("decodeEvents", () => {
     expect(events[0]?.kind).toBe("text");
     expect(events[0]?.textPreview).toBe("plain text string");
   });
+
+  // ── opencode-shaped events ────────────────────────────────────────────────
+
+  test("decodes opencode step_start as a step event", () => {
+    const line = JSON.stringify({
+      type: "step_start",
+      timestamp: 1,
+      sessionID: "ses_x",
+      part: { type: "step-start" },
+    });
+    const events = decodeEvents([makePhaseInput("audit", [line])], 5);
+
+    expect(events[0]?.kind).toBe("step");
+    expect(events[0]?.name).toBe("step_start");
+  });
+
+  test("decodes opencode step_finish as a step event", () => {
+    const line = JSON.stringify({
+      type: "step_finish",
+      timestamp: 2,
+      sessionID: "ses_x",
+      part: { tokens: { total: 100 } },
+    });
+    const events = decodeEvents([makePhaseInput("audit", [line])], 5);
+
+    expect(events[0]?.kind).toBe("step");
+    expect(events[0]?.name).toBe("step_finish");
+  });
+
+  test("decodes opencode text event from `part.text` with assistant role", () => {
+    const line = JSON.stringify({
+      type: "text",
+      timestamp: 3,
+      sessionID: "ses_x",
+      part: { type: "text", text: "PONG" },
+    });
+    const events = decodeEvents([makePhaseInput("audit", [line])], 5);
+
+    expect(events[0]?.kind).toBe("text");
+    expect(events[0]?.role).toBe("assistant");
+    expect(events[0]?.textPreview).toBe("PONG");
+  });
+
+  test("decodes opencode error event as stderr with message preview", () => {
+    const line = JSON.stringify({
+      type: "error",
+      sessionID: "ses_x",
+      error: { name: "APIError", data: { message: "model not found" } },
+    });
+    const events = decodeEvents([makePhaseInput("audit", [line])], 5);
+
+    expect(events[0]?.kind).toBe("stderr");
+    expect(events[0]?.name).toBe("APIError");
+    expect(events[0]?.textPreview).toBe("model not found");
+  });
+
+  test("decodes synthesised opencode-export event as result", () => {
+    const line = JSON.stringify({
+      type: "opencode-export",
+      sessionID: "ses_x",
+      info: { id: "ses_x", cost: 0.02 },
+    });
+    const events = decodeEvents([makePhaseInput("audit", [line])], 5);
+
+    expect(events[0]?.kind).toBe("result");
+  });
+
+  test("decodes opencode top-level tool_use event with tool name + input", () => {
+    const line = JSON.stringify({
+      type: "tool_use",
+      sessionID: "ses_x",
+      part: {
+        type: "tool",
+        tool: "bash",
+        state: {
+          status: "completed",
+          input: { command: "git diff", description: "Inspect diff" },
+        },
+      },
+    });
+    const events = decodeEvents([makePhaseInput("execute", [line])], 5);
+
+    expect(events[0]?.kind).toBe("tool_use");
+    expect(events[0]?.name).toBe("bash");
+    expect(events[0]?.input).toEqual({
+      command: "git diff",
+      description: "Inspect diff",
+    });
+    expect(events[0]?.role).toBe("assistant");
+  });
 });
 
 // ── summarizeEvents — non-JSON line counting behaviour ────────────────────────

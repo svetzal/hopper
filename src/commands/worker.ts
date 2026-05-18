@@ -112,7 +112,7 @@ async function executeWork(
     return claude.runSession(prompt, workDir ?? process.cwd(), auditFile, options);
   }
   const prompt = buildTaskPrompt(item);
-  log(`Starting Claude session...\nAudit log: ${auditFile}`);
+  log(`Starting agent session...\nAudit log: ${auditFile}`);
   return claude.runSession(prompt, workDir ?? process.cwd(), auditFile);
 }
 
