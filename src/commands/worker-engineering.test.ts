@@ -10,6 +10,7 @@ const TEST_PROFILE: Profile = {
   runner: "claude",
   models: { deep: "opus", balanced: "sonnet", fast: "haiku" },
 };
+
 import {
   callArgs,
   makeClaimedItem,
@@ -72,7 +73,13 @@ describe("runPlanPhase", () => {
     };
     const fs = makeMockFs();
 
-    const result = await runPlanPhase(item, "/worktree", makePaths(), { claude, fs, profile: TEST_PROFILE }, noop);
+    const result = await runPlanPhase(
+      item,
+      "/worktree",
+      makePaths(),
+      { claude, fs, profile: TEST_PROFILE },
+      noop,
+    );
 
     expect(result).not.toBeNull();
     expect(result?.planText).toBe("## Approach\nDo the thing.");
@@ -86,7 +93,13 @@ describe("runPlanPhase", () => {
     };
     const fs = makeMockFs();
 
-    const result = await runPlanPhase(item, "/worktree", makePaths(), { claude, fs, profile: TEST_PROFILE }, noop);
+    const result = await runPlanPhase(
+      item,
+      "/worktree",
+      makePaths(),
+      { claude, fs, profile: TEST_PROFILE },
+      noop,
+    );
 
     expect(result).toBeNull();
   });
@@ -99,7 +112,13 @@ describe("runPlanPhase", () => {
     };
     const fs = makeMockFs();
 
-    const result = await runPlanPhase(item, "/worktree", makePaths(), { claude, fs, profile: TEST_PROFILE }, noop);
+    const result = await runPlanPhase(
+      item,
+      "/worktree",
+      makePaths(),
+      { claude, fs, profile: TEST_PROFILE },
+      noop,
+    );
 
     expect(result).toBeNull();
   });
@@ -390,12 +409,7 @@ describe("commitEngineeringChanges", () => {
       generateText: mock(async () => ({ exitCode: 0, text: "feat: implement foo" })),
     };
 
-    await commitEngineeringChanges(
-      item,
-      "/worktree",
-      { git, claude, profile: TEST_PROFILE },
-      noop,
-    );
+    await commitEngineeringChanges(item, "/worktree", { git, claude, profile: TEST_PROFILE }, noop);
 
     expect(callOrder).toEqual(["stageAll", "diffSummary", "commitAll"]);
   });

@@ -474,7 +474,12 @@ describe("resolveValidateOutcomeWithFallback", () => {
 
   test("exitCode !== 0 → no fallback invoked", async () => {
     const claude = makeClaudeMock();
-    const outcome = await resolveValidateOutcomeWithFallback(1, "VALIDATE: PASS", claude, TEST_PROFILE);
+    const outcome = await resolveValidateOutcomeWithFallback(
+      1,
+      "VALIDATE: PASS",
+      claude,
+      TEST_PROFILE,
+    );
     expect(outcome.passed).toBe(false);
     expect(outcome.reason).toContain("exited 1");
     expect(outcome.fallbackUsed).toBeFalsy();
@@ -483,7 +488,12 @@ describe("resolveValidateOutcomeWithFallback", () => {
 
   test("no marker + Haiku returns PASS → passed: true, reason mentions fallback, fallbackUsed: true", async () => {
     const claude = makeClaudeMock("PASS");
-    const outcome = await resolveValidateOutcomeWithFallback(0, "Seems fine to me!", claude, TEST_PROFILE);
+    const outcome = await resolveValidateOutcomeWithFallback(
+      0,
+      "Seems fine to me!",
+      claude,
+      TEST_PROFILE,
+    );
     expect(outcome.passed).toBe(true);
     expect(outcome.reason.toLowerCase()).toContain("fallback");
     expect(outcome.fallbackUsed).toBe(true);
@@ -492,7 +502,12 @@ describe("resolveValidateOutcomeWithFallback", () => {
 
   test("no marker + Haiku returns FAIL → passed: false, reason mentions fallback", async () => {
     const claude = makeClaudeMock("FAIL");
-    const outcome = await resolveValidateOutcomeWithFallback(0, "Something went wrong.", claude, TEST_PROFILE);
+    const outcome = await resolveValidateOutcomeWithFallback(
+      0,
+      "Something went wrong.",
+      claude,
+      TEST_PROFILE,
+    );
     expect(outcome.passed).toBe(false);
     expect(outcome.reason.toLowerCase()).toContain("fallback");
     expect(outcome.fallbackUsed).toBe(true);
@@ -500,7 +515,12 @@ describe("resolveValidateOutcomeWithFallback", () => {
 
   test("no marker + Haiku returns UNCLEAR → passed: false, reason mentions defaulting to FAIL", async () => {
     const claude = makeClaudeMock("UNCLEAR");
-    const outcome = await resolveValidateOutcomeWithFallback(0, "Maybe it works?", claude, TEST_PROFILE);
+    const outcome = await resolveValidateOutcomeWithFallback(
+      0,
+      "Maybe it works?",
+      claude,
+      TEST_PROFILE,
+    );
     expect(outcome.passed).toBe(false);
     expect(outcome.reason.toLowerCase()).toContain("defaulting to fail");
     expect(outcome.fallbackUsed).toBe(true);
@@ -515,7 +535,12 @@ describe("resolveValidateOutcomeWithFallback", () => {
 
   test("no marker + Haiku returns garbage like 'I think it passes' → UNCLEAR → safe-default FAIL", async () => {
     const claude = makeClaudeMock("I think it passes");
-    const outcome = await resolveValidateOutcomeWithFallback(0, "The agent rambled.", claude, TEST_PROFILE);
+    const outcome = await resolveValidateOutcomeWithFallback(
+      0,
+      "The agent rambled.",
+      claude,
+      TEST_PROFILE,
+    );
     expect(outcome.passed).toBe(false);
     expect(outcome.reason.toLowerCase()).toContain("defaulting to fail");
     expect(outcome.fallbackUsed).toBe(true);
@@ -527,7 +552,12 @@ describe("resolveValidateOutcomeWithFallback", () => {
         throw new Error("network error");
       }),
     };
-    const outcome = await resolveValidateOutcomeWithFallback(0, "No marker here.", claude, TEST_PROFILE);
+    const outcome = await resolveValidateOutcomeWithFallback(
+      0,
+      "No marker here.",
+      claude,
+      TEST_PROFILE,
+    );
     expect(outcome.passed).toBe(false);
     expect(outcome.reason.toLowerCase()).toContain("defaulting to fail");
     expect(outcome.fallbackUsed).toBe(true);
@@ -535,7 +565,12 @@ describe("resolveValidateOutcomeWithFallback", () => {
 
   test("no marker + Haiku exitCode !== 0 → safe-default FAIL", async () => {
     const claude = makeClaudeMock("PASS", 1);
-    const outcome = await resolveValidateOutcomeWithFallback(0, "Something unclear.", claude, TEST_PROFILE);
+    const outcome = await resolveValidateOutcomeWithFallback(
+      0,
+      "Something unclear.",
+      claude,
+      TEST_PROFILE,
+    );
     expect(outcome.passed).toBe(false);
     expect(outcome.reason.toLowerCase()).toContain("defaulting to fail");
     expect(outcome.fallbackUsed).toBe(true);

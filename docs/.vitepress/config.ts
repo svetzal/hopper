@@ -2,7 +2,8 @@ import { defineConfig } from "vitepress";
 
 export default defineConfig({
   title: "Hopper",
-  description: "Personal work queue CLI that dispatches engineering work to Claude Code or opencode.",
+  description:
+    "Personal work queue CLI that dispatches engineering work to Claude Code or opencode.",
   base: "/hopper/",
   cleanUrls: true,
   lastUpdated: true,
@@ -31,33 +32,23 @@ export default defineConfig({
     sidebar: [
       {
         text: "Getting started",
-        items: [
-          { text: "Overview", link: "/" },
-        ],
+        items: [{ text: "Overview", link: "/" }],
       },
       {
         text: "Configuration",
-        items: [
-          { text: "Profiles", link: "/profiles" },
-        ],
+        items: [{ text: "Profiles", link: "/profiles" }],
       },
       {
         text: "Upgrading",
-        items: [
-          { text: "2.x → 3.x migration", link: "/migration-2.x-to-3.x" },
-        ],
+        items: [{ text: "2.x → 3.x migration", link: "/migration-2.x-to-3.x" }],
       },
       {
         text: "Design notes",
-        items: [
-          { text: "opencode CLI spike", link: "/opencode-spike" },
-        ],
+        items: [{ text: "opencode CLI spike", link: "/opencode-spike" }],
       },
     ],
 
-    socialLinks: [
-      { icon: "github", link: "https://github.com/svetzal/hopper" },
-    ],
+    socialLinks: [{ icon: "github", link: "https://github.com/svetzal/hopper" }],
 
     editLink: {
       pattern: "https://github.com/svetzal/hopper/edit/main/docs/:path",
