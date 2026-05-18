@@ -43,7 +43,56 @@ export function shortId(uuid: string): string {
   return uuid.slice(0, 8);
 }
 
+import type { CostBreakdown, PhaseCost } from "./extract-cost.ts";
 import type { Item, PhaseRecord } from "./store.ts";
+
+/** Format a USD amount for display. Sub-cent values get extra precision. */
+export function formatUsd(amount: number): string {
+  if (amount === 0) return "$0";
+  if (amount < 0.01) return `$${amount.toFixed(4)}`;
+  if (amount < 1) return `$${amount.toFixed(3)}`;
+  return `$${amount.toFixed(2)}`;
+}
+
+/** Format a token count with thousands separators. */
+export function formatTokens(n: number): string {
+  return n.toLocaleString("en-US");
+}
+
+/**
+ * Render a compact cost+tokens line for a single phase row or total. Includes
+ * cache read/write totals when non-zero — these matter for understanding why
+ * a "small" session cost what it did.
+ */
+function formatCostLine(label: string, c: PhaseCost & { model?: string }): string {
+  const segments: string[] = [
+    `${label.padEnd(11)} ${formatUsd(c.costUsd).padStart(8)}`,
+    `in ${formatTokens(c.tokensIn)} / out ${formatTokens(c.tokensOut)}`,
+  ];
+  if (c.reasoningTokens > 0) segments.push(`reasoning ${formatTokens(c.reasoningTokens)}`);
+  if (c.cacheRead > 0 || c.cacheWrite > 0) {
+    segments.push(`cache r${formatTokens(c.cacheRead)}/w${formatTokens(c.cacheWrite)}`);
+  }
+  if (c.model) segments.push(`(${c.model})`);
+  return segments.join("  ");
+}
+
+/**
+ * Render the `Cost & tokens` block for `hopper show`. Returns empty array
+ * when no phase reported cost data — caller decides whether to omit the
+ * block entirely.
+ */
+export function formatCostBreakdown(breakdown: CostBreakdown): string[] {
+  if (!breakdown.hasAnyData) return [];
+  const lines: string[] = ["Cost & tokens:"];
+  for (const row of breakdown.phases) {
+    lines.push(`  ${formatCostLine(row.phase, row)}`);
+  }
+  if (breakdown.phases.length > 1) {
+    lines.push(`  ${formatCostLine("TOTAL", breakdown.total)}`);
+  }
+  return lines;
+}
 
 /**
  * Render the per-phase status strip for an engineering item, e.g.
@@ -83,7 +132,7 @@ export function formatPhasesStatus(phases: PhaseRecord[] | undefined): string {
 }
 
 /** Format full details of an item as a multi-line string (for the show command). */
-export function formatItemDetail(item: Item): string {
+export function formatItemDetail(item: Item, cost?: CostBreakdown): string {
   const lines: string[] = [];
   lines.push(`ID:          ${shortId(item.id)}`);
   lines.push(`Title:       ${item.title}`);
@@ -126,6 +175,10 @@ export function formatItemDetail(item: Item): string {
     lines.push(`Plan audit:   ~/.hopper/audit/${item.id}-plan.jsonl`);
     lines.push(`Exec audit:   ~/.hopper/audit/${item.id}-execute.jsonl`);
     lines.push(`Valid audit:  ~/.hopper/audit/${item.id}-validate.jsonl`);
+  }
+  if (cost?.hasAnyData) {
+    lines.push("");
+    for (const line of formatCostBreakdown(cost)) lines.push(line);
   }
   lines.push("");
   lines.push("Description:");

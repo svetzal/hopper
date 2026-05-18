@@ -209,9 +209,11 @@ async function main(): Promise<void> {
       await runCommand((p) => auditCommand(p, audit), parsed);
       break;
     }
-    case "show":
-      await runCommand(showCommand, parsed);
+    case "show": {
+      const audit = createAuditGateway();
+      await runCommand((p) => showCommand(p, audit), parsed);
       break;
+    }
     case "tag":
       await runCommand(tagCommand, parsed);
       break;

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Cost & token reporting in `hopper show`.** Engineering items now surface a
+  per-phase cost and token breakdown — pulled from data already captured in
+  the audit JSONL files. Cost comes from claude's terminal `result` event
+  (`total_cost_usd`, `usage.{input_tokens, output_tokens,
+  cache_creation_input_tokens, cache_read_input_tokens}`) and from
+  opencode's synthetic `opencode-export` event (`info.cost`, `info.tokens`,
+  `info.model`). Subscription/OAuth runs report `$0` honestly rather than
+  being filtered out — that's the provider's truth. Mixed-runner items
+  (claude plan, opencode execute) render side by side with the model label
+  per row. No schema migration; old completed items pick up the breakdown
+  retroactively next time `hopper show <id>` runs.
+
 ## [3.0.0] - 2026-05-18
 
 This is a **major release** that introduces a second agent runner (opencode)
