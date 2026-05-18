@@ -106,6 +106,31 @@ hopper cancel a3       # matches if unambiguous
 
 `hopper add` auto-generates a short title from the description using the OpenAI API (gpt-4.1-nano). Set `OPENAI_API_KEY` in your environment, or it falls back to truncating the description.
 
+## Agent Runners
+
+The `hopper worker` loop can dispatch session work to either of two agent runners:
+
+- **`--runner claude`** (default) — uses the [Claude Code](https://www.anthropic.com/claude/claude-code) CLI. Hopper passes craftsperson references via `--agent`, tool allowlists/denylists via `--tools`/`--allowedTools`/`--disallowedTools`, and parses the canonical `{"type":"result"}` event from claude's stream-json output.
+- **`--runner opencode`** — uses the [opencode](https://opencode.ai) CLI. Tool allowlists/denylists and `permission-mode` are silently ignored (opencode has no equivalent CLI flags); craftsperson definitions are inlined via the `OPENCODE_CONFIG_CONTENT` env var at invocation time, sourced from `~/.claude/agents/<name>.md` bodies. Final result text is extracted by calling `opencode export <sessionID>` after the run completes. Hopper's Haiku one-shots (branch slug, commit message, validate-marker fallback) continue running on Claude Code regardless of `--runner` choice.
+
+To use the opencode runner, create `~/.hopper/runner-config.json`:
+
+```json
+{
+  "opencode": {
+    "models": {
+      "opus":   "amazon-bedrock/global.anthropic.claude-opus-4-7",
+      "sonnet": "amazon-bedrock/anthropic.claude-sonnet-4-6",
+      "haiku":  "amazon-bedrock/anthropic.claude-haiku-4-5-20251001-v1:0"
+    }
+  }
+}
+```
+
+Aliases not in the map (or any value containing `/`) are passed through to opencode unchanged, so you can mix logical aliases with native `provider/model` IDs.
+
+`docs/opencode-spike.md` documents the empirical opencode CLI surface and the design decisions that shaped the runner.
+
 ## Agent Integration
 
 Hopper is designed to be driven by AI agents. There are two roles:
