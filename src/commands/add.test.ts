@@ -19,7 +19,11 @@ function makeStubProfilesGateway(): ProfilesGateway {
       profile: {
         name: n,
         runner: "claude",
-        models: { deep: "opus", balanced: "sonnet", fast: "haiku" },
+        models: {
+          deep: { model: "opus" },
+          balanced: { model: "sonnet" },
+          fast: { model: "haiku" },
+        },
       },
     }),
     loadAllProfiles: async () => ({ profiles: [], errors: [] }),

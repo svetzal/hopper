@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { isValidProfileName, type Profile, parseProfile, resolveProfileModel } from "./profile.ts";
+import {
+  isValidProfileName,
+  type Profile,
+  parseProfile,
+  resolveProfileBinding,
+  resolveProfileModel,
+} from "./profile.ts";
 
 describe("isValidProfileName", () => {
   test.each([
@@ -33,7 +39,7 @@ describe("parseProfile", () => {
     });
   }
 
-  test("parses a valid opencode profile", () => {
+  test("parses a valid opencode profile (string shorthand)", () => {
     const result = parseProfile("openai", validJson());
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -41,9 +47,9 @@ describe("parseProfile", () => {
         name: "openai",
         runner: "opencode",
         models: {
-          deep: "openai/gpt-5.5",
-          balanced: "openai/gpt-5.4",
-          fast: "openai/gpt-5.4-mini",
+          deep: { model: "openai/gpt-5.5" },
+          balanced: { model: "openai/gpt-5.4" },
+          fast: { model: "openai/gpt-5.4-mini" },
         },
       });
     }
@@ -58,7 +64,25 @@ describe("parseProfile", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.profile.runner).toBe("claude");
-      expect(result.profile.models.deep).toBe("opus");
+      expect(result.profile.models.deep).toEqual({ model: "opus" });
+    }
+  });
+
+  test("parses object-form bindings with effort", () => {
+    const json = JSON.stringify({
+      runner: "claude",
+      models: {
+        deep: { model: "opus", effort: "max" },
+        balanced: "sonnet",
+        fast: { model: "haiku", effort: "low" },
+      },
+    });
+    const result = parseProfile("anthropic", json);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.profile.models.deep).toEqual({ model: "opus", effort: "max" });
+      expect(result.profile.models.balanced).toEqual({ model: "sonnet" });
+      expect(result.profile.models.fast).toEqual({ model: "haiku", effort: "low" });
     }
   });
 
@@ -70,15 +94,40 @@ describe("parseProfile", () => {
         balanced: "ollama/qwen3.6:27b-coding-mxfp8",
         fast: "ollama/qwen3.6:35b-a3b-coding-nvfp4",
         "qwen-bf16": "ollama/qwen3.6:27b-coding-bf16",
-        "gpt-oss-large": "ollama/gpt-oss:120b",
+        "gpt-oss-large": { model: "ollama/gpt-oss:120b", effort: "high" },
       },
     });
     const result = parseProfile("ollama", json);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.profile.models["qwen-bf16"]).toBe("ollama/qwen3.6:27b-coding-bf16");
-      expect(result.profile.models["gpt-oss-large"]).toBe("ollama/gpt-oss:120b");
+      expect(result.profile.models["qwen-bf16"]).toEqual({
+        model: "ollama/qwen3.6:27b-coding-bf16",
+      });
+      expect(result.profile.models["gpt-oss-large"]).toEqual({
+        model: "ollama/gpt-oss:120b",
+        effort: "high",
+      });
     }
+  });
+
+  test("rejects object-form binding with missing 'model'", () => {
+    const json = JSON.stringify({
+      runner: "claude",
+      models: { deep: { effort: "max" }, balanced: "sonnet", fast: "haiku" },
+    });
+    const result = parseProfile("foo", json);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("deep.model");
+  });
+
+  test("rejects object-form binding with non-string effort", () => {
+    const json = JSON.stringify({
+      runner: "claude",
+      models: { deep: { model: "opus", effort: 5 }, balanced: "sonnet", fast: "haiku" },
+    });
+    const result = parseProfile("foo", json);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("deep.effort");
   });
 
   test("rejects invalid profile name", () => {
@@ -154,10 +203,10 @@ describe("resolveProfileModel", () => {
     name: "openai",
     runner: "opencode",
     models: {
-      deep: "openai/gpt-5.5",
-      balanced: "openai/gpt-5.4",
-      fast: "openai/gpt-5.4-mini",
-      "gpt-oss-large": "ollama/gpt-oss:120b",
+      deep: { model: "openai/gpt-5.5" },
+      balanced: { model: "openai/gpt-5.4" },
+      fast: { model: "openai/gpt-5.4-mini" },
+      "gpt-oss-large": { model: "ollama/gpt-oss:120b" },
     },
   };
 
@@ -177,11 +226,45 @@ describe("resolveProfileModel", () => {
 
   test("passes through provider/model IDs verbatim (contains '/')", () => {
     expect(resolveProfileModel("openai/gpt-5.3-codex", profile)).toBe("openai/gpt-5.3-codex");
-    // Even unmapped provider-style IDs pass through unchanged
     expect(resolveProfileModel("ollama/llama3:70b", profile)).toBe("ollama/llama3:70b");
   });
 
   test("returns unmapped strings unchanged so the runner reports the error", () => {
     expect(resolveProfileModel("unknown-tier", profile)).toBe("unknown-tier");
+  });
+});
+
+describe("resolveProfileBinding", () => {
+  const profile: Profile = {
+    name: "anthropic",
+    runner: "claude",
+    models: {
+      deep: { model: "opus", effort: "max" },
+      balanced: { model: "sonnet" },
+      fast: { model: "haiku", effort: "low" },
+    },
+  };
+
+  test("returns undefined for undefined alias", () => {
+    expect(resolveProfileBinding(undefined, profile)).toBeUndefined();
+  });
+
+  test("returns the bound model + effort for a tier with effort", () => {
+    expect(resolveProfileBinding("deep", profile)).toEqual({ model: "opus", effort: "max" });
+    expect(resolveProfileBinding("fast", profile)).toEqual({ model: "haiku", effort: "low" });
+  });
+
+  test("returns model-only binding for tiers without effort", () => {
+    expect(resolveProfileBinding("balanced", profile)).toEqual({ model: "sonnet" });
+  });
+
+  test("provider-qualified IDs return bare-model bindings (no effort)", () => {
+    expect(resolveProfileBinding("openai/gpt-5.3-codex", profile)).toEqual({
+      model: "openai/gpt-5.3-codex",
+    });
+  });
+
+  test("unmapped aliases fall through as bare-model bindings", () => {
+    expect(resolveProfileBinding("unknown", profile)).toEqual({ model: "unknown" });
   });
 });

@@ -1,4 +1,4 @@
-import { resolveProfileModel } from "../profile.ts";
+import { resolveProfileBinding } from "../profile.ts";
 import type { SessionOptions } from "./agent-runner.ts";
 
 /**
@@ -34,22 +34,26 @@ export function buildOpencodeArgv(
 ): string[] {
   const argv: string[] = [opencodeBin, "run", "--format", "json", "--dangerously-skip-permissions"];
 
-  if (options.model && options.profile) {
-    const resolved = resolveProfileModel(options.model, options.profile);
-    if (resolved) argv.push("--model", resolved);
-  } else if (options.model) {
-    argv.push("--model", options.model);
+  const binding = options.profile
+    ? resolveProfileBinding(options.model, options.profile)
+    : options.model
+      ? { model: options.model }
+      : undefined;
+  if (binding?.model) {
+    argv.push("--model", binding.model);
   }
 
   if (options.agent) {
     argv.push("--agent", options.agent);
   }
 
-  if (options.effort) {
-    // opencode --variant is provider-specific (e.g. minimal|low|medium|high|max
-    // on OpenAI gpt-5.x). Forward verbatim; the CLI errors if the level is
-    // unsupported for the chosen model.
-    argv.push("--variant", options.effort);
+  // Effort precedence: profile-tier effort (if set) overrides per-phase default.
+  // opencode --variant is provider-specific (e.g. minimal|low|medium|high|max
+  // on OpenAI gpt-5.x). Forward verbatim; the CLI errors if the level is
+  // unsupported for the chosen model.
+  const effort = binding?.effort ?? options.effort;
+  if (effort) {
+    argv.push("--variant", effort);
   }
 
   if (cwd) {

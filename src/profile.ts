@@ -43,7 +43,35 @@ export function isModelTier(value: string): value is ModelTier {
 /** Which agent CLI dispatches sessions for a profile. */
 export type ProfileRunner = "claude" | "opencode";
 
-/** The shape stored in `~/.hopper/profiles/<name>.json`. */
+/**
+ * Reasoning effort level. Hopper's unified vocabulary; same as
+ * `SessionOptions.effort` in `agent-runner.ts`. Runners translate:
+ * - claude → `--effort` (maps `minimal` → `low`).
+ * - opencode → `--variant`.
+ *
+ * Profile entries may include this to lock a tier to a specific effort,
+ * overriding the per-phase default chosen by the workflow.
+ */
+export type Effort = "minimal" | "low" | "medium" | "high" | "max";
+
+/**
+ * The bound form of a single model entry. Profile JSON accepts either a
+ * bare string (model name only — phase default effort applies) or an object
+ * `{ model, effort }`; both forms normalize to this shape after parsing.
+ */
+export interface ModelBinding {
+  /** Model ID or alias to forward to the runner. */
+  model: string;
+  /**
+   * Optional effort override for this tier. When set, overrides the
+   * per-phase default effort chosen by the workflow (plan/validate=high,
+   * execute=medium). Runner-native strings outside the canonical set are
+   * forwarded verbatim — the runner CLI surfaces invalid-level errors.
+   */
+  effort?: Effort | (string & {});
+}
+
+/** The shape stored in `~/.hopper/profiles/<name>.json`, after normalization. */
 export interface Profile {
   /** Filename minus `.json`. Validated at load time. */
   name: string;
@@ -52,10 +80,14 @@ export interface Profile {
   /**
    * Model bindings — required keys: `deep`, `balanced`, `fast`. Additional
    * keys are allowed as user-defined aliases (e.g. `qwen-bf16`,
-   * `gpt-oss-large`); these are resolvable through {@link resolveProfileModel}
+   * `gpt-oss-large`); these are resolvable through {@link resolveProfileBinding}
    * the same way tier names are.
+   *
+   * On-disk each entry may be a bare model string OR an object
+   * `{ "model": "...", "effort": "..." }`. Both forms normalize to
+   * {@link ModelBinding} after parsing.
    */
-  models: Record<string, string>;
+  models: Record<string, ModelBinding>;
 }
 
 /** Outcome from parsing or loading a profile file. */
@@ -117,15 +149,44 @@ export function parseProfile(name: string, raw: string): ProfileParseResult {
   if (!isRecord(modelsRaw)) {
     return { ok: false, error: "'models' must be an object" };
   }
-  const models: Record<string, string> = {};
+  const models: Record<string, ModelBinding> = {};
   for (const [key, value] of Object.entries(modelsRaw)) {
-    if (typeof value !== "string" || value.length === 0) {
-      return {
-        ok: false,
-        error: `Model binding '${key}' must be a non-empty string, got ${JSON.stringify(value)}`,
-      };
+    if (typeof value === "string") {
+      if (value.length === 0) {
+        return {
+          ok: false,
+          error: `Model binding '${key}' must be a non-empty string, got ""`,
+        };
+      }
+      models[key] = { model: value };
+      continue;
     }
-    models[key] = value;
+    if (isRecord(value)) {
+      const m = value.model;
+      if (typeof m !== "string" || m.length === 0) {
+        return {
+          ok: false,
+          error: `Model binding '${key}.model' must be a non-empty string, got ${JSON.stringify(m)}`,
+        };
+      }
+      const binding: ModelBinding = { model: m };
+      if ("effort" in value) {
+        const e = value.effort;
+        if (typeof e !== "string" || e.length === 0) {
+          return {
+            ok: false,
+            error: `Model binding '${key}.effort' must be a non-empty string, got ${JSON.stringify(e)}`,
+          };
+        }
+        binding.effort = e as Effort;
+      }
+      models[key] = binding;
+      continue;
+    }
+    return {
+      ok: false,
+      error: `Model binding '${key}' must be a non-empty string or an object with 'model' and optional 'effort', got ${JSON.stringify(value)}`,
+    };
   }
 
   for (const tier of REQUIRED_TIERS) {
@@ -145,20 +206,34 @@ export function parseProfile(name: string, raw: string): ProfileParseResult {
 }
 
 /**
- * Resolve a model alias (tier name or user-defined alias) against a profile.
+ * Resolve a model alias (tier name or user-defined alias) to its full
+ * {@link ModelBinding} (model + optional effort) against a profile.
  *
  * - Strings containing `/` (provider-qualified IDs like `openai/gpt-5.5`)
- *   pass through verbatim — callers can mix tier names and native IDs in the
- *   same `SessionOptions.model` field.
- * - Mapped tier/alias names resolve via the profile's model bindings.
+ *   pass through verbatim as bare-model bindings — callers can mix tier
+ *   names and native IDs in the same `SessionOptions.model` field.
+ * - Mapped tier/alias names resolve via the profile's model bindings,
+ *   preserving any effort override the profile carries.
  * - Unmapped strings fall through unchanged so the underlying runner gets a
  *   chance to surface "unknown model" with its own error.
+ */
+export function resolveProfileBinding(
+  alias: string | undefined,
+  profile: Profile,
+): ModelBinding | undefined {
+  if (!alias) return undefined;
+  if (alias.includes("/")) return { model: alias };
+  return profile.models[alias] ?? { model: alias };
+}
+
+/**
+ * Convenience wrapper that returns just the resolved model string. Effort
+ * overrides from the profile are dropped — callers that care about effort
+ * should use {@link resolveProfileBinding}.
  */
 export function resolveProfileModel(
   alias: string | undefined,
   profile: Profile,
 ): string | undefined {
-  if (!alias) return undefined;
-  if (alias.includes("/")) return alias;
-  return profile.models[alias] ?? alias;
+  return resolveProfileBinding(alias, profile)?.model;
 }

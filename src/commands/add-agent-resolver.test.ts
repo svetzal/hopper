@@ -8,7 +8,7 @@ import { createAgentResolver } from "./add-agent-resolver.ts";
 const TEST_PROFILE: Profile = {
   name: "test",
   runner: "claude",
-  models: { deep: "opus", balanced: "sonnet", fast: "haiku" },
+  models: { deep: { model: "opus" }, balanced: { model: "sonnet" }, fast: { model: "haiku" } },
 };
 
 function makeAgentsGw(

@@ -6,9 +6,9 @@ const ANTHROPIC_PROFILE: Profile = {
   name: "anthropic",
   runner: "claude",
   models: {
-    deep: "opus",
-    balanced: "sonnet",
-    fast: "haiku",
+    deep: { model: "opus" },
+    balanced: { model: "sonnet" },
+    fast: { model: "haiku" },
   },
 };
 

@@ -86,7 +86,38 @@ Three keys are **required** in every profile:
 Additional keys are allowed as user-defined aliases (see [Authoring your
 own profile](#authoring-your-own-profile) below).
 
-The right-hand side is whatever the underlying runner accepts:
+Each entry takes one of two forms:
+
+**Shorthand** — bare model string. Effort follows the per-phase workflow
+default (plan/validate = `high`, execute = `medium`):
+
+```json
+"deep": "opus"
+```
+
+**Object form** — model plus optional `effort` override. The profile's
+effort wins over the per-phase default, so you can pin a tier to a
+specific level:
+
+```json
+"deep":     { "model": "opus",   "effort": "max" },
+"balanced": "sonnet",
+"fast":     { "model": "haiku",  "effort": "low" }
+```
+
+Effort vocabulary: `minimal | low | medium | high | max` (hopper's
+unified set). Each runner translates:
+
+- claude → `--effort <value>` (`minimal` maps to `low`; `max` reaches
+  claude's `xhigh`/`max` ceiling)
+- opencode → `--variant <value>` (forwarded verbatim — the underlying
+  provider decides supported levels)
+
+Runner-native strings outside the canonical set are forwarded as-is;
+the CLI surfaces the error if invalid.
+
+The right-hand-side model identifier is whatever the underlying runner
+accepts:
 
 - For `runner: "claude"`, the Anthropic-flavoured aliases (`opus`,
   `sonnet`, `haiku`) or explicit Claude model IDs (`claude-opus-4-7`).
@@ -220,12 +251,22 @@ Default profile: openai
       fast:     openai/gpt-5.4-mini
   openrouter  (opencode)
       deep:     openrouter/z-ai/glm-5.1
-      balanced: openrouter/anthropic/claude-sonnet-4-6
-      fast:     openrouter/google/gemini-2-flash
+      balanced: openrouter/anthropic/claude-sonnet-4.6
+      fast:     openrouter/google/gemini-2.5-flash
   ollama  (opencode)
       deep:     ollama/qwen3.6:27b-coding-bf16
       balanced: ollama/qwen3.6:27b-coding-mxfp8
       fast:     ollama/qwen3.6:35b-a3b-coding-nvfp4
+```
+
+Tiers with an `effort` override get a trailing `(effort: <value>)`
+suffix:
+
+```text
+  anthropic-max  (claude)
+      deep:     opus  (effort: max)
+      balanced: sonnet
+      fast:     haiku  (effort: low)
 ```
 
 If a profile file fails to parse, its name appears under a trailing
@@ -299,7 +340,11 @@ These are checked when a profile is loaded (every `hopper add` and every
   dots) is rejected at load time — names live as filenames on disk and
   shell-quoting fragile names is more pain than it's worth.
 - **`runner`** must be exactly `"claude"` or `"opencode"`.
-- **`models`** must be an object whose values are non-empty strings.
+- **`models`** must be an object. Each entry is either a non-empty
+  string (model name only) or an object `{ "model": "...", "effort":
+  "..." }` where `model` is required and non-empty and `effort`, if
+  present, is a non-empty string. Both forms normalize to the same
+  internal binding.
 - **Required tier keys** `deep`, `balanced`, and `fast` must all be
   present. Missing any one of them rejects the profile.
 

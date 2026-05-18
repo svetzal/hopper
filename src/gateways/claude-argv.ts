@@ -1,4 +1,4 @@
-import { resolveProfileModel } from "../profile.ts";
+import { resolveProfileBinding } from "../profile.ts";
 import type { SessionOptions } from "./agent-runner.ts";
 
 /**
@@ -34,11 +34,13 @@ export function buildClaudeArgv(
 
   argv.push("--output-format", "stream-json");
 
-  if (options.model) {
-    const resolved = options.profile
-      ? (resolveProfileModel(options.model, options.profile) ?? options.model)
-      : options.model;
-    argv.push("--model", resolved);
+  const binding = options.profile
+    ? resolveProfileBinding(options.model, options.profile)
+    : options.model
+      ? { model: options.model }
+      : undefined;
+  if (binding?.model) {
+    argv.push("--model", binding.model);
   }
   if (options.agent) argv.push("--agent", options.agent);
   // --tools, --allowedTools, --disallowedTools are all Commander-variadic on
@@ -60,11 +62,13 @@ export function buildClaudeArgv(
   if (options.appendSystemPrompt) {
     argv.push("--append-system-prompt", options.appendSystemPrompt);
   }
-  if (options.effort) {
-    // claude --effort accepts low|medium|high|xhigh|max. Map hopper's unified
-    // "minimal" to claude's nearest equivalent ("low"); everything else is
-    // forwarded verbatim so callers can still pass runner-native values.
-    const value = options.effort === "minimal" ? "low" : options.effort;
+  // Effort precedence: profile-tier effort (if set) overrides per-phase default.
+  // claude --effort accepts low|medium|high|xhigh|max. Map hopper's unified
+  // "minimal" to claude's nearest equivalent ("low"); everything else is
+  // forwarded verbatim so callers can still pass runner-native values.
+  const effort = binding?.effort ?? options.effort;
+  if (effort) {
+    const value = effort === "minimal" ? "low" : effort;
     argv.push("--effort", value);
   }
 

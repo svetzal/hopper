@@ -8,9 +8,9 @@ const OPENAI_PROFILE: Profile = {
   name: "openai",
   runner: "opencode",
   models: {
-    deep: "openai/gpt-5.5",
-    balanced: "openai/gpt-5.4",
-    fast: "openai/gpt-5.4-mini",
+    deep: { model: "openai/gpt-5.5" },
+    balanced: { model: "openai/gpt-5.4" },
+    fast: { model: "openai/gpt-5.4-mini" },
   },
 };
 

@@ -1,14 +1,22 @@
 import type { ParsedArgs } from "../cli.ts";
 import type { CommandResult } from "../command-result.ts";
 import type { ProfilesGateway } from "../gateways/profiles-gateway.ts";
+import type { ModelBinding } from "../profile.ts";
 import { catchCommandError } from "../result.ts";
 
 export interface ProfileListEntry {
   name: string;
   runner: "claude" | "opencode";
-  deep: string;
-  balanced: string;
-  fast: string;
+  deep: ModelBinding;
+  balanced: ModelBinding;
+  fast: ModelBinding;
+}
+
+const EMPTY_BINDING: ModelBinding = { model: "" };
+
+function formatBinding(binding: ModelBinding): string {
+  if (!binding.model) return "";
+  return binding.effort ? `${binding.model}  (effort: ${binding.effort})` : binding.model;
 }
 
 export interface ProfileListData {
@@ -42,11 +50,16 @@ export function profilesCommand(
         return { status: "error", message: result.error };
       }
       const path = gateway.profilePath(name);
-      const body = JSON.stringify(
-        { runner: result.profile.runner, models: result.profile.models },
-        null,
-        2,
-      );
+      // Emit the raw file content rather than a re-serialized parsed form so
+      // users see exactly what's on disk — shorthand string entries stay as
+      // strings, object entries stay as objects.
+      const raw = await Bun.file(path)
+        .text()
+        .catch(
+          () =>
+            `${JSON.stringify({ runner: result.profile.runner, models: result.profile.models }, null, 2)}\n`,
+        );
+      const body = raw.trimEnd();
       return {
         status: "success",
         data: body,
@@ -67,9 +80,9 @@ export function profilesCommand(
     const entries: ProfileListEntry[] = profiles.map((p) => ({
       name: p.name,
       runner: p.runner,
-      deep: p.models.deep ?? "",
-      balanced: p.models.balanced ?? "",
-      fast: p.models.fast ?? "",
+      deep: p.models.deep ?? EMPTY_BINDING,
+      balanced: p.models.balanced ?? EMPTY_BINDING,
+      fast: p.models.fast ?? EMPTY_BINDING,
     }));
 
     const lines: string[] = [];
@@ -79,13 +92,14 @@ export function profilesCommand(
       lines.push("(no profiles found — drop a JSON file into ~/.hopper/profiles/)");
     } else {
       // Two-line layout per profile: header + indented tier mapping. Keeps
-      // wide model IDs (e.g. ollama/qwen3.6:27b-coding-bf16) readable.
+      // wide model IDs (e.g. ollama/qwen3.6:27b-coding-bf16) readable. Tiers
+      // with a profile-level effort override get a `(effort: <value>)` suffix.
       for (const entry of entries) {
         const mark = entry.name === config.defaultProfile ? "* " : "  ";
         lines.push(`${mark}${entry.name}  (${entry.runner})`);
-        lines.push(`      deep:     ${entry.deep}`);
-        lines.push(`      balanced: ${entry.balanced}`);
-        lines.push(`      fast:     ${entry.fast}`);
+        lines.push(`      deep:     ${formatBinding(entry.deep)}`);
+        lines.push(`      balanced: ${formatBinding(entry.balanced)}`);
+        lines.push(`      fast:     ${formatBinding(entry.fast)}`);
       }
     }
     if (errors.length > 0) {
