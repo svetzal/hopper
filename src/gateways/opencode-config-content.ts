@@ -41,9 +41,7 @@ export interface OpencodeAgentInjection {
  * Pure — no I/O. The craftsperson body should already have been loaded by
  * the caller (see {@link import("../craftsperson-body.ts").extractCraftspersonBody}).
  */
-export function buildOpencodeConfigContent(
-  injection: OpencodeAgentInjection,
-): string | null {
+export function buildOpencodeConfigContent(injection: OpencodeAgentInjection): string | null {
   const systemPromptParts: string[] = [];
   if (injection.craftspersonBody?.trim()) {
     systemPromptParts.push(injection.craftspersonBody.trim());

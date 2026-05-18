@@ -146,9 +146,7 @@ export function parseOpencodeExport(raw: string): OpencodeExport | null {
   if (!raw) return null;
   const trimmed = raw.trim();
   // Strip a leading "Exporting session: ..." status line if present.
-  const jsonStart = trimmed.startsWith("{")
-    ? trimmed
-    : trimmed.replace(/^[^{]*\n/, "");
+  const jsonStart = trimmed.startsWith("{") ? trimmed : trimmed.replace(/^[^{]*\n/, "");
   try {
     return JSON.parse(jsonStart) as OpencodeExport;
   } catch {

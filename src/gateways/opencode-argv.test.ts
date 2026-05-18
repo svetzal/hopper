@@ -34,17 +34,11 @@ describe("buildOpencodeArgv", () => {
     const argv = buildOpencodeArgv(BIN, "hi", { model: "opus" }, config);
     const modelIdx = argv.indexOf("--model");
     expect(modelIdx).toBeGreaterThan(-1);
-    expect(argv[modelIdx + 1]).toBe(
-      "amazon-bedrock/global.anthropic.claude-opus-4-7",
-    );
+    expect(argv[modelIdx + 1]).toBe("amazon-bedrock/global.anthropic.claude-opus-4-7");
   });
 
   test("passes a native provider/model identifier through unchanged", () => {
-    const argv = buildOpencodeArgv(
-      BIN,
-      "hi",
-      { model: "openrouter/anthropic/claude-haiku-4.5" },
-    );
+    const argv = buildOpencodeArgv(BIN, "hi", { model: "openrouter/anthropic/claude-haiku-4.5" });
     const modelIdx = argv.indexOf("--model");
     expect(argv[modelIdx + 1]).toBe("openrouter/anthropic/claude-haiku-4.5");
   });

@@ -10,9 +10,7 @@ description: A Rust expert
 
 You are a Rust expert. Be concise and idiomatic.
 `;
-    expect(extractCraftspersonBody(md)).toBe(
-      "You are a Rust expert. Be concise and idiomatic.",
-    );
+    expect(extractCraftspersonBody(md)).toBe("You are a Rust expert. Be concise and idiomatic.");
   });
 
   test("handles multi-line descriptions in frontmatter", () => {

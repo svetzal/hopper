@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  parseRunnerConfig,
-  resolveOpencodeModel,
-  type RunnerConfig,
-} from "./runner-config.ts";
+import { parseRunnerConfig, type RunnerConfig, resolveOpencodeModel } from "./runner-config.ts";
 
 describe("parseRunnerConfig", () => {
   test("parses a valid config", () => {
@@ -17,12 +13,8 @@ describe("parseRunnerConfig", () => {
         },
       }),
     );
-    expect(cfg.opencode?.models?.opus).toBe(
-      "amazon-bedrock/global.anthropic.claude-opus-4-7",
-    );
-    expect(cfg.opencode?.models?.sonnet).toBe(
-      "amazon-bedrock/anthropic.claude-sonnet-4-6",
-    );
+    expect(cfg.opencode?.models?.opus).toBe("amazon-bedrock/global.anthropic.claude-opus-4-7");
+    expect(cfg.opencode?.models?.sonnet).toBe("amazon-bedrock/anthropic.claude-sonnet-4-6");
   });
 
   test("returns {} for invalid JSON", () => {
@@ -62,9 +54,9 @@ describe("resolveOpencodeModel", () => {
   });
 
   test("passes provider/model identifiers through unchanged", () => {
-    expect(
-      resolveOpencodeModel("openrouter/anthropic/claude-haiku-4.5", config),
-    ).toBe("openrouter/anthropic/claude-haiku-4.5");
+    expect(resolveOpencodeModel("openrouter/anthropic/claude-haiku-4.5", config)).toBe(
+      "openrouter/anthropic/claude-haiku-4.5",
+    );
   });
 
   test("returns undefined when alias is undefined", () => {

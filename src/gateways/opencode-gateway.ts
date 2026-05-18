@@ -15,8 +15,8 @@ import {
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
 import { streamToAuditFile } from "./audit-stream.ts";
 import { createClaudeRunner } from "./claude-gateway.ts";
-import { buildOpencodeConfigContent } from "./opencode-config-content.ts";
 import { buildOpencodeArgv } from "./opencode-argv.ts";
+import { buildOpencodeConfigContent } from "./opencode-config-content.ts";
 import { loadRunnerConfig, type RunnerConfig } from "./runner-config.ts";
 
 function resolveOpencodeBin(): string {
@@ -99,10 +99,7 @@ function buildRunSession(deps: OpencodeRunnerDeps) {
         appendSystemPrompt: options.appendSystemPrompt,
       });
       if (configContent) {
-        env = { ...process.env, OPENCODE_CONFIG_CONTENT: configContent } as Record<
-          string,
-          string
-        >;
+        env = { ...process.env, OPENCODE_CONFIG_CONTENT: configContent } as Record<string, string>;
       }
     }
 
@@ -138,8 +135,7 @@ function buildRunSession(deps: OpencodeRunnerDeps) {
         auditFile,
         (await Bun.file(auditFile)
           .text()
-          .catch(() => "")) +
-          formatSyntheticEvent({ type: "stderr", text: stderrText }),
+          .catch(() => "")) + formatSyntheticEvent({ type: "stderr", text: stderrText }),
       );
     }
 
@@ -169,12 +165,7 @@ function buildRunSession(deps: OpencodeRunnerDeps) {
     // Outcome: failure if either the process exited non-zero OR any error
     // events appeared in the stream. Exit code 0 from opencode is not a
     // reliable success signal (see docs/opencode-spike.md).
-    const effectiveExitCode =
-      rawExitCode !== 0
-        ? rawExitCode
-        : scan.errors.length > 0
-          ? 1
-          : 0;
+    const effectiveExitCode = rawExitCode !== 0 ? rawExitCode : scan.errors.length > 0 ? 1 : 0;
 
     return { exitCode: effectiveExitCode, result };
   };
@@ -196,9 +187,7 @@ function buildRunSession(deps: OpencodeRunnerDeps) {
  * The opencode runner delegates `generateText` straight through to the
  * claude runner.
  */
-export function createOpencodeRunner(
-  deps: OpencodeRunnerDeps = {},
-): AgentRunner {
+export function createOpencodeRunner(deps: OpencodeRunnerDeps = {}): AgentRunner {
   const claudeRunner = createClaudeRunner();
   return {
     runSession: buildRunSession(deps),

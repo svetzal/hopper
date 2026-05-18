@@ -136,9 +136,7 @@ describe("extractOpencodeResult", () => {
     expect(extractOpencodeResult({ messages: [] })).toBe("");
     expect(
       extractOpencodeResult({
-        messages: [
-          { info: { role: "user" }, parts: [{ type: "text", text: "hi" }] },
-        ],
+        messages: [{ info: { role: "user" }, parts: [{ type: "text", text: "hi" }] }],
       }),
     ).toBe("");
   });

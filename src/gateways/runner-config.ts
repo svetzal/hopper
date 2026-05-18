@@ -56,9 +56,7 @@ export function parseRunnerConfig(raw: string): RunnerConfig {
 /**
  * Load hopper's runner config from disk. Missing file → empty config.
  */
-export async function loadRunnerConfig(
-  path: string = DEFAULT_PATH,
-): Promise<RunnerConfig> {
+export async function loadRunnerConfig(path: string = DEFAULT_PATH): Promise<RunnerConfig> {
   const file = Bun.file(path);
   if (!(await file.exists())) return {};
   const text = await file.text().catch(() => "");

@@ -4,9 +4,7 @@ import { buildOpencodeConfigContent } from "./opencode-config-content.ts";
 describe("buildOpencodeConfigContent", () => {
   test("returns null when nothing to inject", () => {
     expect(buildOpencodeConfigContent({})).toBeNull();
-    expect(
-      buildOpencodeConfigContent({ agentName: "rust-craftsperson" }),
-    ).toBeNull();
+    expect(buildOpencodeConfigContent({ agentName: "rust-craftsperson" })).toBeNull();
     expect(
       buildOpencodeConfigContent({ craftspersonBody: "   ", appendSystemPrompt: "" }),
     ).toBeNull();
@@ -19,9 +17,7 @@ describe("buildOpencodeConfigContent", () => {
     });
     expect(result).not.toBeNull();
     const parsed = JSON.parse(result ?? "{}");
-    expect(parsed.agent["rust-craftsperson"].prompt).toBe(
-      "You are a Rust expert. Be concise.",
-    );
+    expect(parsed.agent["rust-craftsperson"].prompt).toBe("You are a Rust expert. Be concise.");
     expect(parsed.agent["rust-craftsperson"].mode).toBe("primary");
   });
 

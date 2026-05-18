@@ -1,5 +1,5 @@
 import type { SessionOptions } from "./agent-runner.ts";
-import { resolveOpencodeModel, type RunnerConfig } from "./runner-config.ts";
+import { type RunnerConfig, resolveOpencodeModel } from "./runner-config.ts";
 
 /**
  * Construct the argv for an `opencode run --format json` invocation.
@@ -32,13 +32,7 @@ export function buildOpencodeArgv(
   config: RunnerConfig = {},
   cwd?: string,
 ): string[] {
-  const argv: string[] = [
-    opencodeBin,
-    "run",
-    "--format",
-    "json",
-    "--dangerously-skip-permissions",
-  ];
+  const argv: string[] = [opencodeBin, "run", "--format", "json", "--dangerously-skip-permissions"];
 
   const resolvedModel = resolveOpencodeModel(options.model, config);
   if (resolvedModel) {
