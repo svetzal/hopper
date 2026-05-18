@@ -127,11 +127,19 @@ Usage:
   hopper init                        Install Claude Code skill files (local repo)
   hopper init --global               Install skill files to ~/.claude/skills/
   hopper init --force                Overwrite even if installed skill is newer
-  hopper worker                      Run the Claude worker loop
+  hopper worker                      Run the worker loop (default: claude)
   hopper worker --once               Process one item then exit
   hopper worker --agent <name>       Set agent name (default: claude-worker)
   hopper worker --interval <sec>     Poll interval in seconds (default: 60)
   hopper worker --concurrency <n>    Run up to N items in parallel (default: 4)
+  hopper worker --runner <name>      Agent runner: claude (default) or opencode.
+                                     With --runner opencode, session work is
+                                     dispatched via the opencode CLI; Haiku
+                                     one-shots (branch slug, commit message,
+                                     validate-marker fallback) still go via
+                                     claude. Requires opencode installed and
+                                     ~/.hopper/runner-config.json with at least
+                                     opencode.models.{opus,sonnet,haiku}.
 
 Options:
   --after     Schedule item for later (e.g. 1h, 30m, tomorrow 9am)

@@ -12,6 +12,7 @@ import {
   resolveMergeAction,
   resolvePostClaimLoopAction,
   resolvePostClaudeAction,
+  resolveRunnerKind,
   resolveShutdownAction,
   resolveWorkerConfig,
   resolveWorkSetup,
@@ -260,6 +261,49 @@ describe("worker-workflow", () => {
 
     test("ignores boolean-typed interval flag (falls back to default)", () => {
       expect(resolveWorkerConfig({ interval: true }).pollInterval).toBe(60);
+    });
+  });
+
+  describe("resolveRunnerKind", () => {
+    test("defaults to claude when --runner is absent", () => {
+      expect(resolveRunnerKind({})).toEqual({ ok: true, kind: "claude" });
+    });
+
+    test("accepts --runner claude", () => {
+      expect(resolveRunnerKind({ runner: "claude" })).toEqual({
+        ok: true,
+        kind: "claude",
+      });
+    });
+
+    test("accepts --runner opencode", () => {
+      expect(resolveRunnerKind({ runner: "opencode" })).toEqual({
+        ok: true,
+        kind: "opencode",
+      });
+    });
+
+    test("rejects bare --runner with no value", () => {
+      const result = resolveRunnerKind({ runner: true });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toContain("--runner requires a value");
+      }
+    });
+
+    test("rejects an unknown runner name", () => {
+      const result = resolveRunnerKind({ runner: "openai" });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toContain("Unknown runner 'openai'");
+      }
+    });
+
+    test("treats --runner=false as default (claude)", () => {
+      expect(resolveRunnerKind({ runner: false })).toEqual({
+        ok: true,
+        kind: "claude",
+      });
     });
   });
 

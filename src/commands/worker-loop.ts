@@ -9,6 +9,7 @@ import type { FsGateway } from "../gateways/fs-gateway.ts";
 import { createFsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import { createGitGateway } from "../gateways/git-gateway.ts";
+import { createOpencodeRunner } from "../gateways/opencode-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import { createShellGateway } from "../gateways/shell-gateway.ts";
 import type { ClaimedItem } from "../store.ts";
@@ -16,6 +17,7 @@ import { claimNextItem, findItem } from "../store.ts";
 import {
   resolveLoopAction,
   resolvePostClaimLoopAction,
+  resolveRunnerKind,
   resolveShutdownAction,
   resolveWorkerConfig,
   type WorkerConfig,
@@ -168,7 +170,17 @@ export async function runWorkerLoop(
 
 export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Promise<void> {
   const git = deps?.git ?? createGitGateway();
-  const claude = deps?.claude ?? createClaudeGateway();
+  let claude: ClaudeGateway;
+  if (deps?.claude) {
+    claude = deps.claude;
+  } else {
+    const runnerResult = resolveRunnerKind(parsed.flags);
+    if (!runnerResult.ok) {
+      console.error(runnerResult.error);
+      process.exit(1);
+    }
+    claude = runnerResult.kind === "opencode" ? createOpencodeRunner() : createClaudeGateway();
+  }
   const fs = deps?.fs ?? createFsGateway();
   const shell = deps?.shell ?? createShellGateway();
 

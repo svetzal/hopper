@@ -194,6 +194,50 @@ export function resolveWorkerConfig(flags: Record<string, string | boolean>): Wo
 }
 
 // ---------------------------------------------------------------------------
+// Runner selection
+// ---------------------------------------------------------------------------
+
+/**
+ * Which agent runner the worker should use to execute claimed items.
+ * Defaults to `claude` so existing invocations are unaffected. `opencode`
+ * routes session work through the opencode CLI (Haiku one-shots still go
+ * via claude — see opencode-gateway docs).
+ */
+export type RunnerKind = "claude" | "opencode";
+
+/**
+ * Resolve the `--runner` flag into a {@link RunnerKind} or a structured
+ * error. Pure — used by the CLI surface and covered by tests.
+ *
+ * Acceptable inputs:
+ * - flag absent / `false` → `claude` (default)
+ * - flag value `"claude"` or `"opencode"` → that kind
+ *
+ * Any other value (including `--runner` passed bare with no argument)
+ * returns an error rather than silently defaulting, because a typo here
+ * would otherwise send work to the wrong runner.
+ */
+export function resolveRunnerKind(
+  flags: Record<string, string | boolean>,
+): { ok: true; kind: RunnerKind } | { ok: false; error: string } {
+  const raw = flags.runner;
+  if (raw === undefined || raw === false) return { ok: true, kind: "claude" };
+  if (raw === true) {
+    return {
+      ok: false,
+      error: "--runner requires a value (claude|opencode)",
+    };
+  }
+  if (raw === "claude" || raw === "opencode") {
+    return { ok: true, kind: raw };
+  }
+  return {
+    ok: false,
+    error: `Unknown runner '${raw}' (expected: claude|opencode)`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Loop action
 // ---------------------------------------------------------------------------
 
