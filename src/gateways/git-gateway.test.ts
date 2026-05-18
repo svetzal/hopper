@@ -85,6 +85,24 @@ describe("GitGateway", () => {
     expect(dirty).toBe(false);
   });
 
+  test("stageAll stages new files so they appear in `git diff HEAD --cached`", async () => {
+    // The original bug: from-scratch projects leave every file untracked.
+    // `git diff HEAD` excludes untracked, so without stageAll the
+    // commit-message generator sees an empty diff. After stageAll the same
+    // files appear in the diff summary.
+    const repoDir = await setup();
+    await writeFile(join(repoDir, "fresh-file.txt"), "fresh content\n");
+
+    // Pre-stage: diff is empty (file is untracked).
+    const preDiff = await gateway.diffSummary(repoDir);
+    expect(preDiff).not.toContain("fresh-file.txt");
+
+    // Post-stage: diff names the file.
+    await gateway.stageAll(repoDir);
+    const postDiff = await gateway.diffSummary(repoDir);
+    expect(postDiff).toContain("fresh-file.txt");
+  });
+
   test("createWorktree creates a worktree and worktreeRemove cleans it up", async () => {
     const repoDir = await setup();
     const worktreePath = join(repoDir, "..", "test-worktree");

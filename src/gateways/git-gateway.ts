@@ -47,6 +47,17 @@ export interface GitGateway {
   ): Promise<void>;
   worktreeRemove(repoDir: string, worktreePath: string): Promise<void>;
   isWorktreeDirty(worktreePath: string): Promise<boolean>;
+  /**
+   * Stage every change in the worktree (`git add -A`). Picks up new files,
+   * modifications, and deletions. Idempotent — running on an already-clean
+   * index is a no-op.
+   *
+   * Callers that need a diff summary BEFORE committing must call this first,
+   * because {@link diffSummary} uses `git diff HEAD` which excludes untracked
+   * files. Without staging, a fresh project generated entirely from scratch
+   * (every file untracked) produces an empty diff summary.
+   */
+  stageAll(worktreePath: string): Promise<void>;
   commitAll(worktreePath: string, message: string): Promise<void>;
   getCurrentBranch(repoDir: string): Promise<string>;
   checkout(repoDir: string, branch: string): Promise<void>;
@@ -142,11 +153,15 @@ async function isWorktreeDirty(worktreePath: string): Promise<boolean> {
   return stdout.trim().length > 0;
 }
 
-async function commitAll(worktreePath: string, message: string): Promise<void> {
+async function stageAll(worktreePath: string): Promise<void> {
   const addResult = await spawnGit(["add", "-A"], worktreePath, { stderr: true });
   if (addResult.exitCode !== 0) {
     throw new Error(`git add -A failed: ${addResult.stderr.trim()}`);
   }
+}
+
+async function commitAll(worktreePath: string, message: string): Promise<void> {
+  await stageAll(worktreePath);
 
   const commitResult = await spawnGit(["commit", "-m", message], worktreePath, { stderr: true });
   if (commitResult.exitCode !== 0) {
@@ -286,6 +301,7 @@ export function createGitGateway(): GitGateway {
     createWorktree,
     worktreeRemove,
     isWorktreeDirty,
+    stageAll,
     commitAll,
     getCurrentBranch,
     checkout,

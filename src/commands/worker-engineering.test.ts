@@ -342,7 +342,37 @@ describe("commitEngineeringChanges", () => {
 
     expect(result.dirty).toBe(false);
     expect(git.commitAll).not.toHaveBeenCalled();
+    expect(git.stageAll).not.toHaveBeenCalled();
     expect(git.diffSummary).not.toHaveBeenCalled();
+  });
+
+  test("stages BEFORE summarising the diff (so untracked files appear in the commit message)", async () => {
+    // Regression: a from-scratch project leaves every file untracked. `git
+    // diff HEAD` excludes untracked, so the commit-message model would see an
+    // empty diff. stageAll must run before diffSummary.
+    const item = makeClaimedItem({ id: ITEM_ID });
+    const callOrder: string[] = [];
+    const git = makeMockGit({
+      isWorktreeDirty: mock(async () => true),
+      stageAll: mock(async () => {
+        callOrder.push("stageAll");
+      }),
+      diffSummary: mock(async () => {
+        callOrder.push("diffSummary");
+        return "src/foo.rs | 10 +";
+      }),
+      commitAll: mock(async () => {
+        callOrder.push("commitAll");
+      }),
+    });
+    const claude: ClaudeGateway = {
+      runSession: mock(async () => ({ exitCode: 0, result: "" })),
+      generateText: mock(async () => ({ exitCode: 0, text: "feat: implement foo" })),
+    };
+
+    await commitEngineeringChanges(item, "/worktree", { git, claude }, noop);
+
+    expect(callOrder).toEqual(["stageAll", "diffSummary", "commitAll"]);
   });
 });
 

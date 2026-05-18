@@ -276,6 +276,11 @@ export async function commitEngineeringChanges(
   const { git, claude } = deps;
   const dirty = await git.isWorktreeDirty(worktreePath);
   if (dirty) {
+    // Stage before summarising — `git diff HEAD` excludes untracked files, so
+    // a fresh-from-scratch project (every file untracked) would otherwise feed
+    // the commit-message model an empty diff. Staging is idempotent and
+    // commitAll re-stages internally, so this is safe to repeat.
+    await git.stageAll(worktreePath);
     log("Generating commit message...");
     const diff = await git.diffSummary(worktreePath);
     const commitMsg = await resolveEngineeringCommitMessage(claude, item, diff, log);
