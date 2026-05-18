@@ -83,6 +83,40 @@ export function filterAndSortItems(
   return { ok: true, value: items };
 }
 
+/**
+ * Infer which engineering phase an in-progress item is currently running, based
+ * on the `phases` record (which is only written at phase *completion*). Returns
+ * undefined for non-engineering items, items not in_progress, or completed
+ * validate runs awaiting completion.
+ *
+ * Phase records are written when a phase ends, so the *next* phase is the one
+ * currently running:
+ *   - 0 records → plan
+ *   - last record = plan → execute
+ *   - last record = execute → validate
+ *   - last record = validate (failed) → execute (retry N)
+ *   - last record = validate (passed) → undefined (item about to complete)
+ */
+export function inferEngineeringPhase(item: Item): string | undefined {
+  if (item.type !== "engineering") return undefined;
+  if (item.status !== Status.IN_PROGRESS) return undefined;
+
+  const phases = item.phases ?? [];
+  if (phases.length === 0) return "plan";
+
+  const last = phases[phases.length - 1];
+  if (!last) return "plan";
+
+  if (last.name === "plan") return "execute";
+  if (last.name === "execute") return "validate";
+  if (last.name === "validate") {
+    if (last.passed) return undefined;
+    const executeAttempts = phases.filter((p) => p.name === "execute").length;
+    return `execute (retry ${executeAttempts})`;
+  }
+  return undefined;
+}
+
 /** Format a single item timing annotation. */
 export function itemTiming(item: Item): string {
   if (item.status === Status.COMPLETED && item.claimedAt && item.completedAt) {
@@ -130,9 +164,13 @@ export function formatItemList(items: Item[]): string {
       item.status === Status.BLOCKED && item.dependsOn
         ? ` [blocked on ${item.dependsOn.map((depId) => shortId(depId)).join(", ")}]`
         : "";
+    const inProgressBadge = (() => {
+      const phase = inferEngineeringPhase(item);
+      return phase ? ` [in progress: ${phase}]` : " [in progress]";
+    })();
     const badge =
       item.status === Status.IN_PROGRESS
-        ? " [in progress]"
+        ? inProgressBadge
         : item.status === Status.CANCELLED
           ? " [cancelled]"
           : item.status === Status.BLOCKED

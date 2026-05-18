@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { filterAndSortItems, formatItemList, itemTiming, taskTypeBadge } from "./list-workflow.ts";
+import {
+  filterAndSortItems,
+  formatItemList,
+  inferEngineeringPhase,
+  itemTiming,
+  taskTypeBadge,
+} from "./list-workflow.ts";
 import { makeItem } from "./test-helpers.ts";
 
 describe("filterAndSortItems", () => {
@@ -195,6 +201,100 @@ describe("formatItemList", () => {
     const output = formatItemList([item]);
     expect(output).not.toContain("[inv]");
     expect(output).not.toContain("[eng]");
+  });
+
+  test("renders [in progress: plan] for in-progress engineering item with no phases yet", () => {
+    const item = makeItem({ status: "in_progress", type: "engineering" });
+    expect(formatItemList([item])).toContain("[in progress: plan]");
+  });
+
+  test("renders [in progress: execute] after plan completes", () => {
+    const item = makeItem({
+      status: "in_progress",
+      type: "engineering",
+      phases: [{ name: "plan", startedAt: "x", endedAt: "y", exitCode: 0 }],
+    });
+    expect(formatItemList([item])).toContain("[in progress: execute]");
+  });
+
+  test("renders [in progress: validate] after execute completes", () => {
+    const item = makeItem({
+      status: "in_progress",
+      type: "engineering",
+      phases: [
+        { name: "plan", startedAt: "x", endedAt: "y", exitCode: 0 },
+        { name: "execute", startedAt: "x", endedAt: "y", exitCode: 0 },
+      ],
+    });
+    expect(formatItemList([item])).toContain("[in progress: validate]");
+  });
+
+  test("renders [in progress: execute (retry 1)] after failed validate", () => {
+    const item = makeItem({
+      status: "in_progress",
+      type: "engineering",
+      phases: [
+        { name: "plan", startedAt: "x", endedAt: "y", exitCode: 0 },
+        { name: "execute", startedAt: "x", endedAt: "y", exitCode: 0 },
+        { name: "validate", startedAt: "x", endedAt: "y", exitCode: 0, passed: false },
+      ],
+    });
+    expect(formatItemList([item])).toContain("[in progress: execute (retry 1)]");
+  });
+
+  test("keeps plain [in progress] for non-engineering items", () => {
+    const item = makeItem({ status: "in_progress", type: "task" });
+    const output = formatItemList([item]);
+    expect(output).toContain("[in progress]");
+    expect(output).not.toContain("[in progress:");
+  });
+});
+
+describe("inferEngineeringPhase", () => {
+  test("returns undefined for non-engineering items", () => {
+    expect(
+      inferEngineeringPhase(makeItem({ status: "in_progress", type: "task" })),
+    ).toBeUndefined();
+    expect(
+      inferEngineeringPhase(makeItem({ status: "in_progress", type: "investigation" })),
+    ).toBeUndefined();
+  });
+
+  test("returns undefined for engineering items that aren't in_progress", () => {
+    expect(
+      inferEngineeringPhase(makeItem({ status: "queued", type: "engineering" })),
+    ).toBeUndefined();
+    expect(
+      inferEngineeringPhase(makeItem({ status: "completed", type: "engineering" })),
+    ).toBeUndefined();
+  });
+
+  test("returns undefined after a passed validate (item about to complete)", () => {
+    const item = makeItem({
+      status: "in_progress",
+      type: "engineering",
+      phases: [
+        { name: "plan", startedAt: "x", endedAt: "y", exitCode: 0 },
+        { name: "execute", startedAt: "x", endedAt: "y", exitCode: 0 },
+        { name: "validate", startedAt: "x", endedAt: "y", exitCode: 0, passed: true },
+      ],
+    });
+    expect(inferEngineeringPhase(item)).toBeUndefined();
+  });
+
+  test("retry counter increments with each execute attempt", () => {
+    const item = makeItem({
+      status: "in_progress",
+      type: "engineering",
+      phases: [
+        { name: "plan", startedAt: "x", endedAt: "y", exitCode: 0 },
+        { name: "execute", startedAt: "x", endedAt: "y", exitCode: 0 },
+        { name: "validate", startedAt: "x", endedAt: "y", exitCode: 0, passed: false },
+        { name: "execute", startedAt: "x", endedAt: "y", exitCode: 0, attempt: 2 },
+        { name: "validate", startedAt: "x", endedAt: "y", exitCode: 0, passed: false },
+      ],
+    });
+    expect(inferEngineeringPhase(item)).toBe("execute (retry 2)");
   });
 });
 
