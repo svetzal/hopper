@@ -56,7 +56,13 @@ describe("orchestrateWorktreeSetup", () => {
       remoteBranchExists: mock(async () => true),
     });
 
-    await orchestrateWorktreeSetup({ git, repoDir: REPO_DIR, branch: TARGET_BRANCH, worktreePath: WORKTREE_PATH, itemId: ITEM_ID });
+    await orchestrateWorktreeSetup({
+      git,
+      repoDir: REPO_DIR,
+      branch: TARGET_BRANCH,
+      worktreePath: WORKTREE_PATH,
+      itemId: ITEM_ID,
+    });
 
     expect(git.createTrackingBranch).toHaveBeenCalledWith(
       REPO_DIR,
@@ -72,7 +78,13 @@ describe("orchestrateWorktreeSetup", () => {
       remoteBranchExists: mock(async () => false),
     });
 
-    await orchestrateWorktreeSetup({ git, repoDir: REPO_DIR, branch: TARGET_BRANCH, worktreePath: WORKTREE_PATH, itemId: ITEM_ID });
+    await orchestrateWorktreeSetup({
+      git,
+      repoDir: REPO_DIR,
+      branch: TARGET_BRANCH,
+      worktreePath: WORKTREE_PATH,
+      itemId: ITEM_ID,
+    });
 
     expect(git.createBranch).toHaveBeenCalledWith(REPO_DIR, TARGET_BRANCH);
     expect(git.createTrackingBranch).not.toHaveBeenCalled();
@@ -84,7 +96,13 @@ describe("orchestrateWorktreeSetup", () => {
       remoteBranchExists: mock(async () => false),
     });
 
-    await orchestrateWorktreeSetup({ git, repoDir: REPO_DIR, branch: TARGET_BRANCH, worktreePath: WORKTREE_PATH, itemId: ITEM_ID });
+    await orchestrateWorktreeSetup({
+      git,
+      repoDir: REPO_DIR,
+      branch: TARGET_BRANCH,
+      worktreePath: WORKTREE_PATH,
+      itemId: ITEM_ID,
+    });
 
     expect(git.createBranch).not.toHaveBeenCalled();
     expect(git.createTrackingBranch).not.toHaveBeenCalled();
@@ -95,7 +113,13 @@ describe("orchestrateWorktreeSetup", () => {
       branchExists: mock(async () => true),
     });
 
-    await orchestrateWorktreeSetup({ git, repoDir: REPO_DIR, branch: TARGET_BRANCH, worktreePath: WORKTREE_PATH, itemId: ITEM_ID });
+    await orchestrateWorktreeSetup({
+      git,
+      repoDir: REPO_DIR,
+      branch: TARGET_BRANCH,
+      worktreePath: WORKTREE_PATH,
+      itemId: ITEM_ID,
+    });
 
     expect(git.createWorktree).toHaveBeenCalledWith(
       REPO_DIR,
@@ -111,7 +135,14 @@ describe("orchestrateWorktreeSetup", () => {
     });
     const override = "hopper-eng/my-feature-aaaaaaaa";
 
-    await orchestrateWorktreeSetup({ git, repoDir: REPO_DIR, branch: TARGET_BRANCH, worktreePath: WORKTREE_PATH, itemId: ITEM_ID, workBranchOverride: override });
+    await orchestrateWorktreeSetup({
+      git,
+      repoDir: REPO_DIR,
+      branch: TARGET_BRANCH,
+      worktreePath: WORKTREE_PATH,
+      itemId: ITEM_ID,
+      workBranchOverride: override,
+    });
 
     expect(git.createWorktree).toHaveBeenCalledWith(
       REPO_DIR,
@@ -144,7 +175,14 @@ describe("orchestrateWorktreeSetup", () => {
     });
     const override = "hopper-eng/my-slug-aaaaaaaa";
 
-    await orchestrateWorktreeSetup({ git, repoDir: REPO_DIR, branch: TARGET_BRANCH, worktreePath: WORKTREE_PATH, itemId: ITEM_ID, workBranchOverride: override });
+    await orchestrateWorktreeSetup({
+      git,
+      repoDir: REPO_DIR,
+      branch: TARGET_BRANCH,
+      worktreePath: WORKTREE_PATH,
+      itemId: ITEM_ID,
+      workBranchOverride: override,
+    });
 
     expect(git.forceDeleteBranch).not.toHaveBeenCalled();
     expect(git.createWorktree).toHaveBeenCalledWith(
@@ -191,7 +229,14 @@ describe("orchestrateWorktreeSetup", () => {
     });
 
     await expect(
-      orchestrateWorktreeSetup({ git, repoDir: REPO_DIR, branch: TARGET_BRANCH, worktreePath: WORKTREE_PATH, itemId: ITEM_ID, workBranchOverride: workBranch }),
+      orchestrateWorktreeSetup({
+        git,
+        repoDir: REPO_DIR,
+        branch: TARGET_BRANCH,
+        worktreePath: WORKTREE_PATH,
+        itemId: ITEM_ID,
+        workBranchOverride: workBranch,
+      }),
     ).rejects.toBeInstanceOf(StaleEngineeringBranchError);
     expect(git.createWorktree).not.toHaveBeenCalled();
     expect(git.forceDeleteBranch).not.toHaveBeenCalled();
@@ -205,7 +250,14 @@ describe("orchestrateWorktreeSetup", () => {
     });
 
     await expect(
-      orchestrateWorktreeSetup({ git, repoDir: REPO_DIR, branch: TARGET_BRANCH, worktreePath: WORKTREE_PATH, itemId: ITEM_ID, workBranchOverride: workBranch }),
+      orchestrateWorktreeSetup({
+        git,
+        repoDir: REPO_DIR,
+        branch: TARGET_BRANCH,
+        worktreePath: WORKTREE_PATH,
+        itemId: ITEM_ID,
+        workBranchOverride: workBranch,
+      }),
     ).rejects.toBeInstanceOf(StaleEngineeringBranchError);
     expect(git.createWorktree).not.toHaveBeenCalled();
     // branchIsAncestorOf should NOT have been called (worktrees check short-circuits)
@@ -249,7 +301,14 @@ describe("orchestrateWorktreeSetup", () => {
     });
 
     await expect(
-      orchestrateWorktreeSetup({ git, repoDir: REPO_DIR, branch: TARGET_BRANCH, worktreePath: WORKTREE_PATH, itemId: ITEM_ID, workBranchOverride: workBranch }),
+      orchestrateWorktreeSetup({
+        git,
+        repoDir: REPO_DIR,
+        branch: TARGET_BRANCH,
+        worktreePath: WORKTREE_PATH,
+        itemId: ITEM_ID,
+        workBranchOverride: workBranch,
+      }),
     ).rejects.toBeInstanceOf(StaleEngineeringBranchError);
     expect(git.createWorktree).not.toHaveBeenCalled();
   });
@@ -265,7 +324,14 @@ describe("orchestrateWorktreeSetup", () => {
     });
 
     await expect(
-      orchestrateWorktreeSetup({ git, repoDir: REPO_DIR, branch: TARGET_BRANCH, worktreePath: WORKTREE_PATH, itemId: ITEM_ID, workBranchOverride: workBranch }),
+      orchestrateWorktreeSetup({
+        git,
+        repoDir: REPO_DIR,
+        branch: TARGET_BRANCH,
+        worktreePath: WORKTREE_PATH,
+        itemId: ITEM_ID,
+        workBranchOverride: workBranch,
+      }),
     ).rejects.toBeInstanceOf(StaleEngineeringBranchError);
     expect(git.createWorktree).not.toHaveBeenCalled();
   });

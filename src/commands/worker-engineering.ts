@@ -144,7 +144,9 @@ export interface ExecuteValidateContext {
   log: LogFn;
 }
 
-export async function runExecuteValidateLoop(ctx: ExecuteValidateContext): Promise<ExecuteValidateResult> {
+export async function runExecuteValidateLoop(
+  ctx: ExecuteValidateContext,
+): Promise<ExecuteValidateResult> {
   const { item, worktreePath, planText, paths, hopperHome, deps, log } = ctx;
   const { claude, fs } = deps;
   // One execute → validate attempt, then up to `maxRetries` remediation
@@ -301,7 +303,19 @@ export interface TeardownContext {
 }
 
 export async function teardownMergeAndComplete(ctx: TeardownContext): Promise<void> {
-  const { item, agentName, worktreePath, workBranch, dirty, planText, executeResults, validateResults, paths, deps, log } = ctx;
+  const {
+    item,
+    agentName,
+    worktreePath,
+    workBranch,
+    dirty,
+    planText,
+    executeResults,
+    validateResults,
+    paths,
+    deps,
+    log,
+  } = ctx;
   const { git, fs } = deps;
   await teardownWorktree(git, item.workingDir as string, worktreePath, log);
 
