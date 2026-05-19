@@ -145,11 +145,90 @@ export interface ExecuteValidateContext {
   log: LogFn;
 }
 
+async function runExecuteAttempt(
+  ctx: ExecuteValidateContext,
+  attempt: number,
+  maxAttempts: number,
+  previousExecuteResult: string,
+  previousValidateResult: string,
+): Promise<{ result: string; exitCode: number }> {
+  const { item, worktreePath, planText, hopperHome, deps, log } = ctx;
+  const { claude, profile } = deps;
+  const executeAuditPath = resolveAttemptAuditPath(item.id, hopperHome, "execute", attempt);
+  const isRemediation = attempt > 1;
+  log(
+    `Execute phase attempt ${attempt}/${maxAttempts} (balanced${
+      item.agent ? `, agent: ${item.agent}` : ""
+    }${isRemediation ? ", remediation" : ""})...\nAudit log: ${executeAuditPath}`,
+  );
+  const executePrompt = isRemediation
+    ? buildExecuteRemediationPrompt(item, planText, previousExecuteResult, previousValidateResult, attempt)
+    : buildExecutePrompt(item, planText);
+  const executeStartedAt = new Date().toISOString();
+  const executeRun = await claude.runSession(executePrompt, worktreePath, executeAuditPath, {
+    ...buildExecuteOptions(item.agent),
+    profile,
+  });
+  await safeRecordPhase(
+    item.id,
+    {
+      name: "execute",
+      startedAt: executeStartedAt,
+      endedAt: new Date().toISOString(),
+      exitCode: executeRun.exitCode,
+      attempt,
+    },
+    log,
+  );
+  return { result: executeRun.result, exitCode: executeRun.exitCode };
+}
+
+async function runValidateAttempt(
+  ctx: ExecuteValidateContext,
+  attempt: number,
+  maxAttempts: number,
+): Promise<{ outcome: { passed: boolean; reason: string; fallbackUsed?: boolean }; result: string }> {
+  const { item, worktreePath, planText, hopperHome, deps, log } = ctx;
+  const { claude, profile } = deps;
+  const validateAuditPath = resolveAttemptAuditPath(item.id, hopperHome, "validate", attempt);
+  log(
+    `Validate phase attempt ${attempt}/${maxAttempts} (deep, read-only git)...\nAudit log: ${validateAuditPath}`,
+  );
+  const validateStartedAt = new Date().toISOString();
+  const validateRun = await claude.runSession(
+    buildValidatePrompt(item, planText),
+    worktreePath,
+    validateAuditPath,
+    { ...buildValidateOptions(), profile },
+  );
+  const outcome = await resolveValidateOutcomeWithFallback(
+    validateRun.exitCode,
+    validateRun.result,
+    claude,
+    profile,
+    log,
+  );
+  await safeRecordPhase(
+    item.id,
+    {
+      name: "validate",
+      startedAt: validateStartedAt,
+      endedAt: new Date().toISOString(),
+      exitCode: validateRun.exitCode,
+      passed: outcome.passed,
+      attempt,
+      ...(outcome.fallbackUsed ? { fallbackUsed: true } : {}),
+    },
+    log,
+  );
+  return { outcome, result: validateRun.result };
+}
+
 export async function runExecuteValidateLoop(
   ctx: ExecuteValidateContext,
 ): Promise<ExecuteValidateResult> {
-  const { item, worktreePath, planText, paths, hopperHome, deps, log } = ctx;
-  const { claude, fs, profile } = deps;
+  const { item, planText, paths, deps, log } = ctx;
+  const { fs } = deps;
   // One execute → validate attempt, then up to `maxRetries` remediation
   // attempts when validate reports FAIL. Each attempt writes its own
   // per-attempt audit file and records phase entries so `hopper show`
@@ -167,42 +246,16 @@ export async function runExecuteValidateLoop(
   while (attempt < maxAttempts) {
     attempt += 1;
 
-    // --- Execute (initial or remediation) ---------------------------------
-    const executeAuditPath = resolveAttemptAuditPath(item.id, hopperHome, "execute", attempt);
-    const isRemediation = attempt > 1;
-    log(
-      `Execute phase attempt ${attempt}/${maxAttempts} (balanced${
-        item.agent ? `, agent: ${item.agent}` : ""
-      }${isRemediation ? ", remediation" : ""})...\nAudit log: ${executeAuditPath}`,
+    const executeAttempt = await runExecuteAttempt(
+      ctx,
+      attempt,
+      maxAttempts,
+      executeResults[executeResults.length - 1] ?? "",
+      validateResults[validateResults.length - 1] ?? "",
     );
-    const executePrompt = isRemediation
-      ? buildExecuteRemediationPrompt(
-          item,
-          planText,
-          executeResults[executeResults.length - 1] ?? "",
-          validateResults[validateResults.length - 1] ?? "",
-          attempt,
-        )
-      : buildExecutePrompt(item, planText);
-    const executeStartedAt = new Date().toISOString();
-    const executeRun = await claude.runSession(executePrompt, worktreePath, executeAuditPath, {
-      ...buildExecuteOptions(item.agent),
-      profile,
-    });
-    executeResults.push(executeRun.result);
-    await safeRecordPhase(
-      item.id,
-      {
-        name: "execute",
-        startedAt: executeStartedAt,
-        endedAt: new Date().toISOString(),
-        exitCode: executeRun.exitCode,
-        attempt,
-      },
-      log,
-    );
-    if (executeRun.exitCode !== 0) {
-      const msg = `Execute phase attempt ${attempt} failed (exit ${executeRun.exitCode}); worktree + branch preserved.`;
+    executeResults.push(executeAttempt.result);
+    if (executeAttempt.exitCode !== 0) {
+      const msg = `Execute phase attempt ${attempt} failed (exit ${executeAttempt.exitCode}); worktree + branch preserved.`;
       log(msg);
       await fs.writeFile(
         paths.resultFile,
@@ -211,39 +264,9 @@ export async function runExecuteValidateLoop(
       return { passed: false, reason: msg, executeResults, validateResults };
     }
 
-    // --- Validate ----------------------------------------------------------
-    const validateAuditPath = resolveAttemptAuditPath(item.id, hopperHome, "validate", attempt);
-    log(
-      `Validate phase attempt ${attempt}/${maxAttempts} (deep, read-only git)...\nAudit log: ${validateAuditPath}`,
-    );
-    const validateStartedAt = new Date().toISOString();
-    const validateRun = await claude.runSession(
-      buildValidatePrompt(item, planText),
-      worktreePath,
-      validateAuditPath,
-      { ...buildValidateOptions(), profile },
-    );
-    validateResults.push(validateRun.result);
-    outcome = await resolveValidateOutcomeWithFallback(
-      validateRun.exitCode,
-      validateRun.result,
-      claude,
-      profile,
-      log,
-    );
-    await safeRecordPhase(
-      item.id,
-      {
-        name: "validate",
-        startedAt: validateStartedAt,
-        endedAt: new Date().toISOString(),
-        exitCode: validateRun.exitCode,
-        passed: outcome.passed,
-        attempt,
-        ...(outcome.fallbackUsed ? { fallbackUsed: true } : {}),
-      },
-      log,
-    );
+    const validateAttempt = await runValidateAttempt(ctx, attempt, maxAttempts);
+    validateResults.push(validateAttempt.result);
+    outcome = validateAttempt.outcome;
 
     if (outcome.passed) break;
 

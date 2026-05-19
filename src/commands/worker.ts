@@ -16,6 +16,7 @@ import {
   resolveMergeAction,
   resolvePostClaudeAction,
   resolveWorkSetup,
+  type WorkSetup,
 } from "../worker-workflow.ts";
 import { processEngineeringItem } from "./worker-engineering.ts";
 import {
@@ -97,6 +98,38 @@ async function commitWorktreeChanges(
     await git.commitAll(worktreePath, commitMsg);
     log("Committed.");
   }
+}
+
+async function setupGenericWorktree(
+  workSetup: WorkSetup,
+  hopperHome: string,
+  itemId: string,
+  deps: { git: GitGateway; fs: FsGateway },
+  log: LogFn,
+): Promise<{ worktreePath: string | undefined; workBranch: string | undefined; workDir: string | undefined }> {
+  const { git, fs } = deps;
+  let worktreePath: string | undefined;
+  let workBranch: string | undefined;
+  let workDir: string | undefined;
+
+  if (workSetup.type === "worktree") {
+    worktreePath = workSetup.worktreePath;
+    await fs.ensureDir(join(hopperHome, "worktrees"));
+    log(`Setting up worktree at ${worktreePath}...`);
+    workBranch = await orchestrateWorktreeSetup({
+      git,
+      repoDir: workSetup.repoDir,
+      branch: workSetup.branch,
+      worktreePath,
+      itemId,
+    });
+    log(`Work branch: ${workBranch}`);
+    workDir = worktreePath;
+  } else if (workSetup.type === "existing-dir") {
+    workDir = workSetup.dir;
+  }
+
+  return { worktreePath, workBranch, workDir };
 }
 
 async function executeWork(
@@ -184,22 +217,13 @@ export async function processItem(
   let workDir: string | undefined;
 
   try {
-    if (workSetup.type === "worktree") {
-      worktreePath = workSetup.worktreePath;
-      await fs.ensureDir(join(hopperHome, "worktrees"));
-      log(`Setting up worktree at ${worktreePath}...`);
-      workBranch = await orchestrateWorktreeSetup({
-        git,
-        repoDir: workSetup.repoDir,
-        branch: workSetup.branch,
-        worktreePath,
-        itemId: item.id,
-      });
-      log(`Work branch: ${workBranch}`);
-      workDir = worktreePath;
-    } else if (workSetup.type === "existing-dir") {
-      workDir = workSetup.dir;
-    }
+    ({ worktreePath, workBranch, workDir } = await setupGenericWorktree(
+      workSetup,
+      hopperHome,
+      item.id,
+      { git, fs },
+      log,
+    ));
 
     const { exitCode, result } = await executeWork(
       item,

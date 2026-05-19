@@ -111,6 +111,47 @@ export function claimNext(
 }
 
 // ---------------------------------------------------------------------------
+// buildRecurredItem
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the next recurrence of a completed item, or return undefined when
+ * recurrence is exhausted or expired.
+ * Pure: accepts injected `now` and `newUUID` to keep this side-effect-free.
+ */
+export function buildRecurredItem(item: Item, now: Date, newUUID: string): Item | undefined {
+  if (!item.recurrence) return undefined;
+  const nowMs = now.getTime();
+  const untilExpired =
+    item.recurrence.until && new Date(item.recurrence.until).getTime() <= nowMs;
+  const runsExhausted =
+    item.recurrence.remainingRuns !== undefined && item.recurrence.remainingRuns <= 0;
+  if (untilExpired || runsExhausted) return undefined;
+
+  const nextRecurrence = { ...item.recurrence };
+  if (nextRecurrence.remainingRuns !== undefined) {
+    nextRecurrence.remainingRuns = nextRecurrence.remainingRuns - 1;
+  }
+  return {
+    id: newUUID,
+    title: item.title,
+    description: item.description,
+    status: Status.SCHEDULED,
+    createdAt: now.toISOString(),
+    scheduledAt: new Date(nowMs + item.recurrence.intervalMs).toISOString(),
+    recurrence: nextRecurrence,
+    ...(item.priority ? { priority: item.priority } : {}),
+    ...(item.workingDir ? { workingDir: item.workingDir } : {}),
+    ...(item.branch ? { branch: item.branch } : {}),
+    ...(item.command ? { command: item.command } : {}),
+    ...(item.tags?.length ? { tags: [...item.tags] } : {}),
+    ...(item.type ? { type: item.type } : {}),
+    ...(item.agent ? { agent: item.agent } : {}),
+    ...(item.retries !== undefined ? { retries: item.retries } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // complete
 // ---------------------------------------------------------------------------
 
@@ -164,37 +205,9 @@ export function complete(
     return { ...i, status: i.scheduledAt ? Status.SCHEDULED : Status.QUEUED };
   });
 
-  let recurredItem: Item | undefined;
-  if (item.recurrence) {
-    const nowMs = now.getTime();
-    const untilExpired =
-      item.recurrence.until && new Date(item.recurrence.until).getTime() <= nowMs;
-    const runsExhausted =
-      item.recurrence.remainingRuns !== undefined && item.recurrence.remainingRuns <= 0;
-    if (!untilExpired && !runsExhausted) {
-      const nextRecurrence = { ...item.recurrence };
-      if (nextRecurrence.remainingRuns !== undefined) {
-        nextRecurrence.remainingRuns = nextRecurrence.remainingRuns - 1;
-      }
-      recurredItem = {
-        id: newUUID,
-        title: item.title,
-        description: item.description,
-        status: Status.SCHEDULED,
-        createdAt: now.toISOString(),
-        scheduledAt: new Date(nowMs + item.recurrence.intervalMs).toISOString(),
-        recurrence: nextRecurrence,
-        ...(item.priority ? { priority: item.priority } : {}),
-        ...(item.workingDir ? { workingDir: item.workingDir } : {}),
-        ...(item.branch ? { branch: item.branch } : {}),
-        ...(item.command ? { command: item.command } : {}),
-        ...(item.tags?.length ? { tags: [...item.tags] } : {}),
-        ...(item.type ? { type: item.type } : {}),
-        ...(item.agent ? { agent: item.agent } : {}),
-        ...(item.retries !== undefined ? { retries: item.retries } : {}),
-      };
-      updatedItems = [recurredItem, ...updatedItems];
-    }
+  const recurredItem = buildRecurredItem(item, now, newUUID);
+  if (recurredItem) {
+    updatedItems = [recurredItem, ...updatedItems];
   }
 
   return ok({ items: updatedItems, completed: completedItem, recurred: recurredItem });
