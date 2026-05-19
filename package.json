@@ -30,6 +30,6 @@
     "vitepress": "^1.6.4"
   },
   "dependencies": {
-    "@types/node": "^25.8.0"
+    "@types/node": "^25.9.0"
   }
 }
