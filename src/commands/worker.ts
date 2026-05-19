@@ -106,7 +106,11 @@ async function setupGenericWorktree(
   itemId: string,
   deps: { git: GitGateway; fs: FsGateway },
   log: LogFn,
-): Promise<{ worktreePath: string | undefined; workBranch: string | undefined; workDir: string | undefined }> {
+): Promise<{
+  worktreePath: string | undefined;
+  workBranch: string | undefined;
+  workDir: string | undefined;
+}> {
   const { git, fs } = deps;
   let worktreePath: string | undefined;
   let workBranch: string | undefined;

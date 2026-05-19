@@ -122,8 +122,7 @@ export function claimNext(
 export function buildRecurredItem(item: Item, now: Date, newUUID: string): Item | undefined {
   if (!item.recurrence) return undefined;
   const nowMs = now.getTime();
-  const untilExpired =
-    item.recurrence.until && new Date(item.recurrence.until).getTime() <= nowMs;
+  const untilExpired = item.recurrence.until && new Date(item.recurrence.until).getTime() <= nowMs;
   const runsExhausted =
     item.recurrence.remainingRuns !== undefined && item.recurrence.remainingRuns <= 0;
   if (untilExpired || runsExhausted) return undefined;

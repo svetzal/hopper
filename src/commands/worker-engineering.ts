@@ -162,7 +162,13 @@ async function runExecuteAttempt(
     }${isRemediation ? ", remediation" : ""})...\nAudit log: ${executeAuditPath}`,
   );
   const executePrompt = isRemediation
-    ? buildExecuteRemediationPrompt(item, planText, previousExecuteResult, previousValidateResult, attempt)
+    ? buildExecuteRemediationPrompt(
+        item,
+        planText,
+        previousExecuteResult,
+        previousValidateResult,
+        attempt,
+      )
     : buildExecutePrompt(item, planText);
   const executeStartedAt = new Date().toISOString();
   const executeRun = await claude.runSession(executePrompt, worktreePath, executeAuditPath, {
@@ -187,7 +193,10 @@ async function runValidateAttempt(
   ctx: ExecuteValidateContext,
   attempt: number,
   maxAttempts: number,
-): Promise<{ outcome: { passed: boolean; reason: string; fallbackUsed?: boolean }; result: string }> {
+): Promise<{
+  outcome: { passed: boolean; reason: string; fallbackUsed?: boolean };
+  result: string;
+}> {
   const { item, worktreePath, planText, hopperHome, deps, log } = ctx;
   const { claude, profile } = deps;
   const validateAuditPath = resolveAttemptAuditPath(item.id, hopperHome, "validate", attempt);
