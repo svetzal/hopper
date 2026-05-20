@@ -28,6 +28,8 @@
  * cutoff.
  */
 
+import { toErrorMessage } from "./error-utils.ts";
+
 /**
  * Vendor-agnostic model tier vocabulary. Every profile must bind these three
  * keys; user-defined alias keys may be added alongside.
@@ -129,9 +131,8 @@ export function parseProfile(name: string, raw: string): ProfileParseResult {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: `Invalid JSON: ${detail}` };
+  } catch (e) {
+    return { ok: false, error: `Invalid JSON: ${toErrorMessage(e)}` };
   }
   if (!isRecord(parsed)) {
     return { ok: false, error: "Profile must be a JSON object" };

@@ -432,11 +432,11 @@ export async function processEngineeringItem(
       workBranchOverride: workBranch,
       log,
     });
-  } catch (err) {
+  } catch (e) {
     const reason =
-      err instanceof StaleEngineeringBranchError
-        ? `Stale branch: ${err.message}`
-        : `Worktree setup failed: ${toErrorMessage(err)}`;
+      e instanceof StaleEngineeringBranchError
+        ? `Stale branch: ${e.message}`
+        : `Worktree setup failed: ${toErrorMessage(e)}`;
     log(`Pre-spawn failure — auto-requeueing: ${reason}`);
     await safeRequeue(item.id, reason, agentName, log);
     return;

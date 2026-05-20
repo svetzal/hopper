@@ -129,11 +129,11 @@ export async function runWorkerLoop(
         if (!item) break;
         claimedAny = true;
         const task = doProcessItem(item, agentName, hopperHome, gatewayDeps, concurrency)
-          .catch(async (err) => {
-            log(`Error processing item ${shortId(item.id)}: ${err}`);
+          .catch(async (e) => {
+            log(`Error processing item ${shortId(item.id)}: ${toErrorMessage(e)}`);
             await loopDeps.requeueIfStillClaimed(
               item.id,
-              `Worker crashed before completion: ${toErrorMessage(err)}`,
+              `Worker crashed before completion: ${toErrorMessage(e)}`,
               agentName,
             );
           })
@@ -225,8 +225,8 @@ export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Prom
             log(`Warning: last-resort requeue for ${shortId(itemId)} failed: ${msg}`),
           );
         }
-      } catch (err) {
-        log(`Warning: last-resort requeue for ${shortId(itemId)} failed: ${err}`);
+      } catch (e) {
+        log(`Warning: last-resort requeue for ${shortId(itemId)} failed: ${toErrorMessage(e)}`);
       }
     },
   };
