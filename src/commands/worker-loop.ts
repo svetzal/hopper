@@ -51,7 +51,7 @@ export interface WorkerLoopDeps {
   requeueIfStillClaimed: (itemId: string, reason: string, agentName: string) => Promise<void>;
 }
 
-function createCancellableSleep(): {
+export function createCancellableSleep(): {
   sleep: (ms: number) => Promise<{ cancelled: boolean }>;
   cancel: () => void;
 } {
@@ -169,12 +169,12 @@ export async function runWorkerLoop(
 
   // Graceful shutdown: wait for active tasks with timeout
   if (activeTasks.size > 0) {
-    const SHUTDOWN_TIMEOUT = 60_000;
+    const shutdownTimeoutMs = config.shutdownTimeoutMs ?? 60_000;
     const timeout = new Promise<void>((resolve) =>
       setTimeout(() => {
         log("Warning: shutdown timeout reached (60s). Some tasks may not have finished.");
         resolve();
-      }, SHUTDOWN_TIMEOUT),
+      }, shutdownTimeoutMs),
     );
     await Promise.race([Promise.allSettled(activeTasks.values()), timeout]);
   }

@@ -384,9 +384,9 @@ export async function processEngineeringItem(
     const message = "Engineering items require --dir and --branch; cannot run.";
     log(message);
     const { auditDir, resultFile } = resolveAuditPaths(item.id, hopperHome);
-    await fs.ensureDir(auditDir);
-    await fs.writeFile(resultFile, message);
-    log(`Use 'hopper requeue ${item.id} --reason "..."' to retry.`);
+    await safeVoid(() => fs.ensureDir(auditDir), "Audit dir creation failed", log);
+    await safeVoid(() => fs.writeFile(resultFile, message), "Result file write failed", log);
+    await safeRequeue(item.id, message, agentName, log);
     return;
   }
 
@@ -397,10 +397,7 @@ export async function processEngineeringItem(
   ]);
 
   const paths = resolveEngineeringAuditPaths(item.id, hopperHome);
-  await fs.ensureDir(paths.auditDir);
-
   const worktreePath = join(hopperHome, "worktrees", item.id);
-  await fs.ensureDir(join(hopperHome, "worktrees"));
 
   // Resolve branch slug — use cached value when available so re-claims always
   // produce the same work-branch name regardless of LLM non-determinism.
@@ -422,6 +419,8 @@ export async function processEngineeringItem(
   // in `in_progress`. Post-spawn failures propagate to the worker loop's
   // last-resort safety net.
   try {
+    await fs.ensureDir(paths.auditDir);
+    await fs.ensureDir(join(hopperHome, "worktrees"));
     log(`Setting up worktree at ${worktreePath}...`);
     await orchestrateWorktreeSetup({
       git,

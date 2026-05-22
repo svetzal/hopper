@@ -496,3 +496,85 @@ describe("teardownWorktree", () => {
     expect(logs).toContain("Removing worktree...");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Step 9 — mergeAbort failure: original branch still restored
+// ---------------------------------------------------------------------------
+
+describe("orchestrateMerge additional error paths", () => {
+  test("mergeAbort throws: exception propagates but original branch is still restored", async () => {
+    const git = makeMockGit({
+      getCurrentBranch: mock(async () => "feature"),
+      mergeFastForward: mock(async () => 1),
+      mergeCommit: mock(async () => 1),
+      mergeAbort: mock(async () => {
+        throw new Error("mergeAbort failed: index locked");
+      }),
+    });
+
+    await expect(
+      orchestrateMerge(git, REPO_DIR, TARGET_BRANCH, WORK_BRANCH),
+    ).rejects.toThrow("mergeAbort failed: index locked");
+
+    // Despite mergeAbort throwing, the finally block restores the original branch
+    const checkoutMock = git.checkout as ReturnType<typeof mock>;
+    const calls = checkoutMock.mock.calls as string[][];
+    const restoreCall = calls.find((c) => c[1] === "feature");
+    expect(restoreCall).toBeDefined();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Step 11 — Checkout failure during merge: no merge attempted, branch restored
+  // ---------------------------------------------------------------------------
+
+  test("checkout to target branch fails: no merge attempted, original branch restored, exception thrown", async () => {
+    const git = makeMockGit({
+      getCurrentBranch: mock(async () => "feature"),
+      checkout: mock(async (_repoDir: string, branch: string) => {
+        if (branch === TARGET_BRANCH) throw new Error("checkout failed: working tree dirty");
+      }),
+      mergeFastForward: mock(async () => 0),
+    });
+
+    await expect(
+      orchestrateMerge(git, REPO_DIR, TARGET_BRANCH, WORK_BRANCH),
+    ).rejects.toThrow("checkout failed: working tree dirty");
+
+    expect(git.mergeFastForward).not.toHaveBeenCalled();
+
+    const checkoutMock = git.checkout as ReturnType<typeof mock>;
+    const calls = checkoutMock.mock.calls as [string, string][];
+    // First call: checkout to target (threw), second call: restore "feature"
+    expect(calls).toHaveLength(2);
+    expect(calls[0]![1]).toBe(TARGET_BRANCH);
+    expect(calls[1]![1]).toBe("feature");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Step 10 — Multiple worktrees: StaleEngineeringBranchError
+// ---------------------------------------------------------------------------
+
+describe("orchestrateWorktreeSetup additional collision cases", () => {
+  test("work branch has 2+ active worktrees → throws StaleEngineeringBranchError", async () => {
+    const workBranch = "hopper-eng/my-slug-aaaaaaaa";
+    const git = makeMockGit({
+      branchExists: mock(async () => true),
+      listWorktreesForBranch: mock(async () => ["/worktrees/one", "/worktrees/two"]),
+    });
+
+    await expect(
+      orchestrateWorktreeSetup({
+        git,
+        repoDir: REPO_DIR,
+        branch: TARGET_BRANCH,
+        worktreePath: WORKTREE_PATH,
+        itemId: ITEM_ID,
+        workBranchOverride: workBranch,
+      }),
+    ).rejects.toBeInstanceOf(StaleEngineeringBranchError);
+
+    expect(git.createWorktree).not.toHaveBeenCalled();
+    expect(git.branchIsAncestorOf).not.toHaveBeenCalled();
+  });
+});

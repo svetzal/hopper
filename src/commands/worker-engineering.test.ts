@@ -578,6 +578,98 @@ describe("processEngineeringItem", () => {
     expect(requeueItemMock).toHaveBeenCalledTimes(1);
   });
 
+  // ---------------------------------------------------------------------------
+  // Step 4 — Validate fallback path
+  // ---------------------------------------------------------------------------
+
+  test("validate without PASS/FAIL marker → generateText fallback assessor called, outcome reflects fallback", async () => {
+    const item = makeClaimedItem({ id: ITEM_ID });
+    const claude: ClaudeGateway = {
+      runSession: mock(async (prompt: string) => {
+        if (prompt.includes("EXECUTE phase")) return { exitCode: 0, result: "done" };
+        // Validate output has no PASS/FAIL marker — triggers fallback
+        return { exitCode: 0, result: "The implementation appears correct." };
+      }),
+      generateText: mock(async () => ({ exitCode: 0, text: "PASS" })),
+    };
+    const fs = makeMockFs();
+
+    const result = await runExecuteValidateLoop({
+      item,
+      worktreePath: "/worktree",
+      planText: "plan text",
+      paths: makePaths(),
+      hopperHome: HOPPER_HOME,
+      deps: { claude, fs, profile: TEST_PROFILE },
+      log: noop,
+    });
+
+    expect(claude.generateText).toHaveBeenCalledTimes(1);
+    expect(result.passed).toBe(true);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Step 5 — Retry boundary conditions
+  // ---------------------------------------------------------------------------
+
+  test("maxRetries=0: only one execute+validate attempt even when validate FAILs", async () => {
+    const item = makeClaimedItem({ id: ITEM_ID, retries: 0 });
+    const claude: ClaudeGateway = {
+      runSession: mock(async (prompt: string) => {
+        if (prompt.includes("EXECUTE phase")) return { exitCode: 0, result: "done" };
+        return { exitCode: 0, result: "VALIDATE: FAIL" };
+      }),
+      generateText: mock(async () => ({ exitCode: 0, text: "" })),
+    };
+    const fs = makeMockFs();
+
+    const result = await runExecuteValidateLoop({
+      item,
+      worktreePath: "/worktree",
+      planText: "plan text",
+      paths: makePaths(),
+      hopperHome: HOPPER_HOME,
+      deps: { claude, fs, profile: TEST_PROFILE },
+      log: noop,
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.executeResults).toHaveLength(1);
+    expect(result.validateResults).toHaveLength(1);
+  });
+
+  test("execute fails every attempt until exhaustion: all attempt results accumulated", async () => {
+    const item = makeClaimedItem({ id: ITEM_ID, retries: 2 });
+    let executeCalls = 0;
+    const claude: ClaudeGateway = {
+      runSession: mock(async (prompt: string) => {
+        if (prompt.includes("EXECUTE phase")) {
+          executeCalls++;
+          return { exitCode: 1, result: `execute-failure-${executeCalls}` };
+        }
+        return { exitCode: 0, result: "VALIDATE: PASS" };
+      }),
+      generateText: mock(async () => ({ exitCode: 0, text: "" })),
+    };
+    const fs = makeMockFs();
+
+    const result = await runExecuteValidateLoop({
+      item,
+      worktreePath: "/worktree",
+      planText: "plan text",
+      paths: makePaths(),
+      hopperHome: HOPPER_HOME,
+      deps: { claude, fs, profile: TEST_PROFILE },
+      log: noop,
+    });
+
+    // Non-zero execute exit stops the loop immediately after first failure
+    expect(result.passed).toBe(false);
+    expect(result.executeResults).toHaveLength(1);
+    expect(result.validateResults).toHaveLength(0);
+    expect(result.executeResults[0]).toContain("execute-failure-1");
+  });
+
   test("preserved worktree at expected path + clean + no commits ahead → no requeue, proceeds to plan phase", async () => {
     const item = makeClaimedItem({
       id: ITEM_ID,
@@ -611,5 +703,92 @@ describe("processEngineeringItem", () => {
     expect(requeueItemMock).not.toHaveBeenCalled();
     // Plan phase (and subsequent phases) should have run
     expect(deps.claude.runSession).toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Step 6 — Branch slug and commit message generation failure fallbacks
+  // ---------------------------------------------------------------------------
+
+  test("generateText throws during slug generation → falls back to ID-only branch name, no exception", async () => {
+    const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
+    const deps = makeFullDeps();
+    typedMock(deps.claude.generateText).mockImplementation(async () => {
+      throw new Error("LLM unavailable");
+    });
+
+    await expect(processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps)).resolves.toBeUndefined();
+
+    // Fallback branch name is hopper-eng/<8-char-id-prefix>
+    const [, , branchArg] = callArgs(typedMock(deps.git.createWorktree), 0);
+    expect(branchArg).toBe(`hopper-eng/${ITEM_ID.slice(0, 8)}`);
+    // generateText was attempted but threw
+    expect(deps.claude.generateText).toHaveBeenCalledTimes(1);
+  });
+
+  test("generateText throws during commit message generation → falls back to item title", async () => {
+    const item = makeClaimedItem({ id: ITEM_ID });
+    const git = makeMockGit({
+      isWorktreeDirty: mock(async () => true),
+    });
+    const claude: ClaudeGateway = {
+      runSession: mock(async () => ({ exitCode: 0, result: "" })),
+      generateText: mock(async () => {
+        throw new Error("LLM timed out");
+      }),
+    };
+    const logs: string[] = [];
+
+    const result = await commitEngineeringChanges(
+      item,
+      "/worktree",
+      { git, claude, profile: TEST_PROFILE },
+      (msg) => logs.push(msg),
+    );
+
+    expect(result.dirty).toBe(true);
+    // commitAll called with item title as fallback commit message
+    const [, commitMsg] = callArgs(typedMock(git.commitAll), 0);
+    expect(commitMsg).toBe(item.title);
+    expect(logs.some((l) => l.includes("Commit message generation failed"))).toBe(true);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Step 7 — Missing workingDir/branch early-exit
+  // ---------------------------------------------------------------------------
+
+  test("missing workingDir → early requeue, no phase pipeline entered", async () => {
+    const item = makeClaimedItem({ id: ITEM_ID, workingDir: undefined, branch: "main" });
+    await store.saveItems([item]);
+    const deps = makeFullDeps();
+
+    await processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps);
+
+    expect(requeueItemMock).toHaveBeenCalledTimes(1);
+    const [calledId, reason] = callArgs(requeueItemMock, 0);
+    expect(calledId).toBe(ITEM_ID);
+    expect(reason).toContain("--dir");
+    expect(deps.claude.runSession).not.toHaveBeenCalled();
+    expect(deps.git.createWorktree).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Step 8 — fs.ensureDir failure triggers auto-requeue
+  // ---------------------------------------------------------------------------
+
+  test("fs.ensureDir failure during audit dir creation → auto-requeue, no worktree setup", async () => {
+    const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
+    await store.saveItems([item]);
+    const deps = makeFullDeps();
+    typedMock(deps.fs.ensureDir).mockImplementationOnce(async () => {
+      throw new Error("ENOSPC: no space left on device");
+    });
+
+    await processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps);
+
+    expect(requeueItemMock).toHaveBeenCalledTimes(1);
+    const [calledId, reason] = callArgs(requeueItemMock, 0);
+    expect(calledId).toBe(ITEM_ID);
+    expect(reason).toContain("Worktree setup failed");
+    expect(deps.git.createWorktree).not.toHaveBeenCalled();
   });
 });

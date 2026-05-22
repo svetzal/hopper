@@ -182,6 +182,8 @@ export interface WorkerConfig {
   pollInterval: number;
   runOnce: boolean;
   concurrency: number;
+  /** Override the 60 s shutdown drain timeout (useful in tests). */
+  shutdownTimeoutMs?: number;
 }
 
 export function resolveWorkerConfig(flags: Record<string, string | boolean>): WorkerConfig {

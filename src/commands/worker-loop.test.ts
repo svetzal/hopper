@@ -7,7 +7,7 @@ import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import type { ClaimedItem } from "../store.ts";
 import { callArgs, makeClaimedItem, typedMock } from "../test-helpers.ts";
 import type { WorkerConfig } from "../worker-workflow.ts";
-import { runWorkerLoop, type WorkerLoopDeps } from "./worker-loop.ts";
+import { createCancellableSleep, runWorkerLoop, type WorkerLoopDeps } from "./worker-loop.ts";
 
 const noop = mock(async () => {});
 
@@ -244,5 +244,287 @@ describe("runWorkerLoop", () => {
     await expect(
       runWorkerLoop(makeRunOnceConfig(), HOPPER_HOME, makeGatewayDeps(), loopDeps),
     ).resolves.toBeUndefined();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Step 1 — Concurrent slot exhaustion
+  // ---------------------------------------------------------------------------
+
+  test("slot exhaustion: loop waits at concurrency=2 before claiming a 3rd item", async () => {
+    const resolvers: Array<() => void> = [];
+    const items = [
+      makeClaimedItem({ id: "11111111-1111-1111-1111-111111111111" }),
+      makeClaimedItem({ id: "22222222-2222-2222-2222-222222222222" }),
+      makeClaimedItem({ id: "33333333-3333-3333-3333-333333333333" }),
+    ];
+    let itemIdx = 0;
+    let shutdownHandler: (() => void) | undefined;
+
+    const loopDeps: WorkerLoopDeps = {
+      claimNext: mock(async () => {
+        if (itemIdx < items.length) return items[itemIdx++];
+        return null;
+      }),
+      processItem: mock(async () => {
+        await new Promise<void>((resolve) => resolvers.push(resolve));
+      }),
+      sleep: mock(async () => {
+        shutdownHandler?.();
+        return { cancelled: true };
+      }),
+      log: () => {},
+      onSignal: mock((_signal, handler) => {
+        shutdownHandler = handler;
+      }),
+      requeueIfStillClaimed: noop,
+    };
+
+    const loopPromise = runWorkerLoop(
+      makeContinuousConfig({ concurrency: 2 }),
+      HOPPER_HOME,
+      makeGatewayDeps(),
+      loopDeps,
+    );
+
+    // Wait until both concurrency slots are filled
+    await new Promise<void>((resolve) => {
+      const check = setInterval(() => {
+        if (resolvers.length >= 2) {
+          clearInterval(check);
+          resolve();
+        }
+      }, 1);
+    });
+
+    // Both slots full: 3rd item must NOT yet have been claimed
+    expect(typedMock(loopDeps.claimNext).mock.calls.length).toBe(2);
+
+    // Free one slot
+    resolvers[0]!();
+
+    // Wait for the 3rd item to be claimed after the slot freed
+    await new Promise<void>((resolve) => {
+      const check = setInterval(() => {
+        if (resolvers.length >= 3) {
+          clearInterval(check);
+          resolve();
+        }
+      }, 1);
+    });
+
+    expect(typedMock(loopDeps.claimNext).mock.calls.length).toBeGreaterThanOrEqual(3);
+
+    // Drain remaining tasks so the loop can exit
+    for (const r of resolvers) r();
+    await loopPromise;
+  });
+
+  test("slot exhaustion: active task count never exceeds concurrency=2", async () => {
+    let activeCount = 0;
+    let maxActiveObserved = 0;
+    const resolvers: Array<() => void> = [];
+    const items = [
+      makeClaimedItem({ id: "11111111-1111-1111-1111-111111111111" }),
+      makeClaimedItem({ id: "22222222-2222-2222-2222-222222222222" }),
+      makeClaimedItem({ id: "33333333-3333-3333-3333-333333333333" }),
+    ];
+    let itemIdx = 0;
+    let shutdownHandler: (() => void) | undefined;
+
+    const loopDeps: WorkerLoopDeps = {
+      claimNext: mock(async () => {
+        if (itemIdx < items.length) return items[itemIdx++];
+        return null;
+      }),
+      processItem: mock(async () => {
+        activeCount++;
+        if (activeCount > maxActiveObserved) maxActiveObserved = activeCount;
+        await new Promise<void>((resolve) => resolvers.push(resolve));
+        activeCount--;
+      }),
+      sleep: mock(async () => {
+        shutdownHandler?.();
+        return { cancelled: true };
+      }),
+      log: () => {},
+      onSignal: mock((_signal, handler) => {
+        shutdownHandler = handler;
+      }),
+      requeueIfStillClaimed: noop,
+    };
+
+    const loopPromise = runWorkerLoop(
+      makeContinuousConfig({ concurrency: 2 }),
+      HOPPER_HOME,
+      makeGatewayDeps(),
+      loopDeps,
+    );
+
+    // Wait for all 3 tasks to start, resolving them one at a time
+    await new Promise<void>((resolve) => {
+      const check = setInterval(() => {
+        if (resolvers.length >= 2) {
+          clearInterval(check);
+          resolve();
+        }
+      }, 1);
+    });
+
+    resolvers[0]!();
+
+    await new Promise<void>((resolve) => {
+      const check = setInterval(() => {
+        if (resolvers.length >= 3) {
+          clearInterval(check);
+          resolve();
+        }
+      }, 1);
+    });
+
+    for (const r of resolvers) r();
+    await loopPromise;
+
+    expect(maxActiveObserved).toBeLessThanOrEqual(2);
+    expect(loopDeps.processItem).toHaveBeenCalledTimes(3);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Step 2 — Sleep cancellation and shutdown-during-claim tests
+  // ---------------------------------------------------------------------------
+
+  test("createCancellableSleep: cancel() resolves the promise immediately with {cancelled:true}", async () => {
+    const { sleep, cancel } = createCancellableSleep();
+    const promise = sleep(60_000);
+    cancel();
+    const result = await promise;
+    expect(result).toEqual({ cancelled: true });
+  });
+
+  test("SIGINT during slow claimNext: loop exits after the in-flight claim completes", async () => {
+    let resolveClaimNext: ((item: ClaimedItem | null) => void) | undefined;
+    let shutdownHandler: (() => void) | undefined;
+    const logs: string[] = [];
+
+    const loopDeps: WorkerLoopDeps = {
+      claimNext: mock(
+        async () =>
+          new Promise<ClaimedItem | null>((resolve) => {
+            resolveClaimNext = resolve;
+          }),
+      ),
+      processItem: mock(async () => {}),
+      sleep: mock(async () => ({ cancelled: false })),
+      log: (msg) => logs.push(msg),
+      onSignal: mock((_signal, handler) => {
+        shutdownHandler = handler;
+      }),
+      requeueIfStillClaimed: noop,
+    };
+
+    const loopPromise = runWorkerLoop(
+      makeContinuousConfig(),
+      HOPPER_HOME,
+      makeGatewayDeps(),
+      loopDeps,
+    );
+
+    // Wait until claimNext is pending
+    await new Promise<void>((resolve) => {
+      const check = setInterval(() => {
+        if (resolveClaimNext) {
+          clearInterval(check);
+          resolve();
+        }
+      }, 1);
+    });
+
+    // Trigger shutdown while claimNext is still awaiting
+    shutdownHandler?.();
+
+    // Release claimNext with null (no item) so the loop can proceed
+    resolveClaimNext?.(null);
+
+    await loopPromise;
+
+    // Loop exited; no items were processed
+    expect(loopDeps.processItem).not.toHaveBeenCalled();
+    const shutdownLog = logs.find((l) => l.includes("Shutting down"));
+    expect(shutdownLog).toBeDefined();
+  });
+
+  test("double SIGINT: no crash and only one shutdown message logged", async () => {
+    let shutdownHandler: (() => void) | undefined;
+    const logs: string[] = [];
+
+    const loopDeps: WorkerLoopDeps = {
+      claimNext: mock(async () => null),
+      processItem: mock(async () => {}),
+      sleep: mock(async () => {
+        // Fire the shutdown handler twice during the sleep
+        shutdownHandler?.();
+        shutdownHandler?.();
+        return { cancelled: true };
+      }),
+      log: (msg) => logs.push(msg),
+      onSignal: mock((_signal, handler) => {
+        shutdownHandler = handler;
+      }),
+      requeueIfStillClaimed: noop,
+    };
+
+    await expect(
+      runWorkerLoop(makeContinuousConfig(), HOPPER_HOME, makeGatewayDeps(), loopDeps),
+    ).resolves.toBeUndefined();
+
+    const shutdownLogs = logs.filter((l) => l.includes("Shutting down"));
+    expect(shutdownLogs).toHaveLength(1);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Step 3 — Shutdown timeout
+  // ---------------------------------------------------------------------------
+
+  test("shutdown timeout: loop resolves even when active tasks never complete", async () => {
+    // Design: claim 2 items (never-resolving tasks) with concurrency=3.
+    // After the 3rd claim returns null, the loop sleeps. The sleep mock fires
+    // shutdown, loop exits the while, then the shutdown timeout (10 ms) fires
+    // because the 2 active tasks never settle.
+    const items = [
+      makeClaimedItem({ id: "11111111-1111-1111-1111-111111111111" }),
+      makeClaimedItem({ id: "22222222-2222-2222-2222-222222222222" }),
+    ];
+    let itemIdx = 0;
+    let shutdownHandler: (() => void) | undefined;
+    const logs: string[] = [];
+
+    const loopDeps: WorkerLoopDeps = {
+      claimNext: mock(async () => {
+        if (itemIdx < items.length) return items[itemIdx++];
+        return null;
+      }),
+      processItem: mock(async () => new Promise<void>(() => {})), // never resolves
+      sleep: mock(async () => {
+        shutdownHandler?.();
+        return { cancelled: true };
+      }),
+      log: (msg) => logs.push(msg),
+      onSignal: mock((_signal, handler) => {
+        shutdownHandler = handler;
+      }),
+      requeueIfStillClaimed: noop,
+    };
+
+    const config: WorkerConfig = {
+      agentName: "test-agent",
+      pollInterval: 60,
+      runOnce: false,
+      concurrency: 3, // more than available items so the loop hits sleep
+      shutdownTimeoutMs: 10,
+    };
+
+    await runWorkerLoop(config, HOPPER_HOME, makeGatewayDeps(), loopDeps);
+
+    const timeoutLog = logs.find((l) => l.includes("shutdown timeout reached"));
+    expect(timeoutLog).toBeDefined();
   });
 });

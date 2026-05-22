@@ -180,10 +180,12 @@ export async function orchestrateMerge(
   let restoreBranch: string | undefined;
   if (initialStep.type === "checkout-and-attempt-ff") {
     restoreBranch = initialStep.originalBranch;
-    await git.checkout(repoDir, targetBranch);
   }
 
   try {
+    if (restoreBranch !== undefined) {
+      await git.checkout(repoDir, targetBranch);
+    }
     const ffExit = await git.mergeFastForward(repoDir, workBranch);
     const ffResult = resolveFfResult(ffExit, mergeCtx);
 
