@@ -300,7 +300,7 @@ describe("runWorkerLoop", () => {
     expect(typedMock(loopDeps.claimNext).mock.calls.length).toBe(2);
 
     // Free one slot
-    resolvers[0]!();
+    resolvers[0]?.();
 
     // Wait for the 3rd item to be claimed after the slot freed
     await new Promise<void>((resolve) => {
@@ -370,7 +370,7 @@ describe("runWorkerLoop", () => {
       }, 1);
     });
 
-    resolvers[0]!();
+    resolvers[0]?.();
 
     await new Promise<void>((resolve) => {
       const check = setInterval(() => {

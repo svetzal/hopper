@@ -512,9 +512,9 @@ describe("orchestrateMerge additional error paths", () => {
       }),
     });
 
-    await expect(
-      orchestrateMerge(git, REPO_DIR, TARGET_BRANCH, WORK_BRANCH),
-    ).rejects.toThrow("mergeAbort failed: index locked");
+    await expect(orchestrateMerge(git, REPO_DIR, TARGET_BRANCH, WORK_BRANCH)).rejects.toThrow(
+      "mergeAbort failed: index locked",
+    );
 
     // Despite mergeAbort throwing, the finally block restores the original branch
     const checkoutMock = git.checkout as ReturnType<typeof mock>;
@@ -536,9 +536,9 @@ describe("orchestrateMerge additional error paths", () => {
       mergeFastForward: mock(async () => 0),
     });
 
-    await expect(
-      orchestrateMerge(git, REPO_DIR, TARGET_BRANCH, WORK_BRANCH),
-    ).rejects.toThrow("checkout failed: working tree dirty");
+    await expect(orchestrateMerge(git, REPO_DIR, TARGET_BRANCH, WORK_BRANCH)).rejects.toThrow(
+      "checkout failed: working tree dirty",
+    );
 
     expect(git.mergeFastForward).not.toHaveBeenCalled();
 
@@ -546,8 +546,8 @@ describe("orchestrateMerge additional error paths", () => {
     const calls = checkoutMock.mock.calls as [string, string][];
     // First call: checkout to target (threw), second call: restore "feature"
     expect(calls).toHaveLength(2);
-    expect(calls[0]![1]).toBe(TARGET_BRANCH);
-    expect(calls[1]![1]).toBe("feature");
+    expect(calls[0]?.[1]).toBe(TARGET_BRANCH);
+    expect(calls[1]?.[1]).toBe("feature");
   });
 });
 

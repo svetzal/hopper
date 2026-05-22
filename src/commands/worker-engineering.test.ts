@@ -716,7 +716,9 @@ describe("processEngineeringItem", () => {
       throw new Error("LLM unavailable");
     });
 
-    await expect(processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps)).resolves.toBeUndefined();
+    await expect(
+      processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps),
+    ).resolves.toBeUndefined();
 
     // Fallback branch name is hopper-eng/<8-char-id-prefix>
     const [, , branchArg] = callArgs(typedMock(deps.git.createWorktree), 0);
