@@ -677,7 +677,9 @@ Investigation items never get a worktree or branch. The agent runs with read-onl
 
 ### Inlining evidence in investigation briefs
 
-Investigation items run in a sandboxed shell. The sandbox grants read-only access to common CLIs (`hopper show|list|audit`, `git status|log|diff|show|rev-parse|worktree list`, `jq`, file-read utilities, `foundry history|trace`, `evt query|aggregate`) plus the usual `Read`/`Grep`/`Glob` tools — but it cannot reach back to you for follow-up data, and CLIs outside the allowlist will be denied. If the load-bearing evidence requires a CLI that may not be in the sandbox, or context you can already see from your session, **inline it in the brief.**
+Investigation items run with `Bash` exposed plus a `disallowedTools` denylist (`INVESTIGATION_DISALLOWED_TOOLS` in hopper) that blocks mutators: git history-altering verbs, `hopper add|cancel|requeue|integrate`, foundry/evt mutators, package installers, network-egress CLIs, and destructive filesystem verbs. Read-only CLIs — `hopper show|list|audit`, `git status|log|diff|show|rev-parse|worktree list|blame`, `jq`, file-read utilities, `foundry history|trace`, `evt query|aggregate` — are not denied. The usual `Read`/`Grep`/`Glob` tools are also available. The sandbox cannot reach back to you for follow-up data, so if the load-bearing evidence requires anything not visible to a read-only session, **inline it in the brief.**
+
+The denylist matches on the leading token of the Bash invocation, so chaining a denied verb behind any innocuous command via `&&` slips past it (`cd /tmp && git commit ...` is not blocked by `Bash(git commit:*)`). Treat the sandbox as a guardrail against accidental mutation, not a security boundary. A PATH-shim mitigation is in progress (hopper tracks it as a separate engineering item).
 
 Without inlined evidence, an investigation agent that hits a blocked command — or one whose author hadn't realised some data source wasn't in scope — tends to confabulate from code-reading alone rather than fail loudly. A real case that proved this: a hopper investigation about silently-lost engineering commits concluded the failed items had run on the opencode runner because the agent couldn't run `hopper show <id> --json | jq .profile` to verify. They were actually on the claude runner, and the entire root-cause analysis was wrong as a result. The agent's `result` even opened with *"Tools blocked under plan-mode. Producing the findings report directly as my final response per the investigation task contract."* — i.e. it knew it was blocked and confabulated anyway.
 
@@ -696,11 +698,13 @@ The agent's job is to *interpret*, not re-discover. Inlining is also auditable �
 
 ## Observed state (collected 2026-05-23 14:30)
 
-`hopper show X --json | jq '{id, status, profile, claimedAt, phases}'`:
+`hopper show X --json | jq '.item | {id, status, profile, claimedAt, phases}'`:
 
 ```json
 { "id": "X", "status": "in_progress", "profile": "anthropic", ... }
 ```
+
+(Note: `hopper show --json` wraps the record under a top-level `item` key, so `jq` must pipe through `.item` first. `hopper list --json` returns an array of items directly — no wrapping.)
 
 Last 5 audit events (`hopper audit X --tail 5 --json`):
 
