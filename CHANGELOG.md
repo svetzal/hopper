@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-05-23
+
+### Added
+
+- **Read-only Bash sandbox for investigation items.** Investigation sessions
+  now include the `Bash` tool with `INVESTIGATION_DISALLOWED_TOOLS` denylist,
+  enabling CLI-based evidence queries (`hopper show|list|audit|history`,
+  `git log|status|diff|show|rev-parse|blame|for-each-ref`, `jq`, `cat|ls|head|
+  tail|wc|find|grep|rg|awk|sed`, `foundry history|trace`, `evt query|aggregate`)
+  while blocking all mutating operations (git writes, queue mutations, package
+  installs, network-egress CLIs, destructive filesystem verbs). `permissionMode:
+  "plan"` is no longer applied — the denylist is the control surface.
+
+### Internal
+
+- Extracted `resolveEffectiveExitCode`, `buildSessionPreamble`, and
+  `resolveOpencodeEnv` from gateway implementations into their respective
+  pure-function modules (`extract-opencode-result.ts`, `extract-result.ts`,
+  `opencode-config-content.ts`). Gateways now perform only I/O; all domain
+  decisions live in the pure layer.
+- Extracted `buildRecurredItem` from `complete` in `store-workflow.ts`,
+  `runExecuteAttempt`/`runValidateAttempt` from `runExecuteValidateLoop` in
+  `worker-engineering.ts`, and `setupGenericWorktree` from `processItem` in
+  `worker.ts` for single-responsibility clarity.
+- Deepened test coverage for `worker-loop`, `worker-engineering`, and
+  `worker-shared` orchestration paths.
+
+### Maintenance
+
+- Bumped `@types/node` to `^25.9.1`.
+
 ## [3.1.1] - 2026-05-18
 
 ### Fixed
@@ -579,7 +610,12 @@ If you never set up an opencode runner pre-3.0, the upgrade is a no-op.
 
 - Release workflow: use macos-14 for x64 builds
 
-[Unreleased]: https://github.com/svetzal/hopper/compare/v2.1.3...HEAD
+[Unreleased]: https://github.com/svetzal/hopper/compare/v3.2.0...HEAD
+[3.2.0]: https://github.com/svetzal/hopper/compare/v3.1.1...v3.2.0
+[3.1.1]: https://github.com/svetzal/hopper/compare/v3.1.0...v3.1.1
+[3.1.0]: https://github.com/svetzal/hopper/compare/v3.0.0...v3.1.0
+[3.0.0]: https://github.com/svetzal/hopper/compare/v2.1.4...v3.0.0
+[2.1.4]: https://github.com/svetzal/hopper/compare/v2.1.3...v2.1.4
 [2.1.3]: https://github.com/svetzal/hopper/compare/v2.1.2...v2.1.3
 [2.1.2]: https://github.com/svetzal/hopper/compare/v2.1.1...v2.1.2
 [2.1.1]: https://github.com/svetzal/hopper/compare/v2.1.0...v2.1.1
