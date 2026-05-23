@@ -14,6 +14,7 @@ import {
   buildValidateOptions,
   buildValidatePrompt,
   EXECUTE_DISALLOWED_TOOLS,
+  INVESTIGATION_DISALLOWED_TOOLS,
   INVESTIGATION_TOOLS,
   normaliseBranchSlug,
   normaliseCommitMessage,
@@ -75,19 +76,28 @@ describe("buildInvestigationOptions", () => {
     expect(buildInvestigationOptions().model).toBe("deep");
   });
 
-  test("uses plan permission mode to prevent mutations", () => {
-    expect(buildInvestigationOptions().permissionMode).toBe("plan");
+  test("does not set permissionMode — the denylist is the control surface", () => {
+    expect(buildInvestigationOptions().permissionMode).toBeUndefined();
   });
 
-  test("scopes tools to the read-only allowlist", () => {
+  test("scopes tools to the investigation allowlist", () => {
     expect(buildInvestigationOptions().tools).toEqual([...INVESTIGATION_TOOLS]);
   });
 
-  test("does not include Edit, Write, or Bash in the tool set", () => {
+  test("does not include Edit or Write in the tool set", () => {
     const { tools } = buildInvestigationOptions();
     expect(tools).not.toContain("Edit");
     expect(tools).not.toContain("Write");
-    expect(tools).not.toContain("Bash");
+  });
+
+  test("includes Bash so agents can read CLI state", () => {
+    const { tools } = buildInvestigationOptions();
+    expect(tools).toContain("Bash");
+  });
+
+  test("wires disallowedTools to the investigation denylist", () => {
+    const { disallowedTools } = buildInvestigationOptions();
+    expect(disallowedTools).toEqual([...INVESTIGATION_DISALLOWED_TOOLS]);
   });
 
   test("uses high reasoning effort", () => {
@@ -96,8 +106,76 @@ describe("buildInvestigationOptions", () => {
 });
 
 describe("INVESTIGATION_TOOLS", () => {
-  test("contains the expected read-only tool names", () => {
-    expect(INVESTIGATION_TOOLS).toEqual(["Read", "Grep", "Glob", "WebFetch", "WebSearch", "Task"]);
+  test("contains the expected tool names including Bash", () => {
+    expect(INVESTIGATION_TOOLS).toEqual([
+      "Read",
+      "Grep",
+      "Glob",
+      "Bash",
+      "WebFetch",
+      "WebSearch",
+      "Task",
+    ]);
+  });
+});
+
+describe("INVESTIGATION_DISALLOWED_TOOLS", () => {
+  test("denies representative git mutators", () => {
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(git commit:*)");
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(git push:*)");
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(git merge:*)");
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(git reset:*)");
+  });
+
+  test("denies hopper queue mutators", () => {
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(hopper add:*)");
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(hopper cancel:*)");
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(hopper complete:*)");
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(hopper claim:*)");
+  });
+
+  test("denies foundry/evt mutators", () => {
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(foundry run:*)");
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(foundry release:*)");
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(evt log:*)");
+  });
+
+  test("denies package managers", () => {
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(npm install:*)");
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(bun install:*)");
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(pip install:*)");
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(brew install:*)");
+  });
+
+  test("denies network-egress CLIs", () => {
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(curl:*)");
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(wget:*)");
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(gh:*)");
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(ssh:*)");
+  });
+
+  test("denies destructive filesystem verbs", () => {
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(rm:*)");
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(mv:*)");
+    expect(INVESTIGATION_DISALLOWED_TOOLS).toContain("Bash(chmod:*)");
+  });
+
+  test("does NOT deny read-only CLIs that investigation briefs depend on", () => {
+    const denied = INVESTIGATION_DISALLOWED_TOOLS;
+    // hopper read commands
+    expect(denied.some((p) => p.startsWith("Bash(hopper show"))).toBe(false);
+    expect(denied.some((p) => p.startsWith("Bash(hopper list"))).toBe(false);
+    expect(denied.some((p) => p.startsWith("Bash(hopper audit"))).toBe(false);
+    expect(denied.some((p) => p.startsWith("Bash(hopper history"))).toBe(false);
+    // git read commands
+    expect(denied.some((p) => p.startsWith("Bash(git log"))).toBe(false);
+    expect(denied.some((p) => p.startsWith("Bash(git status"))).toBe(false);
+    expect(denied.some((p) => p.startsWith("Bash(git diff"))).toBe(false);
+    // other read utilities
+    expect(denied.some((p) => p.startsWith("Bash(jq"))).toBe(false);
+    // foundry/evt read commands
+    expect(denied.some((p) => p.startsWith("Bash(evt query"))).toBe(false);
+    expect(denied.some((p) => p.startsWith("Bash(foundry history"))).toBe(false);
   });
 });
 

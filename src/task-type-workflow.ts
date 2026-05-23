@@ -6,19 +6,107 @@ import type { Item } from "./store.ts";
 export type EngineeringPhase = "plan" | "execute" | "validate";
 
 /**
- * Read-only tool set for investigation work.
+ * Tool set for investigation work.
  *
- * No Edit/Write/Bash so the session cannot mutate the filesystem even if the
- * prompt attempts to. Plan-mode permission (set in {@link buildInvestigationOptions})
- * is an additional belt-and-suspenders layer on top of this allowlist.
+ * Bash is included so agents can query CLI state (`hopper show --json`,
+ * `hopper audit`, `git log`, `jq`, etc.) that is essential for evidence-based
+ * findings. Mutation is prevented by {@link INVESTIGATION_DISALLOWED_TOOLS}
+ * rather than plan-mode — the denylist is the actual control surface.
  */
 export const INVESTIGATION_TOOLS: readonly string[] = [
   "Read",
   "Grep",
   "Glob",
+  "Bash",
   "WebFetch",
   "WebSearch",
   "Task",
+];
+
+/**
+ * Bash patterns that investigation sessions must not invoke.
+ *
+ * Uses the same Claude `disallowedTools` prefix-match syntax as
+ * {@link EXECUTE_DISALLOWED_TOOLS} (e.g. `Bash(git commit:*)`). Each category
+ * is grouped with a rationale comment. Read-only commands — `hopper show|list|
+ * audit|history`, `git log|status|diff|show|rev-parse|blame`, `git worktree
+ * list`, `jq`, standard POSIX read utilities, `foundry history|trace`, and
+ * `evt query|aggregate` — are intentionally NOT denied.
+ *
+ * Note: `Bash(git branch:*)` blocks `git branch --list` as a side effect of
+ * blocking `git branch -d|-D`. Use `git for-each-ref refs/heads` (read-only)
+ * as the equivalent. Similarly `Bash(git stash:*)` blocks `git stash list`;
+ * use `git log refs/stash` instead.
+ */
+export const INVESTIGATION_DISALLOWED_TOOLS: readonly string[] = [
+  // Git mutators — must not rewrite history or touch refs
+  "Bash(git add:*)",
+  "Bash(git commit:*)",
+  "Bash(git push:*)",
+  "Bash(git merge:*)",
+  "Bash(git rebase:*)",
+  "Bash(git reset:*)",
+  "Bash(git checkout:*)",
+  "Bash(git switch:*)",
+  "Bash(git branch:*)",
+  "Bash(git tag:*)",
+  "Bash(git stash:*)",
+  "Bash(git cherry-pick:*)",
+  "Bash(git clean:*)",
+  "Bash(git reflog:*)",
+  "Bash(git worktree:*)",
+
+  // Hopper queue mutators — investigations are read-only against the queue
+  "Bash(hopper add:*)",
+  "Bash(hopper cancel:*)",
+  "Bash(hopper requeue:*)",
+  "Bash(hopper integrate:*)",
+  "Bash(hopper reprioritize:*)",
+  "Bash(hopper tag:*)",
+  "Bash(hopper untag:*)",
+  "Bash(hopper preset:*)",
+  "Bash(hopper claim:*)",
+  "Bash(hopper complete:*)",
+  "Bash(hopper init:*)",
+
+  // Foundry/evt mutators — foundry history|trace and evt query|aggregate are
+  // read-only and intentionally NOT denied
+  "Bash(foundry run:*)",
+  "Bash(foundry release:*)",
+  "Bash(foundry iterate:*)",
+  "Bash(foundry maintain:*)",
+  "Bash(evt log:*)",
+
+  // Package managers / installers — no environment mutation during investigation
+  "Bash(npm install:*)",
+  "Bash(npm i:*)",
+  "Bash(bun install:*)",
+  "Bash(bun add:*)",
+  "Bash(pnpm add:*)",
+  "Bash(pnpm install:*)",
+  "Bash(yarn add:*)",
+  "Bash(yarn install:*)",
+  "Bash(pip install:*)",
+  "Bash(uv pip:*)",
+  "Bash(cargo install:*)",
+  "Bash(brew install:*)",
+  "Bash(brew upgrade:*)",
+
+  // Network egress — denied by default; opt-in is a future enhancement
+  "Bash(curl:*)",
+  "Bash(wget:*)",
+  "Bash(gh:*)",
+  "Bash(aws:*)",
+  "Bash(ssh:*)",
+  "Bash(scp:*)",
+  "Bash(rsync:*)",
+
+  // Filesystem mutators — mkdir/touch/cp left allowed for /tmp scratch work
+  "Bash(rm:*)",
+  "Bash(mv:*)",
+  "Bash(chmod:*)",
+  "Bash(chown:*)",
+  "Bash(ln:*)",
 ];
 
 /**
@@ -34,7 +122,7 @@ export function buildInvestigationPrompt(item: Item): string {
     `Description: ${item.description}\n\n` +
     `## Instructions\n\n` +
     `1. Read and analyze source, docs, and any other references needed to answer the question.\n` +
-    `2. You have READ-ONLY tools only. Do not attempt to edit, write, or execute shell commands.\n` +
+    `2. You have read-only tools plus a sandboxed Bash with mutating commands denied. Do not attempt git mutations, hopper queue mutations, package installs, or network egress — they will be blocked. Use Bash to read queue/audit/git state (\`hopper show --json\`, \`hopper audit\`, \`git log\`, \`jq\`, etc.).\n` +
     `3. Produce your final response as a markdown findings report. Use headings, bullets, and fenced code snippets as appropriate.\n` +
     `4. Cite specific files and line numbers where relevant (e.g. \`src/foo.ts:42\`).\n` +
     `5. Be concrete and actionable. Flag uncertainty explicitly rather than guessing.\n\n` +
@@ -46,15 +134,16 @@ export function buildInvestigationPrompt(item: Item): string {
  * Resolve the Claude session options for an investigation run.
  *
  * - Opus for strong reasoning on open-ended questions.
- * - Plan-mode permission so no mutating tools can fire.
- * - Explicit read-only tool allowlist as an additional constraint.
+ * - Bash included so agents can read CLI state (`hopper show --json`, `git log`, etc.).
+ * - {@link INVESTIGATION_DISALLOWED_TOOLS} denylist is the mutation control surface —
+ *   `permissionMode: "plan"` is intentionally absent.
  */
 export function buildInvestigationOptions(): ClaudeSessionOptions {
   return {
     model: "deep",
     effort: "high",
-    permissionMode: "plan",
     tools: [...INVESTIGATION_TOOLS],
+    disallowedTools: [...INVESTIGATION_DISALLOWED_TOOLS],
   };
 }
 
