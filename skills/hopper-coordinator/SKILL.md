@@ -675,6 +675,54 @@ hopper add "Find every place in src/ that calls setTimeout without a paired clea
 
 Investigation items never get a worktree or branch. The agent runs with read-only tools; its final markdown message becomes the item's `result` field, readable via `hopper show <id>`.
 
+### Inlining evidence in investigation briefs
+
+Investigation items run in a sandboxed shell. The sandbox grants read-only access to common CLIs (`hopper show|list|audit`, `git status|log|diff|show|rev-parse|worktree list`, `jq`, file-read utilities, `foundry history|trace`, `evt query|aggregate`) plus the usual `Read`/`Grep`/`Glob` tools — but it cannot reach back to you for follow-up data, and CLIs outside the allowlist will be denied. If the load-bearing evidence requires a CLI that may not be in the sandbox, or context you can already see from your session, **inline it in the brief.**
+
+Without inlined evidence, an investigation agent that hits a blocked command — or one whose author hadn't realised some data source wasn't in scope — tends to confabulate from code-reading alone rather than fail loudly. A real case that proved this: a hopper investigation about silently-lost engineering commits concluded the failed items had run on the opencode runner because the agent couldn't run `hopper show <id> --json | jq .profile` to verify. They were actually on the claude runner, and the entire root-cause analysis was wrong as a result. The agent's `result` even opened with *"Tools blocked under plan-mode. Producing the findings report directly as my final response per the investigation task contract."* — i.e. it knew it was blocked and confabulated anyway.
+
+**Before queueing an investigation, do this pre-flight:**
+
+1. Identify the 2–5 pieces of data the analysis hinges on — specific JSON fields, audit-log slices, file excerpts, profile config, git state of a specific repo, output of a domain CLI.
+2. Run the read commands yourself; paste the output verbatim into the brief under a clear heading (`## Observed state`, `## Evidence`, `## Pre-collected data`).
+3. Then write the question to be investigated, referencing the inlined evidence.
+
+The agent's job is to *interpret*, not re-discover. Inlining is also auditable — six months later, the brief stands on its own.
+
+**Example shape:**
+
+````markdown
+# Why is hopper item X stuck
+
+## Observed state (collected 2026-05-23 14:30)
+
+`hopper show X --json | jq '{id, status, profile, claimedAt, phases}'`:
+
+```json
+{ "id": "X", "status": "in_progress", "profile": "anthropic", ... }
+```
+
+Last 5 audit events (`hopper audit X --tail 5 --json`):
+
+```json
+[ ... ]
+```
+
+`git log --oneline -5` in `<repo>`:
+
+```
+abc1234 ...
+```
+
+## Question
+
+Given the state above, why is the worker holding the claim past its expected runtime? Identify the stuck operation, the root cause, and whether the claim can be safely requeued.
+````
+
+**When inlining is impractical** (genuinely open-ended investigations across an unknown surface): keep the brief sparse and rely on the sandbox CLIs. State explicitly which CLIs the brief expects the agent to use, so it doesn't try a blocked command and silently work around it.
+
+**Failure mode to watch for:** if a queued investigation's `result` begins with any variant of "tools blocked", "I couldn't run", "lacking access to", or contains a Verification section listing checks in future tense, the brief almost certainly required CLIs not available in the sandbox. Treat the report's conclusions as unverified.
+
 ### Scheduled and recurring work
 
 ```bash
