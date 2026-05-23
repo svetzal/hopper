@@ -11,13 +11,14 @@ import {
   extractOpencodeResult,
   type OpencodeExport,
   parseOpencodeExport,
+  resolveEffectiveExitCode,
   scanOpencodeStream,
 } from "../extract-opencode-result.ts";
 import type { Profile } from "../profile.ts";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
 import { streamToAuditFile } from "./audit-stream.ts";
 import { buildOpencodeArgv } from "./opencode-argv.ts";
-import { buildOpencodeConfigContent } from "./opencode-config-content.ts";
+import { resolveOpencodeEnv } from "./opencode-config-content.ts";
 
 function resolveOpencodeBin(): string {
   const resolved = Bun.which("opencode");
@@ -87,14 +88,7 @@ function buildRunSession(deps: OpencodeRunnerDeps) {
     if (options.agent || options.appendSystemPrompt) {
       const loader = deps.loadCraftsperson ?? loadCraftspersonBody;
       const craftspersonBody = options.agent ? await loader(options.agent) : null;
-      const configContent = buildOpencodeConfigContent({
-        agentName: options.agent,
-        craftspersonBody: craftspersonBody ?? undefined,
-        appendSystemPrompt: options.appendSystemPrompt,
-      });
-      if (configContent) {
-        env = { ...process.env, OPENCODE_CONFIG_CONTENT: configContent } as Record<string, string>;
-      }
+      env = resolveOpencodeEnv(craftspersonBody, options);
     }
 
     const argv = buildOpencodeArgv(opencodeBin, prompt, options, cwd);
@@ -145,10 +139,7 @@ function buildRunSession(deps: OpencodeRunnerDeps) {
       }
     }
 
-    // Outcome: failure if either the process exited non-zero OR any error
-    // events appeared in the stream. Exit code 0 from opencode is not a
-    // reliable success signal (see docs/opencode-spike.md).
-    const effectiveExitCode = rawExitCode !== 0 ? rawExitCode : scan.errors.length > 0 ? 1 : 0;
+    const effectiveExitCode = resolveEffectiveExitCode(rawExitCode, scan.errors.length);
 
     return { exitCode: effectiveExitCode, result };
   };

@@ -134,6 +134,20 @@ export function extractOpencodeResult(exportDoc: OpencodeExport): string {
 }
 
 /**
+ * Decide the effective exit code for an opencode session.
+ *
+ * Opencode exit code 0 is not a reliable success signal — the process can
+ * exit cleanly while error events appeared in the JSONL stream. A non-zero
+ * raw exit always wins; otherwise any stream errors map to exit 1.
+ *
+ * See docs/opencode-spike.md for the empirical findings behind this rule.
+ */
+export function resolveEffectiveExitCode(rawExitCode: number, errorCount: number): number {
+  if (rawExitCode !== 0) return rawExitCode;
+  return errorCount > 0 ? 1 : 0;
+}
+
+/**
  * Parse a raw stdout capture of `opencode export <id>` into the typed
  * document.
  *

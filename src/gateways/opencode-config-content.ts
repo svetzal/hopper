@@ -1,19 +1,15 @@
 /**
- * Build the JSON value that goes into the `OPENCODE_CONFIG_CONTENT`
- * environment variable for a hopper-dispatched opencode session.
+ * Synthesise the `OPENCODE_CONFIG_CONTENT` env var that inlines a craftsperson
+ * agent definition for opencode, and decide the full environment record to
+ * pass to the subprocess.
  *
  * Opencode has no CLI flag for `--append-system-prompt`, and its agent
- * definitions live in opencode-native files separate from claude
- * craftspersons. Hopper translates by inlining a transient agent definition
- * into the per-invocation config, sourced from the body of
- * `~/.claude/agents/<name>.md`.
- *
- * The returned value is a JSON string suitable for
- * `Bun.spawn({ env: { OPENCODE_CONFIG_CONTENT: value, ... } })`. When neither
- * a craftsperson body nor an appendSystemPrompt is provided, returns `null`
- * — callers should omit the env var entirely in that case so opencode falls
- * back to the user's `opencode.json` defaults.
+ * definitions live in opencode-native files separate from claude craftspersons.
+ * Hopper translates by inlining a transient agent definition into the
+ * per-invocation config, sourced from the body of `~/.claude/agents/<name>.md`.
  */
+
+import type { SessionOptions } from "./agent-runner.ts";
 
 export interface OpencodeAgentInjection {
   /**
@@ -65,4 +61,31 @@ export function buildOpencodeConfigContent(injection: OpencodeAgentInjection): s
     },
   };
   return JSON.stringify(config);
+}
+
+/**
+ * Decide the environment record to pass to an opencode subprocess.
+ *
+ * Pure: reads no I/O. The craftsperson body must already be loaded (or null
+ * if no agent was requested / the file was missing). Returns `undefined` when
+ * there is nothing to inject so the caller can omit `env` entirely and let
+ * opencode fall back to its `opencode.json` defaults.
+ *
+ * @param craftspersonBody - body extracted from `~/.claude/agents/<name>.md`,
+ *   or `null` when no agent was requested or the file did not exist.
+ * @param options - session options carrying `agent` and `appendSystemPrompt`.
+ * @param baseEnv - base environment to extend (defaults to `process.env`).
+ */
+export function resolveOpencodeEnv(
+  craftspersonBody: string | null,
+  options: Pick<SessionOptions, "agent" | "appendSystemPrompt">,
+  baseEnv: Record<string, string> = process.env as Record<string, string>,
+): Record<string, string> | undefined {
+  const configContent = buildOpencodeConfigContent({
+    agentName: options.agent,
+    craftspersonBody: craftspersonBody ?? undefined,
+    appendSystemPrompt: options.appendSystemPrompt,
+  });
+  if (!configContent) return undefined;
+  return { ...baseEnv, OPENCODE_CONFIG_CONTENT: configContent };
 }

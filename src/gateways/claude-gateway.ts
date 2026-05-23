@@ -3,7 +3,7 @@
 // logic (JSONL result extraction and argv construction) is tested via
 // extract-result.test.ts and claude-argv.test.ts, and integration behaviour
 // is covered by worker-workflow tests.
-import { extractResult, formatStderrEvent } from "../extract-result.ts";
+import { buildSessionPreamble, extractResult, formatStderrEvent } from "../extract-result.ts";
 import { type Profile, resolveProfileModel } from "../profile.ts";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
 import { streamToAuditFile } from "./audit-stream.ts";
@@ -37,13 +37,8 @@ async function runSession(
   const argv = buildClaudeArgv(resolveClaudeBin(), prompt, options);
   const proc = Bun.spawn(argv, { cwd, stdout: "pipe", stderr: "pipe" });
 
-  let preamble = "";
-  if (options.append) {
-    const existing = await Bun.file(auditFile)
-      .text()
-      .catch(() => "");
-    preamble = `${existing}${JSON.stringify({ type: "session-separator", label: "auto-commit session" })}\n`;
-  }
+  const existing = options.append ? await Bun.file(auditFile).text().catch(() => "") : "";
+  const preamble = buildSessionPreamble(existing, options.append ?? false);
 
   // Stream stdout to the audit file line-by-line so each event is visible on
   // disk immediately.  Stderr is drained concurrently to prevent the pipe

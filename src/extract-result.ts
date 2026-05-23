@@ -37,6 +37,18 @@ export function extractResult(jsonlOutput: string): string {
 }
 
 /**
+ * Build the preamble written before a new append-mode session starts.
+ *
+ * When `append` is true, returns `existingContent` + a session-separator
+ * JSONL event so the two sessions are delimited in the same audit file.
+ * When `append` is false, returns an empty string (fresh file; no preamble).
+ */
+export function buildSessionPreamble(existingContent: string, append: boolean): string {
+  if (!append) return "";
+  return `${existingContent}${JSON.stringify({ type: "session-separator", label: "auto-commit session" })}\n`;
+}
+
+/**
  * Wrap captured stderr as a single JSONL-valid event line so line-by-line
  * parsers can still read the audit file without tripping over a bare error
  * message at the tail. Returns an empty string when there's nothing to emit,

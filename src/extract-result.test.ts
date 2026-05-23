@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { extractResult, formatStderrEvent } from "./extract-result.ts";
+import { buildSessionPreamble, extractResult, formatStderrEvent } from "./extract-result.ts";
 import { resolveValidateOutcome } from "./task-type-workflow.ts";
 
 describe("extractResult", () => {
@@ -124,6 +124,28 @@ describe("extractResult", () => {
     // split("\n") leaves "\r" on the first token — verify it still parses
     // the result line correctly since JSON.parse handles trailing \r
     expect(extractResult(jsonl)).toBe("Windows result.");
+  });
+});
+
+describe("buildSessionPreamble", () => {
+  test("returns empty string when append is false", () => {
+    expect(buildSessionPreamble("some existing content", false)).toBe("");
+    expect(buildSessionPreamble("", false)).toBe("");
+  });
+
+  test("returns existing content followed by a session-separator JSONL event when append is true", () => {
+    const result = buildSessionPreamble("existing\n", true);
+    expect(result.startsWith("existing\n")).toBe(true);
+    const separatorLine = result.slice("existing\n".length);
+    const parsed = JSON.parse(separatorLine.trimEnd());
+    expect(parsed).toEqual({ type: "session-separator", label: "auto-commit session" });
+    expect(result.endsWith("\n")).toBe(true);
+  });
+
+  test("works with empty existing content when append is true", () => {
+    const result = buildSessionPreamble("", true);
+    const parsed = JSON.parse(result.trimEnd());
+    expect(parsed).toEqual({ type: "session-separator", label: "auto-commit session" });
   });
 });
 

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   extractOpencodeResult,
   parseOpencodeExport,
+  resolveEffectiveExitCode,
   scanOpencodeStream,
 } from "./extract-opencode-result.ts";
 
@@ -73,6 +74,23 @@ describe("scanOpencodeStream", () => {
       name: "UnknownError",
       message: "(no message)",
     });
+  });
+});
+
+describe("resolveEffectiveExitCode", () => {
+  test("returns non-zero raw exit code unchanged regardless of error count", () => {
+    expect(resolveEffectiveExitCode(1, 0)).toBe(1);
+    expect(resolveEffectiveExitCode(2, 0)).toBe(2);
+    expect(resolveEffectiveExitCode(1, 3)).toBe(1);
+  });
+
+  test("returns 1 when raw exit is 0 but stream errors were found", () => {
+    expect(resolveEffectiveExitCode(0, 1)).toBe(1);
+    expect(resolveEffectiveExitCode(0, 3)).toBe(1);
+  });
+
+  test("returns 0 when raw exit is 0 and no stream errors", () => {
+    expect(resolveEffectiveExitCode(0, 0)).toBe(0);
   });
 });
 
