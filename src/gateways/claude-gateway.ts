@@ -37,7 +37,11 @@ async function runSession(
   const argv = buildClaudeArgv(resolveClaudeBin(), prompt, options);
   const proc = Bun.spawn(argv, { cwd, stdout: "pipe", stderr: "pipe" });
 
-  const existing = options.append ? await Bun.file(auditFile).text().catch(() => "") : "";
+  const existing = options.append
+    ? await Bun.file(auditFile)
+        .text()
+        .catch(() => "")
+    : "";
   const preamble = buildSessionPreamble(existing, options.append ?? false);
 
   // Stream stdout to the audit file line-by-line so each event is visible on

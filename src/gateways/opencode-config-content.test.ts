@@ -6,11 +6,17 @@ describe("resolveOpencodeEnv", () => {
 
   test("returns undefined when neither agent nor appendSystemPrompt is set", () => {
     expect(resolveOpencodeEnv(null, {}, baseEnv)).toBeUndefined();
-    expect(resolveOpencodeEnv(null, { agent: undefined, appendSystemPrompt: undefined }, baseEnv)).toBeUndefined();
+    expect(
+      resolveOpencodeEnv(null, { agent: undefined, appendSystemPrompt: undefined }, baseEnv),
+    ).toBeUndefined();
   });
 
   test("returns env with OPENCODE_CONFIG_CONTENT and preserved base env when agent has a body", () => {
-    const env = resolveOpencodeEnv("You are a Rust expert.", { agent: "rust-craftsperson" }, baseEnv);
+    const env = resolveOpencodeEnv(
+      "You are a Rust expert.",
+      { agent: "rust-craftsperson" },
+      baseEnv,
+    );
     expect(env).not.toBeUndefined();
     expect(env?.PATH).toBe("/usr/bin");
     const config = JSON.parse(env?.OPENCODE_CONFIG_CONTENT ?? "{}");
