@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { AgentCandidate } from "../craftsperson-resolver.ts";
-import type { AgentsGateway } from "../gateways/agents-gateway.ts";
 import type { AgentRunner } from "../gateways/agent-runner.ts";
+import type { AgentsGateway } from "../gateways/agents-gateway.ts";
 import type { Profile } from "../profile.ts";
 import { createAgentResolver } from "./add-agent-resolver.ts";
 
