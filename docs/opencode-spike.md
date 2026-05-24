@@ -217,21 +217,18 @@ category (`*`, `doom_loop`, `external_directory`, `question`, `plan_enter`,
 `plan_exit`, ...) — these are opencode's internal categories and do **not**
 map 1:1 to claude's `Bash(git commit:*)` tool-pattern syntax.
 
-**Open question for implementation**: there is no observed opencode equivalent
-of denying `Bash(git commit:*)` etc. Opencode appears to gate decisions at a
-higher level (was this an external directory access? a destructive shell
-command?). The git-mutation denylist hopper enforces today may need to be
-restated as either:
-
-- A custom agent that simply does not have shell-execution permission for the
-  execute phase, OR
-- A wrapper shell on `PATH` that intercepts `git commit`/`git push`/etc., OR
-- Trusting opencode's `--dangerously-skip-permissions=false` (default) plus
-  agent-level patterns to gate dangerous tool calls interactively.
-
-For hopper specifically, since the execute phase is unattended, the
-denylist-as-code approach (wrapper shell on the worker's PATH that exits
-non-zero for forbidden git verbs) is likely cleanest.
+**Resolution**: there is no opencode equivalent of denying `Bash(git commit:*)` etc.
+Opencode silently ignores the `disallowedTools` field in `SessionOptions`. The
+wrapper-shell-on-`PATH` option is now implemented: `src/gateways/worker-shim-gateway.ts`
+generates POSIX `/bin/sh` shim scripts in `~/.hopper/worker-shims/` and
+`src/gateways/worker-shim-content.ts` builds their content from the
+`INVESTIGATION_DISALLOWED_TOOLS` list. Investigation sessions receive
+`PATH=~/.hopper/worker-shims/:$ORIGINAL_PATH` and `HOPPER_REAL_PATH=$ORIGINAL_PATH`
+via `SessionOptions.env`, which both runners (claude and opencode) merge over
+`process.env`. The shims apply uniformly to both runners and close the
+shell-composition bypass (`cd /tmp && git commit ...`) that the `disallowedTools`
+leading-token prefix match cannot catch. Shims are regenerated idempotently at
+every `hopper worker` startup.
 
 ## Agents
 

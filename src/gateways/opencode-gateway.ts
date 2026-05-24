@@ -84,11 +84,20 @@ function buildRunSession(deps: OpencodeRunnerDeps) {
     const opencodeBin = resolveOpencodeBin();
 
     // Build the inline agent config when a craftsperson is requested.
+    // options.env (e.g. investigation PATH shims) is merged first so it forms
+    // the base; resolveOpencodeEnv then overlays OPENCODE_CONFIG_CONTENT on top.
+    const baseEnv: Record<string, string> = options.env
+      ? { ...(process.env as Record<string, string>), ...options.env }
+      : (process.env as Record<string, string>);
+
     let env: Record<string, string> | undefined;
     if (options.agent || options.appendSystemPrompt) {
       const loader = deps.loadCraftsperson ?? loadCraftspersonBody;
       const craftspersonBody = options.agent ? await loader(options.agent) : null;
-      env = resolveOpencodeEnv(craftspersonBody, options);
+      env = resolveOpencodeEnv(craftspersonBody, options, baseEnv);
+    } else if (options.env) {
+      // No craftsperson injection but caller supplied extra env vars
+      env = baseEnv;
     }
 
     const argv = buildOpencodeArgv(opencodeBin, prompt, options, cwd);
