@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { ParsedArgs } from "../cli.ts";
 import { toErrorMessage } from "../error-utils.ts";
 import { shortId } from "../format.ts";
-import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
+import type { AgentRunner } from "../gateways/agent-runner.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import { createFsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
@@ -13,8 +13,11 @@ import { createProfilesGateway } from "../gateways/profiles-gateway.ts";
 import { createRoutingRunner } from "../gateways/routing-runner.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import { createShellGateway } from "../gateways/shell-gateway.ts";
+import { parseDisallowedTools } from "../gateways/worker-shim-content.ts";
+import { createWorkerShimGateway } from "../gateways/worker-shim-gateway.ts";
 import type { ClaimedItem } from "../store.ts";
 import { claimNextItem, findItem } from "../store.ts";
+import { INVESTIGATION_DISALLOWED_TOOLS } from "../task-type-workflow.ts";
 import {
   resolveLoopAction,
   resolvePostClaimLoopAction,
@@ -33,7 +36,7 @@ export interface WorkerLoopDeps {
     hopperHome: string,
     deps: {
       git: GitGateway;
-      claude: ClaudeGateway;
+      claude: AgentRunner;
       fs: FsGateway;
       shell: ShellGateway;
       profiles: ProfilesGateway;
@@ -79,7 +82,7 @@ export async function runWorkerLoop(
   hopperHome: string,
   gatewayDeps: {
     git: GitGateway;
-    claude: ClaudeGateway;
+    claude: AgentRunner;
     fs: FsGateway;
     shell: ShellGateway;
     profiles: ProfilesGateway;
@@ -198,6 +201,14 @@ export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Prom
   // Bootstrap on first run so a fresh ~/.hopper/ gets config.json + the four
   // shipped profile templates (anthropic / openai / openrouter / ollama).
   await profiles.bootstrap();
+
+  // Regenerate PATH shims idempotently so the investigation sandbox is always
+  // up to date with the current INVESTIGATION_DISALLOWED_TOOLS list.
+  const workerShim = deps?.workerShim ?? createWorkerShimGateway();
+  const shimDir = join(hopperHome, "worker-shims");
+  const denyMap = parseDisallowedTools(INVESTIGATION_DISALLOWED_TOOLS);
+  await workerShim.synchronize(shimDir, denyMap);
+
   const claude = deps?.claude ?? createRoutingRunner();
   const fs = deps?.fs ?? createFsGateway();
   const shell = deps?.shell ?? createShellGateway();

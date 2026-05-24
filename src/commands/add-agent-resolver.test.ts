@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { AgentCandidate } from "../craftsperson-resolver.ts";
 import type { AgentsGateway } from "../gateways/agents-gateway.ts";
-import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
+import type { AgentRunner } from "../gateways/agent-runner.ts";
 import type { Profile } from "../profile.ts";
 import { createAgentResolver } from "./add-agent-resolver.ts";
 
@@ -21,7 +21,7 @@ function makeAgentsGw(
   };
 }
 
-function makeClaudeGw(response: { exitCode: number; text: string }): ClaudeGateway {
+function makeClaudeGw(response: { exitCode: number; text: string }): AgentRunner {
   return {
     runSession: mock(async () => ({ exitCode: 0, result: "" })),
     generateText: mock(async () => response),

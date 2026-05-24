@@ -1,9 +1,10 @@
 import { join } from "node:path";
-import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
+import type { AgentRunner } from "../gateways/agent-runner.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import type { ProfilesGateway } from "../gateways/profiles-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
+import type { WorkerShimGateway } from "../gateways/worker-shim-gateway.ts";
 import type { Profile } from "../profile.ts";
 import type { ClaimedItem, Item } from "../store.ts";
 import { buildInvestigationOptions, buildInvestigationPrompt } from "../task-type-workflow.ts";
@@ -32,10 +33,11 @@ import {
 
 export interface WorkerDeps {
   git?: GitGateway;
-  claude?: ClaudeGateway;
+  claude?: AgentRunner;
   fs?: FsGateway;
   shell?: ShellGateway;
   profiles?: ProfilesGateway;
+  workerShim?: WorkerShimGateway;
 }
 
 interface CompletionContext {
@@ -140,7 +142,8 @@ async function executeWork(
   item: Item,
   workDir: string | undefined,
   auditFile: string,
-  deps: { claude: ClaudeGateway; shell: ShellGateway; profile: Profile },
+  hopperHome: string,
+  deps: { claude: AgentRunner; shell: ShellGateway; profile: Profile },
   log: LogFn,
 ): Promise<{ exitCode: number; result: string }> {
   const { claude, shell, profile } = deps;
@@ -150,7 +153,12 @@ async function executeWork(
   }
   if (item.type === "investigation") {
     const prompt = buildInvestigationPrompt(item);
-    const options = { ...buildInvestigationOptions(), profile };
+    const shimDir = join(hopperHome, "worker-shims");
+    const shimEnv: Record<string, string> = {
+      HOPPER_REAL_PATH: process.env.PATH ?? "",
+      PATH: `${shimDir}:${process.env.PATH ?? ""}`,
+    };
+    const options = { ...buildInvestigationOptions(), profile, env: shimEnv };
     log(`Starting investigation session (deep, read-only)...\nAudit log: ${auditFile}`);
     return claude.runSession(prompt, workDir ?? process.cwd(), auditFile, options);
   }
@@ -165,7 +173,7 @@ export async function processItem(
   hopperHome: string,
   deps: {
     git: GitGateway;
-    claude: ClaudeGateway;
+    claude: AgentRunner;
     fs: FsGateway;
     shell: ShellGateway;
     profiles: ProfilesGateway;
@@ -233,6 +241,7 @@ export async function processItem(
       item,
       workDir,
       auditFile,
+      hopperHome,
       { claude, shell, profile },
       log,
     );

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
+import type { AgentRunner } from "../gateways/agent-runner.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { ProfilesGateway } from "../gateways/profiles-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
@@ -22,7 +22,7 @@ const completeItemMock = storeMocks.mocks.completeItem;
 const recordItemPhaseMock = storeMocks.mocks.recordItemPhase;
 const requeueItemMock = storeMocks.mocks.requeueItem;
 
-function makeMockClaude(exitCode = 0, result = "Done."): ClaudeGateway {
+function makeMockClaude(exitCode = 0, result = "Done."): AgentRunner {
   return {
     runSession: mock(async () => ({ exitCode, result })),
     generateText: mock(async () => ({ exitCode: 0, text: "stub-slug" })),
@@ -256,7 +256,7 @@ describe("processItem", () => {
 
     let _resolve1: () => void;
     let _resolve2: () => void;
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async () => {
         // Introduce a small async gap to test true concurrency
         await new Promise<void>((r) => setTimeout(r, 10));
@@ -630,7 +630,7 @@ describe("processItem", () => {
     validateResult?: string;
     slug?: string;
     commitMessage?: string;
-  }): ClaudeGateway {
+  }): AgentRunner {
     const o = {
       planExit: 0,
       planResult: "## Approach\nEdit src/cli.ts\n\n## Validation\nbun test",
@@ -730,7 +730,7 @@ describe("processItem", () => {
       branch: "main",
     });
     const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
         if (prompt.includes("PLANNING phase")) return { exitCode: 0, result: "plan" };
         if (prompt.includes("EXECUTE phase")) return { exitCode: 0, result: "executed" };
@@ -1043,7 +1043,7 @@ describe("processItem", () => {
     const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
     // First validate fails, second passes. Prompt differs by phase.
     let validateCalls = 0;
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
         if (prompt.includes("PLANNING phase")) return { exitCode: 0, result: "plan-text" };
         if (prompt.includes("EXECUTE phase")) return { exitCode: 0, result: "ran execute" };
@@ -1083,7 +1083,7 @@ describe("processItem", () => {
     });
     const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
     let validateCalls = 0;
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
         if (prompt.includes("PLANNING phase")) return { exitCode: 0, result: "plan-text" };
         if (prompt.includes("EXECUTE phase"))
@@ -1184,7 +1184,7 @@ describe("processItem", () => {
     });
     const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
     let vc = 0;
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
         if (prompt.includes("PLANNING phase")) return { exitCode: 0, result: "plan" };
         if (prompt.includes("EXECUTE phase")) return { exitCode: 0, result: "exec" };
@@ -1225,7 +1225,7 @@ describe("processItem", () => {
     });
     const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
     let vc = 0;
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
         if (prompt.includes("PLANNING phase")) return { exitCode: 0, result: "plan" };
         if (prompt.includes("EXECUTE phase")) return { exitCode: 0, result: "exec" };

@@ -5,7 +5,7 @@ import {
   resolveEngineeringCommitFallback,
 } from "../engineering-workflow.ts";
 import { toErrorMessage } from "../error-utils.ts";
-import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
+import type { AgentRunner } from "../gateways/agent-runner.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import { buildEngineeringBranchName } from "../git-workflow.ts";
@@ -58,7 +58,7 @@ async function safePersistBranchSlug(itemId: string, slug: string, log?: LogFn):
 }
 
 async function resolveEngineeringBranchSlug(
-  claude: ClaudeGateway,
+  claude: AgentRunner,
   profile: Profile,
   item: Item,
   log?: LogFn,
@@ -75,7 +75,7 @@ async function resolveEngineeringBranchSlug(
 }
 
 async function resolveEngineeringCommitMessage(
-  claude: ClaudeGateway,
+  claude: AgentRunner,
   profile: Profile,
   item: Item,
   diffSummary: string,
@@ -95,7 +95,7 @@ export async function runPlanPhase(
   item: Item,
   worktreePath: string,
   paths: EngineeringAuditPaths,
-  deps: { claude: ClaudeGateway; fs: FsGateway; profile: Profile },
+  deps: { claude: AgentRunner; fs: FsGateway; profile: Profile },
   log: LogFn,
 ): Promise<{ planText: string } | null> {
   const { claude, fs, profile } = deps;
@@ -141,7 +141,7 @@ export interface ExecuteValidateContext {
   planText: string;
   paths: EngineeringAuditPaths;
   hopperHome: string;
-  deps: { claude: ClaudeGateway; fs: FsGateway; profile: Profile };
+  deps: { claude: AgentRunner; fs: FsGateway; profile: Profile };
   log: LogFn;
 }
 
@@ -302,7 +302,7 @@ export async function runExecuteValidateLoop(
 export async function commitEngineeringChanges(
   item: Item,
   worktreePath: string,
-  deps: { git: GitGateway; claude: ClaudeGateway; profile: Profile },
+  deps: { git: GitGateway; claude: AgentRunner; profile: Profile },
   log: LogFn,
 ): Promise<{ dirty: boolean }> {
   const { git, claude, profile } = deps;
@@ -372,7 +372,7 @@ export async function processEngineeringItem(
   item: ClaimedItem,
   agentName: string,
   hopperHome: string,
-  deps: { git: GitGateway; claude: ClaudeGateway; fs: FsGateway; profile: Profile },
+  deps: { git: GitGateway; claude: AgentRunner; fs: FsGateway; profile: Profile },
   concurrency: number = 1,
 ): Promise<void> {
   const { git, claude, fs, profile } = deps;

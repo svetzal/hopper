@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
+import type { AgentRunner } from "../gateways/agent-runner.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import type { ProfilesGateway } from "../gateways/profiles-gateway.ts";
@@ -41,14 +41,14 @@ function makeStubProfilesGateway(): ProfilesGateway {
 
 function makeGatewayDeps(): {
   git: GitGateway;
-  claude: ClaudeGateway;
+  claude: AgentRunner;
   fs: FsGateway;
   shell: ShellGateway;
   profiles: ProfilesGateway;
 } {
   return {
     git: {} as GitGateway,
-    claude: {} as ClaudeGateway,
+    claude: {} as AgentRunner,
     fs: {} as FsGateway,
     shell: {} as ShellGateway,
     profiles: makeStubProfilesGateway(),

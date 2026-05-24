@@ -1,5 +1,4 @@
-import type { ClaudeSessionOptions } from "./gateways/claude-argv.ts";
-import type { ClaudeGateway } from "./gateways/claude-gateway.ts";
+import type { AgentRunner, SessionOptions } from "./gateways/agent-runner.ts";
 import type { Profile } from "./profile.ts";
 import type { Item } from "./store.ts";
 
@@ -138,7 +137,7 @@ export function buildInvestigationPrompt(item: Item): string {
  * - {@link INVESTIGATION_DISALLOWED_TOOLS} denylist is the mutation control surface —
  *   `permissionMode: "plan"` is intentionally absent.
  */
-export function buildInvestigationOptions(): ClaudeSessionOptions {
+export function buildInvestigationOptions(): SessionOptions {
   return {
     model: "deep",
     effort: "high",
@@ -183,7 +182,7 @@ export function buildPlanPrompt(item: Item): string {
   );
 }
 
-export function buildPlanOptions(): ClaudeSessionOptions {
+export function buildPlanOptions(): SessionOptions {
   return {
     model: "deep",
     effort: "high",
@@ -238,7 +237,7 @@ export function buildExecutePrompt(item: Item, planText: string): string {
   );
 }
 
-export function buildExecuteOptions(agent?: string): ClaudeSessionOptions {
+export function buildExecuteOptions(agent?: string): SessionOptions {
   return {
     model: "balanced",
     effort: "medium",
@@ -323,7 +322,7 @@ export function buildValidatePrompt(item: Item, planText: string): string {
   );
 }
 
-export function buildValidateOptions(): ClaudeSessionOptions {
+export function buildValidateOptions(): SessionOptions {
   return {
     model: "deep",
     effort: "high",
@@ -394,7 +393,7 @@ export function normaliseValidateFallback(raw: string): "PASS" | "FAIL" | "UNCLE
 export async function resolveValidateOutcomeWithFallback(
   exitCode: number,
   resultText: string,
-  claude: Pick<ClaudeGateway, "generateText">,
+  claude: Pick<AgentRunner, "generateText">,
   profile: Profile,
   log?: (msg: string) => void,
 ): Promise<{ passed: boolean; reason: string; fallbackUsed?: boolean }> {

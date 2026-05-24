@@ -10,10 +10,6 @@
  * runner handles the call and *how* model aliases resolve. See
  * `src/profile.ts` for the profile shape and `gateways/routing-runner.ts`
  * for the per-call dispatch.
- *
- * The legacy type names `ClaudeGateway` and `ClaudeSessionOptions` are now
- * thin aliases of {@link AgentRunner} and {@link SessionOptions} respectively,
- * preserved for backwards compatibility while callers migrate.
  */
 
 import type { Profile } from "../profile.ts";
@@ -96,6 +92,13 @@ export interface SessionOptions {
   effort?: "minimal" | "low" | "medium" | "high" | "max" | (string & {});
   /** Continue an existing audit file rather than starting fresh. */
   append?: boolean;
+  /**
+   * Extra environment variables to merge over the spawned subprocess env.
+   * Used by the investigation sandbox to prepend a PATH-shim dir and capture
+   * the original PATH as HOPPER_REAL_PATH. Both runners merge this over
+   * process.env so HOME/TERM/LANG etc. survive.
+   */
+  env?: Record<string, string>;
 }
 
 /**

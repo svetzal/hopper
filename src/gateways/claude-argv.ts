@@ -2,13 +2,6 @@ import { resolveProfileBinding } from "../profile.ts";
 import type { SessionOptions } from "./agent-runner.ts";
 
 /**
- * Legacy alias for the runner-agnostic {@link SessionOptions}. Kept so
- * existing imports keep compiling; new code should import `SessionOptions`
- * directly from `./agent-runner.ts`.
- */
-export type ClaudeSessionOptions = SessionOptions;
-
-/**
  * Construct the argv for a `claude --print` invocation.
  *
  * Returns an array suitable for `Bun.spawn(argv, ...)`. Pure — no I/O.
@@ -22,7 +15,7 @@ export type ClaudeSessionOptions = SessionOptions;
 export function buildClaudeArgv(
   claudeBin: string,
   prompt: string,
-  options: ClaudeSessionOptions = {},
+  options: SessionOptions = {},
 ): string[] {
   const argv: string[] = [claudeBin, "--print", "--verbose"];
 

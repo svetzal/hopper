@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import type { ClaudeGateway } from "../gateways/claude-gateway.ts";
+import type { AgentRunner } from "../gateways/agent-runner.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import type { Profile } from "../profile.ts";
@@ -64,7 +64,7 @@ const noop: (msg: string) => void = () => {};
 describe("runPlanPhase", () => {
   test("returns { planText } on success", async () => {
     const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async () => ({
         exitCode: 0,
         result: "  ## Approach\nDo the thing.  ",
@@ -87,7 +87,7 @@ describe("runPlanPhase", () => {
 
   test("returns null when plan exit code is non-zero", async () => {
     const item = makeClaimedItem({ id: ITEM_ID });
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async () => ({ exitCode: 1, result: "Plan crashed." })),
       generateText: mock(async () => ({ exitCode: 0, text: "" })),
     };
@@ -106,7 +106,7 @@ describe("runPlanPhase", () => {
 
   test("returns null when plan text is empty after trimming", async () => {
     const item = makeClaimedItem({ id: ITEM_ID });
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async () => ({ exitCode: 0, result: "   " })),
       generateText: mock(async () => ({ exitCode: 0, text: "" })),
     };
@@ -126,7 +126,7 @@ describe("runPlanPhase", () => {
   test("writes plan file on success", async () => {
     const item = makeClaimedItem({ id: ITEM_ID });
     const paths = makePaths();
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async () => ({ exitCode: 0, result: "plan content" })),
       generateText: mock(async () => ({ exitCode: 0, text: "" })),
     };
@@ -143,7 +143,7 @@ describe("runPlanPhase", () => {
   test("writes failure result file on non-zero exit", async () => {
     const item = makeClaimedItem({ id: ITEM_ID });
     const paths = makePaths();
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async () => ({ exitCode: 2, result: "crashed" })),
       generateText: mock(async () => ({ exitCode: 0, text: "" })),
     };
@@ -165,7 +165,7 @@ describe("runPlanPhase", () => {
 describe("runExecuteValidateLoop", () => {
   test("returns { passed: true } when validate emits PASS on first attempt", async () => {
     const item = makeClaimedItem({ id: ITEM_ID });
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
         if (prompt.includes("EXECUTE phase")) return { exitCode: 0, result: "done" };
         return { exitCode: 0, result: "All good.\n\nVALIDATE: PASS" };
@@ -191,7 +191,7 @@ describe("runExecuteValidateLoop", () => {
 
   test("returns { passed: false } when execute exits non-zero", async () => {
     const item = makeClaimedItem({ id: ITEM_ID });
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
         if (prompt.includes("EXECUTE phase")) return { exitCode: 1, result: "error" };
         return { exitCode: 0, result: "VALIDATE: PASS" };
@@ -217,7 +217,7 @@ describe("runExecuteValidateLoop", () => {
 
   test("returns { passed: false } after exhausting retries", async () => {
     const item = makeClaimedItem({ id: ITEM_ID, retries: 1 });
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
         if (prompt.includes("EXECUTE phase")) return { exitCode: 0, result: "done" };
         return { exitCode: 0, result: "broken\n\nVALIDATE: FAIL" };
@@ -246,7 +246,7 @@ describe("runExecuteValidateLoop", () => {
     const item = makeClaimedItem({ id: ITEM_ID, retries: 1 });
     let validateCalls = 0;
     const sessionCalls: string[] = [];
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
         sessionCalls.push(prompt);
         if (prompt.includes("EXECUTE phase")) return { exitCode: 0, result: "executed" };
@@ -278,7 +278,7 @@ describe("runExecuteValidateLoop", () => {
   test("accumulates execute and validate results in transcript arrays", async () => {
     const item = makeClaimedItem({ id: ITEM_ID, retries: 1 });
     let validateCalls = 0;
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
         if (prompt.includes("EXECUTE phase")) return { exitCode: 0, result: `exec-result` };
         validateCalls += 1;
@@ -310,7 +310,7 @@ describe("runExecuteValidateLoop", () => {
   test("writes failure result file when execute fails", async () => {
     const item = makeClaimedItem({ id: ITEM_ID });
     const paths = makePaths();
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async () => ({ exitCode: 1, result: "broken" })),
       generateText: mock(async () => ({ exitCode: 0, text: "" })),
     };
@@ -346,7 +346,7 @@ describe("commitEngineeringChanges", () => {
     const git = makeMockGit({
       isWorktreeDirty: mock(async () => true),
     });
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async () => ({ exitCode: 0, result: "" })),
       generateText: mock(async () => ({ exitCode: 0, text: "feat: my commit" })),
     };
@@ -367,7 +367,7 @@ describe("commitEngineeringChanges", () => {
     const git = makeMockGit({
       isWorktreeDirty: mock(async () => false),
     });
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async () => ({ exitCode: 0, result: "" })),
       generateText: mock(async () => ({ exitCode: 0, text: "" })),
     };
@@ -404,7 +404,7 @@ describe("commitEngineeringChanges", () => {
         callOrder.push("commitAll");
       }),
     });
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async () => ({ exitCode: 0, result: "" })),
       generateText: mock(async () => ({ exitCode: 0, text: "feat: implement foo" })),
     };
@@ -436,7 +436,7 @@ describe("processEngineeringItem", () => {
 
   function makeFullDeps(gitOverrides?: Partial<GitGateway>): {
     git: GitGateway;
-    claude: ClaudeGateway;
+    claude: AgentRunner;
     fs: FsGateway;
     profile: Profile;
   } {
@@ -584,7 +584,7 @@ describe("processEngineeringItem", () => {
 
   test("validate without PASS/FAIL marker → generateText fallback assessor called, outcome reflects fallback", async () => {
     const item = makeClaimedItem({ id: ITEM_ID });
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
         if (prompt.includes("EXECUTE phase")) return { exitCode: 0, result: "done" };
         // Validate output has no PASS/FAIL marker — triggers fallback
@@ -614,7 +614,7 @@ describe("processEngineeringItem", () => {
 
   test("maxRetries=0: only one execute+validate attempt even when validate FAILs", async () => {
     const item = makeClaimedItem({ id: ITEM_ID, retries: 0 });
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
         if (prompt.includes("EXECUTE phase")) return { exitCode: 0, result: "done" };
         return { exitCode: 0, result: "VALIDATE: FAIL" };
@@ -641,7 +641,7 @@ describe("processEngineeringItem", () => {
   test("execute fails every attempt until exhaustion: all attempt results accumulated", async () => {
     const item = makeClaimedItem({ id: ITEM_ID, retries: 2 });
     let executeCalls = 0;
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
         if (prompt.includes("EXECUTE phase")) {
           executeCalls++;
@@ -732,7 +732,7 @@ describe("processEngineeringItem", () => {
     const git = makeMockGit({
       isWorktreeDirty: mock(async () => true),
     });
-    const claude: ClaudeGateway = {
+    const claude: AgentRunner = {
       runSession: mock(async () => ({ exitCode: 0, result: "" })),
       generateText: mock(async () => {
         throw new Error("LLM timed out");

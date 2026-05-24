@@ -1,4 +1,4 @@
-// Note: ClaudeGateway wraps the `claude` CLI process and is not unit-tested
+// The claude runner wraps the `claude` CLI process and is not unit-tested
 // directly, as doing so requires the claude binary to be installed. Its core
 // logic (JSONL result extraction and argv construction) is tested via
 // extract-result.test.ts and claude-argv.test.ts, and integration behaviour
@@ -7,9 +7,7 @@ import { buildSessionPreamble, extractResult, formatStderrEvent } from "../extra
 import { type Profile, resolveProfileModel } from "../profile.ts";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
 import { streamToAuditFile } from "./audit-stream.ts";
-import { buildClaudeArgv, type ClaudeSessionOptions } from "./claude-argv.ts";
-
-export type { ClaudeSessionOptions };
+import { buildClaudeArgv } from "./claude-argv.ts";
 
 function resolveClaudeBin(): string {
   const resolved = Bun.which("claude");
@@ -21,13 +19,6 @@ function resolveClaudeBin(): string {
   return resolved;
 }
 
-/**
- * Legacy alias for the runner-agnostic {@link AgentRunner}. Kept so existing
- * imports keep compiling; new code should import `AgentRunner` directly from
- * `./agent-runner.ts`.
- */
-export type ClaudeGateway = AgentRunner;
-
 async function runSession(
   prompt: string,
   cwd: string,
@@ -35,7 +26,8 @@ async function runSession(
   options: SessionOptions = {},
 ): Promise<{ exitCode: number; result: string }> {
   const argv = buildClaudeArgv(resolveClaudeBin(), prompt, options);
-  const proc = Bun.spawn(argv, { cwd, stdout: "pipe", stderr: "pipe" });
+  const spawnEnv = options.env ? { ...process.env, ...options.env } : undefined;
+  const proc = Bun.spawn(argv, { cwd, env: spawnEnv, stdout: "pipe", stderr: "pipe" });
 
   const existing = options.append
     ? await Bun.file(auditFile)
@@ -109,13 +101,6 @@ async function generateText(
   return { exitCode, text: stdout.trim() };
 }
 
-export function createClaudeGateway(): ClaudeGateway {
+export function createClaudeRunner(): AgentRunner {
   return { runSession, generateText };
 }
-
-/**
- * Preferred alias of {@link createClaudeGateway} that emphasises the
- * runner-agnostic interface. Use this in new call sites; `createClaudeGateway`
- * stays around for existing imports.
- */
-export const createClaudeRunner: () => AgentRunner = createClaudeGateway;
