@@ -123,7 +123,7 @@ export function extractOpencodeResult(exportDoc: OpencodeExport): string {
   // Walk backwards to the last assistant message that has text parts.
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
-    if (!msg || msg.info?.role !== "assistant") continue;
+    if (msg?.info?.role !== "assistant") continue;
     const textParts = (msg.parts ?? [])
       .filter((p) => p.type === "text" && typeof p.text === "string")
       .map((p) => p.text as string);
