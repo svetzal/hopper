@@ -1,5 +1,5 @@
-import type { Item } from "./store.ts";
 import { isRecord } from "./is-record.ts";
+import type { Item } from "./store.ts";
 
 /** One phase's worth of input lines and metadata. */
 export interface PhaseInput {
