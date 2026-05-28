@@ -23,6 +23,28 @@ export const INVESTIGATION_TOOLS: readonly string[] = [
 ];
 
 /**
+ * Git mutation commands shared between the execute and investigation denylists.
+ *
+ * Both {@link EXECUTE_DISALLOWED_TOOLS} and {@link INVESTIGATION_DISALLOWED_TOOLS}
+ * compose from this list; investigation adds three extra entries (`git clean`,
+ * `git reflog`, `git worktree`).
+ */
+const GIT_MUTATION_DENYLIST: readonly string[] = [
+  "Bash(git commit:*)",
+  "Bash(git add:*)",
+  "Bash(git push:*)",
+  "Bash(git merge:*)",
+  "Bash(git rebase:*)",
+  "Bash(git reset:*)",
+  "Bash(git checkout:*)",
+  "Bash(git switch:*)",
+  "Bash(git branch:*)",
+  "Bash(git tag:*)",
+  "Bash(git stash:*)",
+  "Bash(git cherry-pick:*)",
+];
+
+/**
  * Bash patterns that investigation sessions must not invoke.
  *
  * Uses the same Claude `disallowedTools` prefix-match syntax as
@@ -36,21 +58,12 @@ export const INVESTIGATION_TOOLS: readonly string[] = [
  * blocking `git branch -d|-D`. Use `git for-each-ref refs/heads` (read-only)
  * as the equivalent. Similarly `Bash(git stash:*)` blocks `git stash list`;
  * use `git log refs/stash` instead.
+ *
+ * Composes from {@link GIT_MUTATION_DENYLIST} plus three investigation-only entries.
  */
 export const INVESTIGATION_DISALLOWED_TOOLS: readonly string[] = [
   // Git mutators — must not rewrite history or touch refs
-  "Bash(git add:*)",
-  "Bash(git commit:*)",
-  "Bash(git push:*)",
-  "Bash(git merge:*)",
-  "Bash(git rebase:*)",
-  "Bash(git reset:*)",
-  "Bash(git checkout:*)",
-  "Bash(git switch:*)",
-  "Bash(git branch:*)",
-  "Bash(git tag:*)",
-  "Bash(git stash:*)",
-  "Bash(git cherry-pick:*)",
+  ...GIT_MUTATION_DENYLIST,
   "Bash(git clean:*)",
   "Bash(git reflog:*)",
   "Bash(git worktree:*)",
@@ -205,21 +218,10 @@ export function buildPlanOptions(): SessionOptions {
  * NOTE: Claude's disallow list is prefix-matched against tool input patterns
  * like `Bash(git commit:*)`. We deny the full `Bash(git ...)` namespace because
  * any mutating git call during execute would leak out of Hopper's control.
+ *
+ * Composes from {@link GIT_MUTATION_DENYLIST}.
  */
-export const EXECUTE_DISALLOWED_TOOLS: readonly string[] = [
-  "Bash(git commit:*)",
-  "Bash(git add:*)",
-  "Bash(git push:*)",
-  "Bash(git merge:*)",
-  "Bash(git rebase:*)",
-  "Bash(git reset:*)",
-  "Bash(git checkout:*)",
-  "Bash(git switch:*)",
-  "Bash(git branch:*)",
-  "Bash(git tag:*)",
-  "Bash(git stash:*)",
-  "Bash(git cherry-pick:*)",
-];
+export const EXECUTE_DISALLOWED_TOOLS: readonly string[] = [...GIT_MUTATION_DENYLIST];
 
 export function buildExecutePrompt(item: Item, planText: string): string {
   return (

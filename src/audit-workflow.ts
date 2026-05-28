@@ -1,4 +1,5 @@
 import type { Item } from "./store.ts";
+import { isRecord } from "./is-record.ts";
 
 /** One phase's worth of input lines and metadata. */
 export interface PhaseInput {
@@ -55,10 +56,6 @@ export interface AuditSummary {
 interface ContentBlock {
   type: string;
   [key: string]: unknown;
-}
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
 }
 
 function isContentBlock(v: unknown): v is ContentBlock {

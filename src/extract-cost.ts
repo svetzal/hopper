@@ -49,9 +49,7 @@ function numberOr(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
-}
+import { isRecord } from "./is-record.ts";
 
 /**
  * Parse a JSONL audit stream and return the cost telemetry from the *last*

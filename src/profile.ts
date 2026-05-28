@@ -29,6 +29,7 @@
  */
 
 import { toErrorMessage } from "./error-utils.ts";
+import { isRecord } from "./is-record.ts";
 
 /**
  * Vendor-agnostic model tier vocabulary. Every profile must bind these three
@@ -107,10 +108,6 @@ const PROFILE_NAME_RE = /^[a-z0-9_-]+$/;
  */
 export function isValidProfileName(name: string): boolean {
   return PROFILE_NAME_RE.test(name);
-}
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 /**
