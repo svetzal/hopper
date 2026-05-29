@@ -1,5 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
-import type { Profile } from "./profile.ts";
+import { describe, expect, test } from "bun:test";
 import type { Item } from "./store.ts";
 import {
   buildBranchSlugPrompt,
@@ -25,16 +24,6 @@ import {
   VALIDATE_TOOLS,
 } from "./task-type-workflow.ts";
 import { makeItem } from "./test-helpers.ts";
-
-const TEST_PROFILE: Profile = {
-  name: "test",
-  runner: "claude",
-  models: {
-    deep: { model: "opus" },
-    balanced: { model: "sonnet" },
-    fast: { model: "haiku" },
-  },
-};
 
 function makeInvestigationItem() {
   return makeItem({
