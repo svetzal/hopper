@@ -31,5 +31,8 @@
   },
   "dependencies": {
     "@types/node": "^25.9.1"
+  },
+  "overrides": {
+    "vite": "6.4.2"
   }
 }
