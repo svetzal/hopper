@@ -1,5 +1,4 @@
-import type { AgentRunner, SessionOptions } from "./gateways/agent-runner.ts";
-import type { Profile } from "./profile.ts";
+import type { SessionOptions } from "./gateways/agent-runner.ts";
 import type { Item } from "./store.ts";
 
 export type EngineeringPhase = "plan" | "execute" | "validate";
@@ -355,7 +354,7 @@ export function resolveValidateOutcome(
   return { passed: false, reason: "validate phase did not emit a PASS/FAIL marker" };
 }
 
-const MISSING_MARKER_REASON = "validate phase did not emit a PASS/FAIL marker";
+export const MISSING_MARKER_REASON = "validate phase did not emit a PASS/FAIL marker";
 
 /**
  * Build the prompt that asks the fast model to classify a validate-phase output as
@@ -383,76 +382,6 @@ export function normaliseValidateFallback(raw: string): "PASS" | "FAIL" | "UNCLE
   if (token === "PASS") return "PASS";
   if (token === "FAIL") return "FAIL";
   return "UNCLEAR";
-}
-
-/**
- * Resolve the validate outcome, falling back to a fast-model assessor when
- * the validate phase did not emit a PASS/FAIL marker.
- *
- * The fallback is only invoked for the missing-marker case — non-zero exit
- * codes and explicit PASS/FAIL markers are returned as-is.
- */
-export async function resolveValidateOutcomeWithFallback(
-  exitCode: number,
-  resultText: string,
-  claude: Pick<AgentRunner, "generateText">,
-  profile: Profile,
-  log?: (msg: string) => void,
-): Promise<{ passed: boolean; reason: string; fallbackUsed?: boolean }> {
-  const primary = resolveValidateOutcome(exitCode, resultText);
-
-  if (primary.reason !== MISSING_MARKER_REASON) {
-    return primary;
-  }
-
-  log?.("Validate marker missing — invoking fast fallback assessor...");
-
-  try {
-    const { exitCode: fallbackExitCode, text } = await claude.generateText(
-      buildValidateFallbackPrompt(resultText),
-      "fast",
-      { profile },
-    );
-
-    if (fallbackExitCode !== 0) {
-      log?.("Fallback assessor exited non-zero — defaulting to FAIL.");
-      return {
-        passed: false,
-        reason: "fallback assessor could not classify (defaulting to FAIL)",
-        fallbackUsed: true,
-      };
-    }
-
-    const verdict = normaliseValidateFallback(text);
-
-    if (verdict === "PASS") {
-      log?.("Fallback assessor reported PASS.");
-      return { passed: true, reason: "fallback assessor reported PASS", fallbackUsed: true };
-    }
-
-    if (verdict === "FAIL") {
-      log?.("Fallback assessor reported FAIL.");
-      return {
-        passed: false,
-        reason: "fallback assessor reported FAIL",
-        fallbackUsed: true,
-      };
-    }
-
-    log?.("Fallback assessor was UNCLEAR — defaulting to FAIL.");
-    return {
-      passed: false,
-      reason: "fallback assessor could not classify (defaulting to FAIL)",
-      fallbackUsed: true,
-    };
-  } catch {
-    log?.("Fallback assessor threw — defaulting to FAIL.");
-    return {
-      passed: false,
-      reason: "fallback assessor could not classify (defaulting to FAIL)",
-      fallbackUsed: true,
-    };
-  }
 }
 
 // ---------------------------------------------------------------------------

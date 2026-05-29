@@ -20,10 +20,13 @@ import {
   buildExecuteRemediationPrompt,
   buildPlanOptions,
   buildPlanPrompt,
+  buildValidateFallbackPrompt,
   buildValidateOptions,
   buildValidatePrompt,
+  MISSING_MARKER_REASON,
   normaliseBranchSlug,
-  resolveValidateOutcomeWithFallback,
+  normaliseValidateFallback,
+  resolveValidateOutcome,
 } from "../task-type-workflow.ts";
 import {
   type EngineeringAuditPaths,
@@ -88,6 +91,69 @@ async function resolveEngineeringCommitMessage(
   } catch (e) {
     log?.(`Commit message generation failed, using title: ${toErrorMessage(e)}`);
     return item.title;
+  }
+}
+
+export async function resolveValidateOutcomeWithFallback(
+  exitCode: number,
+  resultText: string,
+  claude: Pick<AgentRunner, "generateText">,
+  profile: Profile,
+  log?: (msg: string) => void,
+): Promise<{ passed: boolean; reason: string; fallbackUsed?: boolean }> {
+  const primary = resolveValidateOutcome(exitCode, resultText);
+
+  if (primary.reason !== MISSING_MARKER_REASON) {
+    return primary;
+  }
+
+  log?.("Validate marker missing — invoking fast fallback assessor...");
+
+  try {
+    const { exitCode: fallbackExitCode, text } = await claude.generateText(
+      buildValidateFallbackPrompt(resultText),
+      "fast",
+      { profile },
+    );
+
+    if (fallbackExitCode !== 0) {
+      log?.("Fallback assessor exited non-zero — defaulting to FAIL.");
+      return {
+        passed: false,
+        reason: "fallback assessor could not classify (defaulting to FAIL)",
+        fallbackUsed: true,
+      };
+    }
+
+    const verdict = normaliseValidateFallback(text);
+
+    if (verdict === "PASS") {
+      log?.("Fallback assessor reported PASS.");
+      return { passed: true, reason: "fallback assessor reported PASS", fallbackUsed: true };
+    }
+
+    if (verdict === "FAIL") {
+      log?.("Fallback assessor reported FAIL.");
+      return {
+        passed: false,
+        reason: "fallback assessor reported FAIL",
+        fallbackUsed: true,
+      };
+    }
+
+    log?.("Fallback assessor was UNCLEAR — defaulting to FAIL.");
+    return {
+      passed: false,
+      reason: "fallback assessor could not classify (defaulting to FAIL)",
+      fallbackUsed: true,
+    };
+  } catch {
+    log?.("Fallback assessor threw — defaulting to FAIL.");
+    return {
+      passed: false,
+      reason: "fallback assessor could not classify (defaulting to FAIL)",
+      fallbackUsed: true,
+    };
   }
 }
 
