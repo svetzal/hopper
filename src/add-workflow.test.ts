@@ -363,7 +363,11 @@ describe("resolveDependencies", () => {
     const result = resolveDependencies(["aaaaaaaa-1111-0000-0000-000000000000"], items);
     expect(result).toEqual({
       ok: true,
-      value: { resolvedIds: ["aaaaaaaa-1111-0000-0000-000000000000"], warnings: [] },
+      value: {
+        resolvedIds: ["aaaaaaaa-1111-0000-0000-000000000000"],
+        warnings: [],
+        hasPendingDep: true,
+      },
     });
   });
 
@@ -430,7 +434,91 @@ describe("resolveDependencies", () => {
 
   test("handles empty prefix list", () => {
     const result = resolveDependencies([], items);
-    expect(result).toEqual({ ok: true, value: { resolvedIds: [], warnings: [] } });
+    expect(result).toEqual({
+      ok: true,
+      value: { resolvedIds: [], warnings: [], hasPendingDep: false },
+    });
+  });
+
+  test("hasPendingDep is false when all deps are completed", () => {
+    const allCompleted = [
+      makeItem({ id: "aaaaaaaa-1111-0000-0000-000000000000", status: "completed" }),
+      makeItem({ id: "bbbbbbbb-2222-0000-0000-000000000000", status: "completed" }),
+    ];
+    const result = resolveDependencies(
+      ["aaaaaaaa-1111-0000-0000-000000000000", "bbbbbbbb-2222-0000-0000-000000000000"],
+      allCompleted,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.hasPendingDep).toBe(false);
+    }
+  });
+
+  test("hasPendingDep is true when deps include a queued item", () => {
+    const mixed = [
+      makeItem({ id: "aaaaaaaa-1111-0000-0000-000000000000", status: "completed" }),
+      makeItem({ id: "bbbbbbbb-2222-0000-0000-000000000000", status: "queued" }),
+    ];
+    const result = resolveDependencies(
+      ["aaaaaaaa-1111-0000-0000-000000000000", "bbbbbbbb-2222-0000-0000-000000000000"],
+      mixed,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.hasPendingDep).toBe(true);
+    }
+  });
+
+  test("hasPendingDep is true when all deps are queued", () => {
+    const allQueued = [
+      makeItem({ id: "aaaaaaaa-1111-0000-0000-000000000000", status: "queued" }),
+      makeItem({ id: "cccccccc-3333-0000-0000-000000000000", status: "queued" }),
+    ];
+    const result = resolveDependencies(
+      ["aaaaaaaa-1111-0000-0000-000000000000", "cccccccc-3333-0000-0000-000000000000"],
+      allQueued,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.hasPendingDep).toBe(true);
+    }
+  });
+
+  test("single completed dep: hasPendingDep false, warning contains 'already completed'", () => {
+    const result = resolveDependencies(["bbbbbbbb-2222-0000-0000-000000000000"], items);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.hasPendingDep).toBe(false);
+      expect(result.value.warnings[0]).toContain("already completed");
+    }
+  });
+
+  test("single cancelled dep: hasPendingDep false, warning contains 'cancelled'", () => {
+    const withCancelled = [
+      makeItem({ id: "dddddddd-4444-0000-0000-000000000000", status: "cancelled" }),
+    ];
+    const result = resolveDependencies(["dddddddd-4444-0000-0000-000000000000"], withCancelled);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.hasPendingDep).toBe(false);
+      expect(result.value.warnings[0]).toContain("cancelled");
+    }
+  });
+
+  test("cancelled + queued deps: hasPendingDep true", () => {
+    const mixed = [
+      makeItem({ id: "dddddddd-4444-0000-0000-000000000000", status: "cancelled" }),
+      makeItem({ id: "eeeeeeee-5555-0000-0000-000000000000", status: "queued" }),
+    ];
+    const result = resolveDependencies(
+      ["dddddddd-4444-0000-0000-000000000000", "eeeeeeee-5555-0000-0000-000000000000"],
+      mixed,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.hasPendingDep).toBe(true);
+    }
   });
 });
 

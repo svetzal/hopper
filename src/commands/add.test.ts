@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ProfilesGateway } from "../gateways/profiles-gateway.ts";
-import { makeParsed, setupTempStoreDir } from "../test-helpers.ts";
+import { addItem } from "../store.ts";
+import { makeItem, makeParsed, setupTempStoreDir } from "../test-helpers.ts";
 import type { TitleGenerator } from "../titler.ts";
 import { addCommand } from "./add.ts";
 
@@ -134,5 +135,40 @@ describe("addCommand", () => {
     );
 
     expect(result.status).toBe("error");
+  });
+
+  test("item with already-completed dep lands QUEUED, dependsOn recorded, humanOutput has no 'blocked on'", async () => {
+    const dep = makeItem({ status: "completed" });
+    await addItem(dep);
+
+    const result = await addCommand(
+      makeParsed("add", ["A follow-up task"], {}, { "after-item": [dep.id] }),
+      makeTitler("Follow-up Task"),
+      makeStubProfilesGateway(),
+    );
+
+    expect(result.status).toBe("success");
+    if (result.status === "success") {
+      expect(result.data.status).toBe("queued");
+      expect(result.data.dependsOn).toEqual([dep.id]);
+      expect(result.humanOutput).not.toContain("blocked on");
+    }
+  });
+
+  test("item with pending dep lands BLOCKED (regression guard)", async () => {
+    const dep = makeItem({ status: "queued" });
+    await addItem(dep);
+
+    const result = await addCommand(
+      makeParsed("add", ["A dependent task"], {}, { "after-item": [dep.id] }),
+      makeTitler("Dependent Task"),
+      makeStubProfilesGateway(),
+    );
+
+    expect(result.status).toBe("success");
+    if (result.status === "success") {
+      expect(result.data.status).toBe("blocked");
+      expect(result.humanOutput).toContain("blocked on");
+    }
   });
 });

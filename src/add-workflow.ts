@@ -244,7 +244,7 @@ export function hasCycle(depIds: string[], allItems: Item[]): boolean {
 // ---------------------------------------------------------------------------
 
 export type DepResolutionResult = Result<
-  { resolvedIds: string[]; warnings: string[] },
+  { resolvedIds: string[]; warnings: string[]; hasPendingDep: boolean },
   AddValidationError
 >;
 
@@ -261,6 +261,7 @@ export type DepResolutionResult = Result<
 export function resolveDependencies(idPrefixes: string[], allItems: Item[]): DepResolutionResult {
   const resolvedIds: string[] = [];
   const warnings: string[] = [];
+  let hasPendingDep = false;
 
   for (const idPrefix of idPrefixes) {
     const matches = allItems.filter((i) => i.id === idPrefix || i.id.startsWith(idPrefix));
@@ -275,6 +276,10 @@ export function resolveDependencies(idPrefixes: string[], allItems: Item[]): Dep
     const dep = matches[0] as (typeof matches)[0];
     if (dep.status === Status.COMPLETED) {
       warnings.push(`Warning: dependency ${dep.id.slice(0, 8)} is already completed`);
+    } else if (dep.status === Status.CANCELLED) {
+      warnings.push(`Warning: dependency ${dep.id.slice(0, 8)} is cancelled`);
+    } else {
+      hasPendingDep = true;
     }
     resolvedIds.push(dep.id);
   }
@@ -283,7 +288,7 @@ export function resolveDependencies(idPrefixes: string[], allItems: Item[]): Dep
     return err({ code: "CIRCULAR_DEPENDENCY" });
   }
 
-  return ok({ resolvedIds, warnings });
+  return ok({ resolvedIds, warnings, hasPendingDep });
 }
 
 // ---------------------------------------------------------------------------

@@ -182,7 +182,9 @@ export function addCommand(
         warnings.push(warning);
       }
       dependsOn = depResult.resolvedIds;
-      itemStatus = Status.BLOCKED;
+      if (depResult.hasPendingDep) {
+        itemStatus = Status.BLOCKED;
+      }
     }
 
     // 12. Build item
@@ -214,7 +216,7 @@ export function addCommand(
     const pBadge = priorityBadge(priority);
     const tBadge = tagBadge(tags);
     let humanOutput: string;
-    if (dependsOn) {
+    if (itemStatus === Status.BLOCKED && dependsOn) {
       const depBadge = dependsOn.map((id) => shortId(id)).join(", ");
       humanOutput = `Added: ${title}${pBadge}${tBadge} (blocked on: ${depBadge})${presetSuffix}`;
     } else if (scheduling.recurrence) {
