@@ -19,6 +19,7 @@ import {
   normaliseCommitMessage,
   normaliseValidateFallback,
   PLAN_TOOLS,
+  resolveBranchSlugSource,
   resolveValidateOutcome,
   VALIDATE_ALLOWED_TOOLS,
   VALIDATE_TOOLS,
@@ -506,5 +507,20 @@ describe("normaliseValidateFallback", () => {
     expect(normaliseValidateFallback("I think it passes")).toBe("UNCLEAR");
     expect(normaliseValidateFallback("UNKNOWN")).toBe("UNCLEAR");
     expect(normaliseValidateFallback("")).toBe("UNCLEAR");
+  });
+});
+
+describe("resolveBranchSlugSource", () => {
+  test("returns cached when engineeringBranchSlug is set", () => {
+    const result = resolveBranchSlugSource({ engineeringBranchSlug: "fix-login-bug" });
+    expect(result).toEqual({ type: "cached", slug: "fix-login-bug" });
+  });
+
+  test("returns generate when engineeringBranchSlug is undefined", () => {
+    expect(resolveBranchSlugSource({})).toEqual({ type: "generate" });
+  });
+
+  test("returns generate when engineeringBranchSlug is empty string", () => {
+    expect(resolveBranchSlugSource({ engineeringBranchSlug: "" })).toEqual({ type: "generate" });
   });
 });

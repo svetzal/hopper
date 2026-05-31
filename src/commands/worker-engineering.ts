@@ -3,6 +3,7 @@ import {
   buildEngineeringFailureResult,
   buildEngineeringTranscript,
   resolveEngineeringCommitFallback,
+  resolveEngineeringPreconditions,
 } from "../engineering-workflow.ts";
 import { toErrorMessage } from "../error-utils.ts";
 import type { AgentRunner } from "../gateways/agent-runner.ts";
@@ -26,6 +27,7 @@ import {
   MISSING_MARKER_REASON,
   normaliseBranchSlug,
   normaliseValidateFallback,
+  resolveBranchSlugSource,
   resolveValidateOutcome,
 } from "../task-type-workflow.ts";
 import {
@@ -444,15 +446,13 @@ export async function processEngineeringItem(
   const { git, claude, fs, profile } = deps;
   const log = createLogger(item.id, concurrency);
 
-  if (!item.workingDir || !item.branch) {
-    // Engineering items need both to work inside an isolated worktree. The add
-    // command enforces this on enqueue, but guard here belt-and-suspenders.
-    const message = "Engineering items require --dir and --branch; cannot run.";
-    log(message);
+  const preconditions = resolveEngineeringPreconditions(item);
+  if (!preconditions.ok) {
+    log(preconditions.reason);
     const { auditDir, resultFile } = resolveAuditPaths(item.id, hopperHome);
     await safeVoid(() => fs.ensureDir(auditDir), "Audit dir creation failed", log);
-    await safeVoid(() => fs.writeFile(resultFile, message), "Result file write failed", log);
-    await safeRequeue(item.id, message, agentName, log);
+    await safeVoid(() => fs.writeFile(resultFile, preconditions.reason), "Result file write failed", log);
+    await safeRequeue(item.id, preconditions.reason, agentName, log);
     return;
   }
 
@@ -468,8 +468,9 @@ export async function processEngineeringItem(
   // Resolve branch slug — use cached value when available so re-claims always
   // produce the same work-branch name regardless of LLM non-determinism.
   let slug: string | null;
-  if (item.engineeringBranchSlug) {
-    slug = item.engineeringBranchSlug;
+  const slugSource = resolveBranchSlugSource(item);
+  if (slugSource.type === "cached") {
+    slug = slugSource.slug;
     log(`Using cached branch slug: ${slug}`);
   } else {
     log("Generating branch slug...");
@@ -490,8 +491,8 @@ export async function processEngineeringItem(
     log(`Setting up worktree at ${worktreePath}...`);
     await orchestrateWorktreeSetup({
       git,
-      repoDir: item.workingDir,
-      branch: item.branch,
+      repoDir: item.workingDir!,
+      branch: item.branch!,
       worktreePath,
       itemId: item.id,
       workBranchOverride: workBranch,

@@ -418,6 +418,20 @@ export function normaliseBranchSlug(raw: string): string | null {
   return truncated || null;
 }
 
+export type BranchSlugSource = { type: "cached"; slug: string } | { type: "generate" };
+
+/**
+ * Decide whether the item already has a cached branch slug or needs one
+ * generated. Using a cached slug on re-claims ensures the same work-branch
+ * name regardless of LLM non-determinism.
+ */
+export function resolveBranchSlugSource(item: { engineeringBranchSlug?: string }): BranchSlugSource {
+  if (item.engineeringBranchSlug) {
+    return { type: "cached", slug: item.engineeringBranchSlug };
+  }
+  return { type: "generate" };
+}
+
 export function buildCommitMessagePrompt(
   title: string,
   description: string,

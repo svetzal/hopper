@@ -1,6 +1,24 @@
 import { normaliseCommitMessage } from "./task-type-workflow.ts";
 
 /**
+ * Verify that an engineering item carries the metadata required to run inside
+ * an isolated worktree. The add command enforces this on enqueue; this guard
+ * is a belt-and-suspenders check in the worker.
+ */
+export function resolveEngineeringPreconditions(item: {
+  workingDir?: string;
+  branch?: string;
+}): { ok: true } | { ok: false; reason: string } {
+  if (!item.workingDir || !item.branch) {
+    return {
+      ok: false,
+      reason: "Engineering items require --dir and --branch; cannot run.",
+    };
+  }
+  return { ok: true };
+}
+
+/**
  * Compose the result markdown for an engineering attempt transcript, with a
  * section per execute/validate pair so coordinators reviewing `hopper show`
  * or `<id>-result.md` can see how each remediation attempt unfolded.

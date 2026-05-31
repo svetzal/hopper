@@ -2,12 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { makeItem } from "./test-helpers.ts";
 import {
   buildCommitMessage,
+  buildInvestigationShimEnv,
   buildTaskPrompt,
   resolveAttemptAuditPath,
   resolveAuditPaths,
   resolveAutoRequeue,
   resolveCompletionAction,
+  resolveCompletionLabels,
   resolveEngineeringAuditPaths,
+  resolveExecutionPlan,
   resolveLoopAction,
   resolveMergeAction,
   resolvePostClaimLoopAction,
@@ -501,6 +504,89 @@ describe("worker-workflow", () => {
       expect(resolveAttemptAuditPath(ID, HOPPER_HOME, "validate", 3)).toBe(
         `/home/user/.hopper/audit/${ID}-validate-3.jsonl`,
       );
+    });
+  });
+
+  describe("buildInvestigationShimEnv", () => {
+    test("sets HOPPER_REAL_PATH to the provided realPath", () => {
+      const env = buildInvestigationShimEnv("/home/.hopper", "/usr/bin:/bin");
+      expect(env.HOPPER_REAL_PATH).toBe("/usr/bin:/bin");
+    });
+
+    test("prepends the worker-shims dir to PATH", () => {
+      const env = buildInvestigationShimEnv("/home/.hopper", "/usr/bin:/bin");
+      expect(env.PATH).toBe("/home/.hopper/worker-shims:/usr/bin:/bin");
+    });
+
+    test("shim dir is nested under hopperHome/worker-shims", () => {
+      const env = buildInvestigationShimEnv("/custom/hopper", "/original/path");
+      expect(env.PATH.startsWith("/custom/hopper/worker-shims:")).toBe(true);
+    });
+  });
+
+  describe("resolveExecutionPlan", () => {
+    test("returns command plan when item has a command", () => {
+      const item = makeItem({ command: "npm test" });
+      const plan = resolveExecutionPlan(item, HOPPER_HOME, "/usr/bin");
+      expect(plan).toEqual({ type: "command", command: "npm test" });
+    });
+
+    test("returns investigation plan for investigation items", () => {
+      const item = makeItem({ type: "investigation" });
+      const plan = resolveExecutionPlan(item, HOPPER_HOME, "/usr/bin:/bin");
+      expect(plan.type).toBe("investigation");
+      if (plan.type === "investigation") {
+        expect(plan.prompt).toContain("INVESTIGATION");
+        expect(plan.options.env?.PATH).toContain(`${HOPPER_HOME}/worker-shims`);
+        expect(plan.options.env?.HOPPER_REAL_PATH).toBe("/usr/bin:/bin");
+      }
+    });
+
+    test("investigation plan PATH prepends shim dir before realPath", () => {
+      const item = makeItem({ type: "investigation" });
+      const plan = resolveExecutionPlan(item, HOPPER_HOME, "/original");
+      if (plan.type === "investigation") {
+        const pathParts = plan.options.env?.PATH?.split(":");
+        expect(pathParts?.[0]).toBe(`${HOPPER_HOME}/worker-shims`);
+        expect(pathParts?.[1]).toBe("/original");
+      }
+    });
+
+    test("returns task plan for regular items", () => {
+      const item = makeItem({ title: "Fix bug" });
+      const plan = resolveExecutionPlan(item, HOPPER_HOME, "/usr/bin");
+      expect(plan.type).toBe("task");
+      if (plan.type === "task") {
+        expect(plan.prompt).toContain("Fix bug");
+      }
+    });
+
+    test("command takes precedence over item type", () => {
+      const item = makeItem({ type: "investigation", command: "echo hello" });
+      const plan = resolveExecutionPlan(item, HOPPER_HOME, "/usr/bin");
+      expect(plan.type).toBe("command");
+    });
+  });
+
+  describe("resolveCompletionLabels", () => {
+    test("returns Command labels when item has a command", () => {
+      expect(resolveCompletionLabels({ command: "npm test" })).toEqual({
+        outputLabel: "Command",
+        sessionLabel: "Command",
+      });
+    });
+
+    test("returns Claude labels when item has no command", () => {
+      expect(resolveCompletionLabels({})).toEqual({
+        outputLabel: "Claude",
+        sessionLabel: "Claude session",
+      });
+    });
+
+    test("undefined command is treated as no command", () => {
+      const labels = resolveCompletionLabels({ command: undefined });
+      expect(labels.outputLabel).toBe("Claude");
+      expect(labels.sessionLabel).toBe("Claude session");
     });
   });
 });

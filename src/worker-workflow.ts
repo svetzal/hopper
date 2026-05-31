@@ -1,5 +1,10 @@
 import { join } from "node:path";
+import type { SessionOptions } from "./gateways/agent-runner.ts";
 import type { Item } from "./store.ts";
+import {
+  buildInvestigationOptions,
+  buildInvestigationPrompt,
+} from "./task-type-workflow.ts";
 
 // ---------------------------------------------------------------------------
 // Work setup
@@ -359,4 +364,70 @@ export function resolveAttemptAuditPath(
 ): string {
   const suffix = attempt <= 1 ? "" : `-${attempt}`;
   return join(hopperHome, "audit", `${itemId}-${phase}${suffix}.jsonl`);
+}
+
+// ---------------------------------------------------------------------------
+// Execution plan — dispatch decisions for executeWork
+// ---------------------------------------------------------------------------
+
+export type ExecutionPlan =
+  | { type: "command"; command: string }
+  | { type: "investigation"; prompt: string; options: SessionOptions }
+  | { type: "task"; prompt: string; options: SessionOptions };
+
+/**
+ * Build the environment that prepends the worker PATH-shim directory so
+ * denied commands are intercepted regardless of how Bash composes the call.
+ */
+export function buildInvestigationShimEnv(
+  hopperHome: string,
+  realPath: string,
+): { HOPPER_REAL_PATH: string; PATH: string } {
+  const shimDir = join(hopperHome, "worker-shims");
+  return {
+    HOPPER_REAL_PATH: realPath,
+    PATH: `${shimDir}:${realPath}`,
+  };
+}
+
+/**
+ * Decide how to execute a work item: run a shell command, run an
+ * investigation session (sandboxed, read-only), or run a standard task
+ * session.
+ *
+ * The returned plan contains everything the shell needs except `profile`
+ * (which is injected at dispatch time so the pure function stays testable).
+ */
+export function resolveExecutionPlan(
+  item: Item,
+  hopperHome: string,
+  realPath: string,
+): ExecutionPlan {
+  if (item.command) {
+    return { type: "command", command: item.command };
+  }
+  if (item.type === "investigation") {
+    const prompt = buildInvestigationPrompt(item);
+    const env = buildInvestigationShimEnv(hopperHome, realPath);
+    return { type: "investigation", prompt, options: { ...buildInvestigationOptions(), env } };
+  }
+  return { type: "task", prompt: buildTaskPrompt(item), options: {} };
+}
+
+// ---------------------------------------------------------------------------
+// Completion labels
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the display labels used in completion log messages based on whether
+ * the item ran a shell command or an agent session.
+ */
+export function resolveCompletionLabels(item: {
+  command?: string;
+}): { outputLabel: string; sessionLabel: string } {
+  const isCommand = Boolean(item.command);
+  return {
+    outputLabel: isCommand ? "Command" : "Claude",
+    sessionLabel: isCommand ? "Command" : "Claude session",
+  };
 }

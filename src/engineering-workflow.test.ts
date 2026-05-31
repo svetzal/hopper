@@ -3,7 +3,33 @@ import {
   buildEngineeringFailureResult,
   buildEngineeringTranscript,
   resolveEngineeringCommitFallback,
+  resolveEngineeringPreconditions,
 } from "./engineering-workflow.ts";
+
+describe("resolveEngineeringPreconditions", () => {
+  test("returns ok when both workingDir and branch are present", () => {
+    expect(resolveEngineeringPreconditions({ workingDir: "/repo", branch: "main" })).toEqual({
+      ok: true,
+    });
+  });
+
+  test("returns failure when workingDir is missing", () => {
+    const result = resolveEngineeringPreconditions({ branch: "main" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain("--dir");
+  });
+
+  test("returns failure when branch is missing", () => {
+    const result = resolveEngineeringPreconditions({ workingDir: "/repo" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain("--branch");
+  });
+
+  test("returns failure when both are missing", () => {
+    const result = resolveEngineeringPreconditions({});
+    expect(result.ok).toBe(false);
+  });
+});
 
 describe("buildEngineeringTranscript", () => {
   test("single attempt: no attempt labels", () => {

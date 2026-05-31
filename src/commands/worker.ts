@@ -7,13 +7,13 @@ import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import type { WorkerShimGateway } from "../gateways/worker-shim-gateway.ts";
 import type { Profile } from "../profile.ts";
 import type { ClaimedItem, Item } from "../store.ts";
-import { buildInvestigationOptions, buildInvestigationPrompt } from "../task-type-workflow.ts";
 import {
   buildCommitMessage,
-  buildTaskPrompt,
   resolveAuditPaths,
   resolveAutoRequeue,
   resolveCompletionAction,
+  resolveCompletionLabels,
+  resolveExecutionPlan,
   resolveMergeAction,
   resolvePostClaudeAction,
   resolveWorkSetup,
@@ -57,7 +57,7 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
   const { action, result: finalResult } = resolveCompletionAction(exitCode, result, mergeNote);
   await fs.writeFile(resultFile, finalResult);
 
-  const outputLabel = item.command ? "Command" : "Claude";
+  const { outputLabel, sessionLabel } = resolveCompletionLabels(item);
   log(`--- ${outputLabel} Output ---`);
   log(result);
   if (mergeNote) log(mergeNote.trim());
@@ -66,7 +66,6 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
   if (action === "complete") {
     await logCompleteOutcome(item.claimToken, agentName, finalResult, log);
   } else {
-    const sessionLabel = item.command ? "Command" : "Claude session";
     log(`${sessionLabel} failed for: ${item.title} (${item.id})`);
     if (workBranch) log(`Work branch ${workBranch} preserved for review.`);
 
@@ -147,24 +146,23 @@ async function executeWork(
   log: LogFn,
 ): Promise<{ exitCode: number; result: string }> {
   const { claude, shell, profile } = deps;
-  if (item.command) {
+  const plan = resolveExecutionPlan(item, hopperHome, process.env.PATH ?? "");
+  if (plan.type === "command") {
     log(`Starting command...\nAudit log: ${auditFile}`);
-    return shell.runCommand(item.command, workDir ?? process.cwd(), auditFile);
+    return shell.runCommand(plan.command, workDir ?? process.cwd(), auditFile);
   }
-  if (item.type === "investigation") {
-    const prompt = buildInvestigationPrompt(item);
-    const shimDir = join(hopperHome, "worker-shims");
-    const shimEnv: Record<string, string> = {
-      HOPPER_REAL_PATH: process.env.PATH ?? "",
-      PATH: `${shimDir}:${process.env.PATH ?? ""}`,
-    };
-    const options = { ...buildInvestigationOptions(), profile, env: shimEnv };
+  if (plan.type === "investigation") {
     log(`Starting investigation session (deep, read-only)...\nAudit log: ${auditFile}`);
-    return claude.runSession(prompt, workDir ?? process.cwd(), auditFile, options);
+    return claude.runSession(plan.prompt, workDir ?? process.cwd(), auditFile, {
+      ...plan.options,
+      profile,
+    });
   }
-  const prompt = buildTaskPrompt(item);
   log(`Starting agent session...\nAudit log: ${auditFile}`);
-  return claude.runSession(prompt, workDir ?? process.cwd(), auditFile, { profile });
+  return claude.runSession(plan.prompt, workDir ?? process.cwd(), auditFile, {
+    ...plan.options,
+    profile,
+  });
 }
 
 export async function processItem(
