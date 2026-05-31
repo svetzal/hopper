@@ -1,6 +1,7 @@
 import type { Profile } from "../profile.ts";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
 import { createClaudeRunner } from "./claude-gateway.ts";
+import { createCodexRunner } from "./codex-gateway.ts";
 import { createOpencodeRunner } from "./opencode-gateway.ts";
 
 /**
@@ -21,11 +22,13 @@ import { createOpencodeRunner } from "./opencode-gateway.ts";
 export interface RoutingRunnerDeps {
   claude?: AgentRunner;
   opencode?: AgentRunner;
+  codex?: AgentRunner;
 }
 
 export function createRoutingRunner(deps: RoutingRunnerDeps = {}): AgentRunner {
   const claude = deps.claude ?? createClaudeRunner();
   const opencode = deps.opencode ?? createOpencodeRunner();
+  const codex = deps.codex ?? createCodexRunner();
 
   function pick(profile: Profile | undefined, context: string): AgentRunner {
     if (!profile) {
@@ -33,7 +36,9 @@ export function createRoutingRunner(deps: RoutingRunnerDeps = {}): AgentRunner {
         `Routing runner called without a profile (${context}); the caller must pass options.profile`,
       );
     }
-    return profile.runner === "opencode" ? opencode : claude;
+    if (profile.runner === "opencode") return opencode;
+    if (profile.runner === "codex") return codex;
+    return claude;
   }
 
   return {

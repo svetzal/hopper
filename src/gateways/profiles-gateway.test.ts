@@ -139,7 +139,7 @@ describe("createProfilesGateway", () => {
       expect(cfg.defaultProfile).toBe("openai");
 
       const names = await gateway.listProfileNames();
-      expect(names.sort()).toEqual(["anthropic", "ollama", "openai", "openrouter"]);
+      expect(names.sort()).toEqual(["anthropic", "codex", "ollama", "openai", "openrouter"]);
 
       for (const name of Object.keys(SHIPPED_PROFILES)) {
         const result = await gateway.loadProfile(name);
@@ -164,6 +164,29 @@ describe("createProfilesGateway", () => {
       if (result.ok) expect(result.profile.runner).toBe("claude");
     });
 
+    test("fills in missing shipped profile files without overwriting existing ones", async () => {
+      await writeFile(join(tempHome, "config.json"), JSON.stringify({ defaultProfile: "openai" }));
+      await mkdir(join(tempHome, "profiles"), { recursive: true });
+      await writeFile(
+        join(tempHome, "profiles", "openai.json"),
+        JSON.stringify({ runner: "claude", models: { deep: "x", balanced: "y", fast: "z" } }),
+      );
+
+      const wrote = await gateway.bootstrap();
+      expect(wrote).toBe(true);
+
+      const names = await gateway.listProfileNames();
+      expect(names.sort()).toEqual(["anthropic", "codex", "ollama", "openai", "openrouter"]);
+
+      const openai = await gateway.loadProfile("openai");
+      expect(openai.ok).toBe(true);
+      if (openai.ok) expect(openai.profile.runner).toBe("claude");
+
+      const codex = await gateway.loadProfile("codex");
+      expect(codex.ok).toBe(true);
+      if (codex.ok) expect(codex.profile.runner).toBe("codex");
+    });
+
     test("fills in missing files when only config.json is present", async () => {
       await writeFile(join(tempHome, "config.json"), JSON.stringify({ defaultProfile: "ollama" }));
 
@@ -171,7 +194,7 @@ describe("createProfilesGateway", () => {
       expect(wrote).toBe(true);
 
       const names = await gateway.listProfileNames();
-      expect(names.sort()).toEqual(["anthropic", "ollama", "openai", "openrouter"]);
+      expect(names.sort()).toEqual(["anthropic", "codex", "ollama", "openai", "openrouter"]);
 
       // Existing config.json must not be overwritten.
       const cfg = await gateway.loadConfig();
@@ -186,7 +209,7 @@ describe("createProfilesGateway", () => {
       );
 
       const wrote = await gateway.bootstrap();
-      expect(wrote).toBe(true); // wrote anthropic, ollama, openrouter, config.json
+      expect(wrote).toBe(true); // wrote anthropic, codex, ollama, openrouter, config.json
 
       const result = await gateway.loadProfile("openai");
       expect(result.ok).toBe(true);

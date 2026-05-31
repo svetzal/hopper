@@ -12,6 +12,7 @@ import { type Profile, type ProfileParseResult, parseProfile } from "../profile.
  *   profiles/
  *     anthropic.json       claude runner — opus/sonnet/haiku
  *     openai.json          opencode runner — gpt-5.5/5.4/5.4-mini   (default)
+ *     codex.json           codex runner — OpenAI Codex CLI
  *     openrouter.json      opencode runner — glm-5.1 + others
  *     ollama.json          opencode runner — local qwen3.6
  * ```
@@ -21,9 +22,9 @@ import { type Profile, type ProfileParseResult, parseProfile } from "../profile.
  * Anthropic subscription. The `anthropic` profile is still shipped for
  * direct-API-key users.
  *
- * On first use (no `config.json`, no `profiles/`), {@link bootstrap} writes
- * all four templates and a minimal `config.json`. Existing files are never
- * overwritten — bootstrap is one-shot.
+ * On first use, {@link bootstrap} writes the shipped templates and a minimal
+ * `config.json`. Later releases may add new templates; bootstrap fills in
+ * missing shipped profiles without overwriting any existing user files.
  */
 
 export interface HopperConfig {
@@ -52,11 +53,7 @@ export interface ProfilesGateway {
   writeConfig(config: HopperConfig): Promise<void>;
   /** Write a profile file (creates parent dir if missing; overwrites). */
   writeProfile(name: string, body: string): Promise<void>;
-  /**
-   * Create `config.json` + the four shipped profile templates if either
-   * `config.json` or the `profiles/` directory is missing. Idempotent — never
-   * touches existing files. Returns true if anything was written.
-   */
+  /** Create missing config/profile templates. Idempotent; never overwrites existing files. */
   bootstrap(): Promise<boolean>;
 }
 
@@ -88,6 +85,19 @@ export const SHIPPED_PROFILES: Record<string, string> = {
         balanced: "openai/gpt-5.4",
         fast: "openai/gpt-5.4-mini",
         "gpt-5.3-codex": "openai/gpt-5.3-codex",
+      },
+    },
+    null,
+    2,
+  ),
+  codex: JSON.stringify(
+    {
+      runner: "codex",
+      models: {
+        deep: "gpt-5.5",
+        balanced: "gpt-5.4",
+        fast: "gpt-5.4-mini",
+        "gpt-5.3-codex": "gpt-5.3-codex",
       },
     },
     null,
@@ -206,15 +216,6 @@ export function createProfilesGateway(hopperHome?: string): ProfilesGateway {
     async bootstrap(): Promise<boolean> {
       const configFile = Bun.file(configFilePath);
       const configExists = await configFile.exists();
-
-      let profilesDirExists = true;
-      try {
-        await readdir(profilesDirPath);
-      } catch {
-        profilesDirExists = false;
-      }
-
-      if (configExists && profilesDirExists) return false;
 
       await mkdir(profilesDirPath, { recursive: true });
 

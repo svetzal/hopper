@@ -108,15 +108,19 @@ hopper cancel a3       # matches if unambiguous
 
 ## Agent Runners
 
-The `hopper worker` loop can dispatch session work to either of two agent runners:
+The `hopper worker` loop dispatches each item through the runner selected by its
+profile (`hopper add --profile <name>`; defaults come from
+`~/.hopper/config.json`). Shipped profiles cover three agent runners:
 
-- **`--runner claude`** (default) — uses the [Claude Code](https://www.anthropic.com/claude/claude-code) CLI. Hopper passes craftsperson references via `--agent`, tool allowlists/denylists via `--tools`/`--allowedTools`/`--disallowedTools`, and parses the canonical `{"type":"result"}` event from claude's stream-json output.
-- **`--runner opencode`** — uses the [opencode](https://opencode.ai) CLI. Tool allowlists/denylists and `permission-mode` are silently ignored (opencode has no equivalent CLI flags); craftsperson definitions are inlined via the `OPENCODE_CONFIG_CONTENT` env var at invocation time, sourced from `~/.claude/agents/<name>.md` bodies. Final result text is extracted by calling `opencode export <sessionID>` after the run completes. Hopper's fast-tier one-shots (branch slug, commit message, validate-marker fallback) continue running on Claude Code regardless of `--runner` choice.
+- **`claude`** — uses the [Claude Code](https://www.anthropic.com/claude/claude-code) CLI. Hopper passes craftsperson references via `--agent`, tool allowlists/denylists via `--tools`/`--allowedTools`/`--disallowedTools`, and parses the canonical `{"type":"result"}` event from claude's stream-json output.
+- **`opencode`** — uses the [opencode](https://opencode.ai) CLI. Tool allowlists/denylists and `permission-mode` are silently ignored (opencode has no equivalent CLI flags); craftsperson definitions are inlined via the `OPENCODE_CONFIG_CONTENT` env var at invocation time, sourced from `~/.claude/agents/<name>.md` bodies. Final result text is extracted by calling `opencode export <sessionID>` after the run completes.
+- **`codex`** — uses the Codex CLI via `codex exec --json`. Hopper writes Codex's JSONL event stream to the audit file and captures the canonical final result with `--output-last-message`. Codex has no native craftsperson flag, so Hopper prepends the selected craftsperson body to the prompt; tool allowlists/denylists are enforced by Hopper's worker PATH shims rather than Codex CLI flags.
 
 Hopper addresses models through a vendor-agnostic three-tier vocabulary — `deep`, `balanced`, `fast` — chosen per phase in `src/task-type-workflow.ts`. Each runner translates:
 
 - claude → `deep|balanced|fast` map to its native `opus|sonnet|haiku` aliases (hard-coded in `src/gateways/model-tier.ts`).
 - opencode → tiers resolve through `~/.hopper/runner-config.json` to whatever provider/model you've bound.
+- codex → tiers resolve through the selected Hopper profile and are passed to `codex exec --model`.
 
 To use the opencode runner, create `~/.hopper/runner-config.json`:
 
@@ -161,6 +165,7 @@ AGENT_NAME=my-worker ./claude_worker.sh
 ```
 
 Environment variables for the worker:
+
 - `AGENT_NAME` — Worker identity (default: `claude-worker`)
 - `HOPPER` — Path to the hopper binary (default: `hopper`)
 - `POLL_INTERVAL` — Seconds between queue checks (default: `60`)

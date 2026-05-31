@@ -24,7 +24,7 @@ describe("profilesCommand", () => {
     if (result.status === "success" && typeof result.data === "object") {
       expect(result.data.defaultProfile).toBe("openai");
       const names = result.data.profiles.map((p) => p.name).sort();
-      expect(names).toEqual(["anthropic", "ollama", "openai", "openrouter"]);
+      expect(names).toEqual(["anthropic", "codex", "ollama", "openai", "openrouter"]);
       // openai is starred in humanOutput
       expect(result.humanOutput).toContain("* openai");
     }

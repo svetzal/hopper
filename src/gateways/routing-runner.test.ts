@@ -38,15 +38,38 @@ const OPENCODE_PROFILE: Profile = {
   },
 };
 
+const CODEX_PROFILE: Profile = {
+  name: "codex",
+  runner: "codex",
+  models: {
+    deep: { model: "gpt-5.5" },
+    balanced: { model: "gpt-5.4" },
+    fast: { model: "gpt-5.4-mini" },
+  },
+};
+
 describe("createRoutingRunner", () => {
   test("runSession routes to claude when profile.runner === 'claude'", async () => {
     const claude = makeStubRunner("CL");
     const opencode = makeStubRunner("OC");
-    const runner = createRoutingRunner({ claude, opencode });
+    const codex = makeStubRunner("CX");
+    const runner = createRoutingRunner({ claude, opencode, codex });
 
     const r = await runner.runSession("hi", "/tmp", "audit.jsonl", { profile: CLAUDE_PROFILE });
     expect(r.result).toBe("CL");
     expect(claude.calls).toEqual(["runSession:CL:hi"]);
+    expect(opencode.calls).toEqual([]);
+  });
+
+  test("runSession routes to codex when profile.runner === 'codex'", async () => {
+    const claude = makeStubRunner("CL");
+    const opencode = makeStubRunner("OC");
+    const codex = makeStubRunner("CX");
+    const runner = createRoutingRunner({ claude, opencode, codex });
+
+    await runner.runSession("hi", "/tmp", "audit.jsonl", { profile: CODEX_PROFILE });
+    expect(codex.calls).toEqual(["runSession:CX:hi"]);
+    expect(claude.calls).toEqual([]);
     expect(opencode.calls).toEqual([]);
   });
 
@@ -63,13 +86,16 @@ describe("createRoutingRunner", () => {
   test("generateText routes by profile.runner", async () => {
     const claude = makeStubRunner("CL");
     const opencode = makeStubRunner("OC");
-    const runner = createRoutingRunner({ claude, opencode });
+    const codex = makeStubRunner("CX");
+    const runner = createRoutingRunner({ claude, opencode, codex });
 
     await runner.generateText("p1", "fast", { profile: CLAUDE_PROFILE });
     await runner.generateText("p2", "fast", { profile: OPENCODE_PROFILE });
+    await runner.generateText("p3", "fast", { profile: CODEX_PROFILE });
 
     expect(claude.calls).toEqual(["generateText:CL:p1"]);
     expect(opencode.calls).toEqual(["generateText:OC:p2"]);
+    expect(codex.calls).toEqual(["generateText:CX:p3"]);
   });
 
   test("runSession without a profile throws (programmer error)", async () => {

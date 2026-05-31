@@ -1,8 +1,8 @@
 /**
  * Runner-agnostic agent invocation interface.
  *
- * Hopper supports multiple agent runners (Claude Code and opencode). Both
- * runners implement {@link AgentRunner}; per-runner CLI specifics (argv
+ * Hopper supports multiple agent runners (Claude Code, opencode, and Codex).
+ * Each runner implements {@link AgentRunner}; per-runner CLI specifics (argv
  * construction, output parsing, model-id translation) live in their own
  * gateway modules (`claude-gateway.ts`, `opencode-gateway.ts`).
  *
@@ -19,7 +19,8 @@ import type { Profile } from "../profile.ts";
  *
  * All fields are optional. When none are set, the runner uses its own defaults
  * (claude: stream-json, `--dangerously-skip-permissions`, no restrictions;
- * opencode: configured `opencode.json` defaults).
+ * opencode: configured `opencode.json` defaults; codex: `exec --json` with
+ * unattended approvals/sandbox bypass).
  *
  * Not every runner honours every field. Fields a runner does not understand
  * are silently ignored — they are recorded here so the orchestrator can
@@ -51,7 +52,8 @@ export interface SessionOptions {
    * Agent name. For claude: passed via `--agent`, referencing a craftsperson
    * in `~/.claude/agents/`. For opencode: the craftsperson's `.md` body is
    * inlined into a transient opencode agent definition via
-   * `OPENCODE_CONFIG_CONTENT`.
+   * `OPENCODE_CONFIG_CONTENT`. For codex: the craftsperson body is prepended
+   * to the prompt because Codex CLI has no native craftsperson flag.
    */
   agent?: string;
   /**
@@ -103,7 +105,8 @@ export interface SessionOptions {
 
 /**
  * The actual agent runner. Implementations exist for Claude Code
- * (`claude-gateway.ts`) and opencode (`opencode-gateway.ts`).
+ * (`claude-gateway.ts`), opencode (`opencode-gateway.ts`), and Codex
+ * (`codex-gateway.ts`).
  */
 export interface AgentRunner {
   /**

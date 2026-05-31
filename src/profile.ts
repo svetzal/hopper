@@ -44,13 +44,14 @@ export function isModelTier(value: string): value is ModelTier {
 }
 
 /** Which agent CLI dispatches sessions for a profile. */
-export type ProfileRunner = "claude" | "opencode";
+export type ProfileRunner = "claude" | "opencode" | "codex";
 
 /**
  * Reasoning effort level. Hopper's unified vocabulary; same as
  * `SessionOptions.effort` in `agent-runner.ts`. Runners translate:
  * - claude → `--effort` (maps `minimal` → `low`).
  * - opencode → `--variant`.
+ * - codex → ignored for now; model/effort coupling is profile-specific.
  *
  * Profile entries may include this to lock a tier to a specific effort,
  * overriding the per-phase default chosen by the workflow.
@@ -97,7 +98,7 @@ export interface Profile {
 export type ProfileParseResult = { ok: true; profile: Profile } | { ok: false; error: string };
 
 const REQUIRED_TIERS: readonly ModelTier[] = ["deep", "balanced", "fast"] as const;
-const VALID_RUNNERS: ReadonlySet<string> = new Set<string>(["claude", "opencode"]);
+const VALID_RUNNERS: ReadonlySet<string> = new Set<string>(["claude", "opencode", "codex"]);
 const PROFILE_NAME_RE = /^[a-z0-9_-]+$/;
 
 /**
@@ -139,7 +140,7 @@ export function parseProfile(name: string, raw: string): ProfileParseResult {
   if (typeof runner !== "string" || !VALID_RUNNERS.has(runner)) {
     return {
       ok: false,
-      error: `Invalid 'runner' — expected "claude" or "opencode", got ${JSON.stringify(runner)}`,
+      error: `Invalid 'runner' — expected "claude", "opencode", or "codex", got ${JSON.stringify(runner)}`,
     };
   }
 

@@ -1,14 +1,14 @@
 ---
 name: hopper-coordinator
-description: Dispatch concrete, ready-to-execute work to background Claude Code agents via the hopper queue. Use this skill when the user wants to queue up substantive coding tasks for unattended processing in specific projects on their machine — not for planning, to-do tracking, or lightweight tasks.
+description: Dispatch concrete, ready-to-execute work to background Hopper workers via the hopper queue. Use this skill when the user wants to queue up substantive coding tasks for unattended processing in specific projects on their machine — not for planning, to-do tracking, or lightweight tasks.
 metadata:
-  version: "3.2.0"
+  version: "3.3.0"
   author: Stacey Vetzal
 ---
 
 # Hopper Coordinator
 
-You are acting as a **coordinator** using the `hopper` work queue CLI. Your role is to dispatch concrete work items to a queue where autonomous Claude Code agents will pick them up and execute them unattended in the background.
+You are acting as a **coordinator** using the `hopper` work queue CLI. Your role is to dispatch concrete work items to a queue where autonomous Hopper workers will pick them up and execute them unattended in the background.
 
 ## What is Hopper?
 
@@ -26,7 +26,7 @@ cancelled (terminal)
 Recurring items: completed --> new scheduled copy created automatically
 ```
 
-**Claims are irrevocable — hopper has no abort command.** Once a worker claims an item and the autonomous Claude session (or `--command` shell process) starts, hopper cannot stop it. The lifecycle arrows above describe queue-record state, not process state:
+**Claims are irrevocable — hopper has no abort command.** Once a worker claims an item and the autonomous runner session (or `--command` shell process) starts, hopper cannot stop it. The lifecycle arrows above describe queue-record state, not process state:
 
 - `hopper cancel` refuses to operate on IN_PROGRESS items. There is no `--force` flag.
 - `hopper requeue` flips the queue record back to QUEUED but does **not** signal the running session. The process keeps running until it finishes naturally; if another worker then claims the requeued copy, two sessions race on the same work.
@@ -34,7 +34,7 @@ Recurring items: completed --> new scheduled copy created automatically
 
 Plan dispatch accordingly: a QUEUED item is an instruction you can still retract; an IN_PROGRESS item is work in flight, and "I changed my mind" is no longer a valid reason to interfere. If you find yourself reaching for `cancel` or `requeue` to "stop" a claimed task, stop and re-read this section — you are about to do something that will not have the effect you expect.
 
-Items without a `--command` flag consume a full Claude Code session, so those should represent meaningful, well-defined work — not quick fixes or vague ideas. Items with `--command` run a shell command instead and are useful for automated maintenance, builds, or any scriptable task.
+Items without a `--command` flag consume a full runner session, so those should represent meaningful, well-defined work — not quick fixes or vague ideas. Items with `--command` run a shell command instead and are useful for automated maintenance, builds, or any scriptable task.
 
 Workers follow an **analyze → plan → execute → validate** cycle. Descriptions that include explicit validation criteria help workers verify their own work before finishing.
 
@@ -135,7 +135,7 @@ Every successful `hopper add` mutates the queue before printing confirmation. If
 |------|-------------|
 | `--dir <path>` | Working directory for the task (requires `--branch` unless `--command` is set, or `--type investigation`) |
 | `--branch <name>` | Git branch for the work (required with `--dir` unless `--command` is set; not allowed with `--type investigation`) |
-| `--command <cmd>` | Shell command to run instead of Claude. Worker runs this command directly via `sh -c` |
+| `--command <cmd>` | Shell command to run instead of an agent runner. Worker runs this command directly via `sh -c` |
 | `--type <type>` | Task type: `task` (default), `engineering` (phased: plan→execute→validate), `investigation` (read-only, markdown deliverable) |
 | `--agent <name>` | Force a specific craftsperson agent. For `--type engineering`, overrides auto-resolution; ignored for other types |
 | `--retries <n>` | Engineering-only: max execute→validate remediation attempts after an initial validate FAIL. Default 1, max 5, `0` disables remediation |
@@ -150,7 +150,8 @@ Every successful `hopper add` mutates the queue before printing confirmation. If
 | `--json` | Machine-readable output |
 
 **Notes:**
-- For Claude items, `--dir` and `--branch` give workers the project context they need. Without them, workers won't know where to operate. Always specify these unless the item is for a project that doesn't use git
+
+- For agent-runner items, `--dir` and `--branch` give workers the project context they need. Without them, workers won't know where to operate. Always specify these unless the item is for a project that doesn't use git
 - Workers create an isolated git worktree on the specified branch, so work never interferes with whatever is checked out in the main repo
 - For `--command` items, `--dir` alone is sufficient (no `--branch` required) — the command runs in the specified directory. If both `--dir` and `--branch` are set, a worktree is created and the command runs inside it
 - Hopper auto-generates a short title from the description using an LLM
@@ -180,11 +181,12 @@ Hopper supports three task types, selected with `--type`:
 
 | `--type` | Use when | Deliverable | Branch / merge |
 |----------|----------|-------------|----------------|
-| `task` (default) | Standard coding work that fits in one Claude session | Merged commit on target branch | Worktree → commit → merge → push |
+| `task` (default) | Standard coding work that fits in one runner session | Merged commit on target branch | Worktree → commit → merge → push |
 | `engineering` | Work that benefits from explicit plan / execute / validate phases and a craftsperson agent | Merged commit on target branch, only after validate passes | `hopper-eng/<slug>-<prefix>` worktree → plan → execute → validate → commit → merge → push |
 | `investigation` | Open-ended questions where the deliverable is a written finding, not code | Markdown findings report stored as the item's `result` | No branch, no worktree — runs read-only in `--dir` |
 
 Quick decision:
+
 - **Changing code** with a clear target branch → `task` or `engineering`. Use `engineering` when the work is substantial enough that plan→execute→validate genuinely pays off (complex refactors, non-trivial feature work, or when you want the extra safety of a dedicated validate phase). Use the default `task` for single-session work.
 - **Answering a question** with no code changes → `investigation`. Hopper won't create a worktree or branch; the agent runs with read-only tools and its final message becomes the `result`.
 
@@ -297,6 +299,7 @@ hopper audit <id> --phase execute --tail 10 --json
 ```
 
 What to look for in the tail:
+
 - **A `tool_use` event with a non-null `lastIncompleteToolUse`** — session died mid-call. The `input` of that tool tells you what it was attempting (often a huge command, a massive scan, or a subagent Task).
 - **A `system` event of `name: "task_started"` with no subsequent `tool_result`** — an Agent (subagent) was launched and never returned. Common when a Task prompt was too loose or the subagent itself got stuck.
 - **A final `text` event with `role: "assistant"` followed by nothing** — the session was composing a plan and got cut off.
@@ -326,6 +329,7 @@ Don't pattern-match too aggressively. Read the specific audit log, note what it 
 **Step 4 — report to the user with specifics, not guesses.**
 
 When giving an update, include:
+
 - `totalEvents` from `hopper audit <id> --json` (a proxy for how much work the worker did)
 - `toolHistogram` — shows what the worker focused on
 - `lastCommands` — the most recent Bash commands attempted
@@ -340,6 +344,7 @@ Avoid speculative MCP-hang narratives unless the audit output supports them. "St
 Aborting a claimed task is a two-step operation: kill the OS process, then update the queue record. Neither step alone is sufficient — and `requeue` on its own never stops anything (see "Claims are irrevocable" near the top).
 
 Options when a task is genuinely stuck:
+
 1. **Kill the Claude session PID first**, then once the process is confirmed gone, run `hopper requeue <id> --reason "..."` to release the claim and let the item re-enter the queue. The worker may auto-mark the item on its next tick; the explicit requeue makes the intent unambiguous and records why.
 2. If `hopper audit <id> --result` shows near-complete investigation work, you may have enough intel to synthesize findings manually instead of retrying — check with the user first.
 
@@ -621,6 +626,7 @@ hopper add "Maintain hopper" \
 ```
 
 **Tips for hone items:**
+
 - Use `--dir` so audit logs record which project the command targeted, but `--branch` is
   usually unnecessary — hone manages its own git operations internally
 - Items targeting different directories run in parallel automatically — no chaining needed

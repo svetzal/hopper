@@ -68,6 +68,19 @@ describe("parseProfile", () => {
     }
   });
 
+  test("parses a valid codex profile with native aliases", () => {
+    const json = JSON.stringify({
+      runner: "codex",
+      models: { deep: "gpt-5.5", balanced: "gpt-5.4", fast: "gpt-5.4-mini" },
+    });
+    const result = parseProfile("codex", json);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.profile.runner).toBe("codex");
+      expect(result.profile.models.fast).toEqual({ model: "gpt-5.4-mini" });
+    }
+  });
+
   test("parses object-form bindings with effort", () => {
     const json = JSON.stringify({
       runner: "claude",

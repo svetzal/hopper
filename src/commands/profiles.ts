@@ -1,12 +1,12 @@
 import type { ParsedArgs } from "../cli.ts";
 import type { CommandResult } from "../command-result.ts";
 import type { ProfilesGateway } from "../gateways/profiles-gateway.ts";
-import type { ModelBinding } from "../profile.ts";
+import type { ModelBinding, ProfileRunner } from "../profile.ts";
 import { catchCommandError } from "../result.ts";
 
 export interface ProfileListEntry {
   name: string;
-  runner: "claude" | "opencode";
+  runner: ProfileRunner;
   deep: ModelBinding;
   balanced: ModelBinding;
   fast: ModelBinding;

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-05-31
+
+### Added
+
+- **Codex runner support.** Profiles can now use `"runner": "codex"` to
+  dispatch work through `codex exec --json`. Hopper streams Codex JSONL events
+  to the audit file and captures the canonical final assistant message via
+  `--output-last-message`.
+- **Shipped `codex` profile.** Fresh installs and upgraded profile directories
+  now get a `codex` template that maps `deep`, `balanced`, and `fast` to bare
+  Codex model names (`gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`) and includes a
+  `gpt-5.3-codex` alias.
+
+### Changed
+
+- Profile bootstrap now fills in newly shipped profile files without
+  overwriting existing user profiles, so existing installations receive new
+  templates like `codex.json`.
+- Codex-backed sessions support Hopper craftsperson selection by prepending the
+  selected `~/.claude/agents/<name>.md` body to the prompt, since Codex CLI has
+  no native `--agent` equivalent.
+
 ## [3.2.0] - 2026-05-23
 
 ### Added
@@ -610,7 +632,8 @@ If you never set up an opencode runner pre-3.0, the upgrade is a no-op.
 
 - Release workflow: use macos-14 for x64 builds
 
-[Unreleased]: https://github.com/svetzal/hopper/compare/v3.2.0...HEAD
+[Unreleased]: https://github.com/svetzal/hopper/compare/v3.3.0...HEAD
+[3.3.0]: https://github.com/svetzal/hopper/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/svetzal/hopper/compare/v3.1.1...v3.2.0
 [3.1.1]: https://github.com/svetzal/hopper/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/svetzal/hopper/compare/v3.0.0...v3.1.0

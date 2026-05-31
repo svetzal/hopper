@@ -245,6 +245,10 @@ Default profile: openai
       deep:     opus
       balanced: sonnet
       fast:     haiku
+  codex  (codex)
+      deep:     gpt-5.5
+      balanced: gpt-5.4
+      fast:     gpt-5.4-mini
 * openai  (opencode)
       deep:     openai/gpt-5.5
       balanced: openai/gpt-5.4
@@ -284,10 +288,11 @@ point for a new one.
 
 On the first command that touches `~/.hopper/` (typically `hopper add` or
 `hopper profiles`), hopper checks whether `config.json` and the
-`profiles/` directory already exist. If either is missing, it writes:
+`profiles/` directory already exist and fills in any missing shipped
+profiles. If config is missing, it writes:
 
 - `~/.hopper/config.json` with `{"defaultProfile": "openai"}`.
-- All four shipped profile files (`anthropic`, `openai`, `openrouter`,
+- Shipped profile files (`anthropic`, `codex`, `openai`, `openrouter`,
   `ollama`) under `~/.hopper/profiles/`.
 
 Bootstrap is **idempotent**: any file that already exists is left
