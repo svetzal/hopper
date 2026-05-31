@@ -451,14 +451,19 @@ export async function processEngineeringItem(
     log(preconditions.reason);
     const { auditDir, resultFile } = resolveAuditPaths(item.id, hopperHome);
     await safeVoid(() => fs.ensureDir(auditDir), "Audit dir creation failed", log);
-    await safeVoid(() => fs.writeFile(resultFile, preconditions.reason), "Result file write failed", log);
+    await safeVoid(
+      () => fs.writeFile(resultFile, preconditions.reason),
+      "Result file write failed",
+      log,
+    );
     await safeRequeue(item.id, preconditions.reason, agentName, log);
     return;
   }
+  const { workingDir, branch } = preconditions;
 
   logClaimBanner(item, log, [
-    `Dir:     ${item.workingDir}`,
-    `Branch:  ${item.branch}`,
+    `Dir:     ${workingDir}`,
+    `Branch:  ${branch}`,
     `Type:    engineering${item.agent ? ` (agent: ${item.agent})` : ""}`,
   ]);
 
@@ -491,8 +496,8 @@ export async function processEngineeringItem(
     log(`Setting up worktree at ${worktreePath}...`);
     await orchestrateWorktreeSetup({
       git,
-      repoDir: item.workingDir!,
-      branch: item.branch!,
+      repoDir: workingDir,
+      branch,
       worktreePath,
       itemId: item.id,
       workBranchOverride: workBranch,

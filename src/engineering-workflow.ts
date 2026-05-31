@@ -8,14 +8,14 @@ import { normaliseCommitMessage } from "./task-type-workflow.ts";
 export function resolveEngineeringPreconditions(item: {
   workingDir?: string;
   branch?: string;
-}): { ok: true } | { ok: false; reason: string } {
+}): { ok: true; workingDir: string; branch: string } | { ok: false; reason: string } {
   if (!item.workingDir || !item.branch) {
     return {
       ok: false,
       reason: "Engineering items require --dir and --branch; cannot run.",
     };
   }
-  return { ok: true };
+  return { ok: true, workingDir: item.workingDir, branch: item.branch };
 }
 
 /**

@@ -7,9 +7,11 @@ import {
 } from "./engineering-workflow.ts";
 
 describe("resolveEngineeringPreconditions", () => {
-  test("returns ok when both workingDir and branch are present", () => {
+  test("returns ok with validated values when both workingDir and branch are present", () => {
     expect(resolveEngineeringPreconditions({ workingDir: "/repo", branch: "main" })).toEqual({
       ok: true,
+      workingDir: "/repo",
+      branch: "main",
     });
   });
 
