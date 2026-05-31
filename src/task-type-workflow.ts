@@ -425,7 +425,9 @@ export type BranchSlugSource = { type: "cached"; slug: string } | { type: "gener
  * generated. Using a cached slug on re-claims ensures the same work-branch
  * name regardless of LLM non-determinism.
  */
-export function resolveBranchSlugSource(item: { engineeringBranchSlug?: string }): BranchSlugSource {
+export function resolveBranchSlugSource(item: {
+  engineeringBranchSlug?: string;
+}): BranchSlugSource {
   if (item.engineeringBranchSlug) {
     return { type: "cached", slug: item.engineeringBranchSlug };
   }

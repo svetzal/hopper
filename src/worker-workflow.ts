@@ -1,10 +1,7 @@
 import { join } from "node:path";
 import type { SessionOptions } from "./gateways/agent-runner.ts";
 import type { Item } from "./store.ts";
-import {
-  buildInvestigationOptions,
-  buildInvestigationPrompt,
-} from "./task-type-workflow.ts";
+import { buildInvestigationOptions, buildInvestigationPrompt } from "./task-type-workflow.ts";
 
 // ---------------------------------------------------------------------------
 // Work setup
@@ -422,9 +419,10 @@ export function resolveExecutionPlan(
  * Resolve the display labels used in completion log messages based on whether
  * the item ran a shell command or an agent session.
  */
-export function resolveCompletionLabels(item: {
-  command?: string;
-}): { outputLabel: string; sessionLabel: string } {
+export function resolveCompletionLabels(item: { command?: string }): {
+  outputLabel: string;
+  sessionLabel: string;
+} {
   const isCommand = Boolean(item.command);
   return {
     outputLabel: isCommand ? "Command" : "Claude",
