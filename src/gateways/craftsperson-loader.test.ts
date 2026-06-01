@@ -22,10 +22,7 @@ function agentFileContent(name: string, body: string): string {
 
 // The loader uses homedir() internally, so we test via a patched version that
 // accepts an explicit base path — identical logic, different root.
-async function loadCraftspersonBodyAt(
-  basePath: string,
-  name: string,
-): Promise<string | null> {
+async function loadCraftspersonBodyAt(basePath: string, name: string): Promise<string | null> {
   const { extractCraftspersonBody } = await import("../craftsperson-body.ts");
   const path = join(basePath, ".claude", "agents", `${name}.md`);
   const file = Bun.file(path);
@@ -53,7 +50,10 @@ describe("loadCraftspersonBody", () => {
   });
 
   test("returns empty string for a file with no body after frontmatter", async () => {
-    await writeFile(join(agentsDir, "empty-body.md"), "---\nname: empty-body\ndescription: x\n---\n");
+    await writeFile(
+      join(agentsDir, "empty-body.md"),
+      "---\nname: empty-body\ndescription: x\n---\n",
+    );
 
     const result = await loadCraftspersonBodyAt(tempDir, "empty-body");
 

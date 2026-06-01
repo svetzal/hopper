@@ -54,5 +54,10 @@ export function formatSyntheticEvent(payload: Record<string, unknown>): string {
 
 export async function appendToAuditFile(auditFile: string, event: string): Promise<void> {
   if (!event) return;
-  await Bun.write(auditFile, (await Bun.file(auditFile).text().catch(() => "")) + event);
+  await Bun.write(
+    auditFile,
+    (await Bun.file(auditFile)
+      .text()
+      .catch(() => "")) + event,
+  );
 }

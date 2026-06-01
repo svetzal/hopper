@@ -95,7 +95,10 @@ function buildRunSession(deps: OpencodeRunnerDeps) {
 
     // Capture stderr as a JSONL event so the audit stays machine-parseable.
     if (stderrText.trim()) {
-      await appendToAuditFile(auditFile, formatSyntheticEvent({ type: "stderr", text: stderrText }));
+      await appendToAuditFile(
+        auditFile,
+        formatSyntheticEvent({ type: "stderr", text: stderrText }),
+      );
     }
 
     const scan = scanOpencodeStream(output);

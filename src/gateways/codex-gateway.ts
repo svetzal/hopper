@@ -64,7 +64,10 @@ function buildRunSession(deps: CodexRunnerDeps) {
     const exitCode = await proc.exited;
 
     if (stderrText.trim()) {
-      await appendToAuditFile(auditFile, formatSyntheticEvent({ type: "stderr", text: stderrText }));
+      await appendToAuditFile(
+        auditFile,
+        formatSyntheticEvent({ type: "stderr", text: stderrText }),
+      );
     }
 
     const result = await Bun.file(resultPath)
