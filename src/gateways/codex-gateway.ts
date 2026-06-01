@@ -1,11 +1,11 @@
 import { unlink } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { extractCraftspersonBody } from "../craftsperson-body.ts";
 import type { Profile } from "../profile.ts";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
-import { streamToAuditFile } from "./audit-stream.ts";
+import { appendToAuditFile, formatSyntheticEvent, streamToAuditFile } from "./audit-stream.ts";
 import { buildCodexArgv } from "./codex-argv.ts";
+import { loadCraftspersonBody } from "./craftsperson-loader.ts";
 
 function resolveCodexBin(): string {
   const resolved = Bun.which("codex", { PATH: process.env.PATH });
@@ -13,15 +13,6 @@ function resolveCodexBin(): string {
     throw new Error("codex executable not found on PATH. Ensure Codex CLI is installed.");
   }
   return resolved;
-}
-
-async function loadCraftspersonBody(name: string): Promise<string | null> {
-  const path = join(homedir(), ".claude", "agents", `${name}.md`);
-  const file = Bun.file(path);
-  if (!(await file.exists())) return null;
-  const contents = await file.text().catch(() => null);
-  if (contents == null) return null;
-  return extractCraftspersonBody(contents);
 }
 
 function buildCodexPrompt(
@@ -40,10 +31,6 @@ function buildCodexPrompt(
   }
   blocks.push(prompt);
   return blocks.join("\n\n");
-}
-
-function formatSyntheticEvent(payload: Record<string, unknown>): string {
-  return `${JSON.stringify(payload)}\n`;
 }
 
 interface CodexRunnerDeps {
@@ -77,12 +64,7 @@ function buildRunSession(deps: CodexRunnerDeps) {
     const exitCode = await proc.exited;
 
     if (stderrText.trim()) {
-      await Bun.write(
-        auditFile,
-        (await Bun.file(auditFile)
-          .text()
-          .catch(() => "")) + formatSyntheticEvent({ type: "stderr", text: stderrText }),
-      );
+      await appendToAuditFile(auditFile, formatSyntheticEvent({ type: "stderr", text: stderrText }));
     }
 
     const result = await Bun.file(resultPath)

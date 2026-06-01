@@ -1,7 +1,6 @@
 import { unlink } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { extractCraftspersonBody } from "../craftsperson-body.ts";
 import {
   extractOpencodeResult,
   type OpencodeExport,
@@ -11,7 +10,8 @@ import {
 } from "../extract-opencode-result.ts";
 import type { Profile } from "../profile.ts";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
-import { streamToAuditFile } from "./audit-stream.ts";
+import { appendToAuditFile, formatSyntheticEvent, streamToAuditFile } from "./audit-stream.ts";
+import { loadCraftspersonBody } from "./craftsperson-loader.ts";
 import { buildOpencodeArgv } from "./opencode-argv.ts";
 import { resolveOpencodeEnv } from "./opencode-config-content.ts";
 
@@ -23,19 +23,6 @@ function resolveOpencodeBin(): string {
     );
   }
   return resolved;
-}
-
-async function loadCraftspersonBody(name: string): Promise<string | null> {
-  // Mirror the same path layering as agents-gateway: global ~/.claude/agents
-  // is the default; a project-local <cwd>/.claude/agents would only matter
-  // if the caller explicitly passed a project dir, which the v1 opencode
-  // runner does not. Keep the resolution simple.
-  const path = join(homedir(), ".claude", "agents", `${name}.md`);
-  const file = Bun.file(path);
-  if (!(await file.exists())) return null;
-  const contents = await file.text().catch(() => null);
-  if (contents == null) return null;
-  return extractCraftspersonBody(contents);
 }
 
 interface OpencodeRunnerDeps {
@@ -63,10 +50,6 @@ async function runOpencodeExport(
   ]);
   if (exitCode !== 0) return null;
   return parseOpencodeExport(stdout);
-}
-
-function formatSyntheticEvent(payload: Record<string, unknown>): string {
-  return `${JSON.stringify(payload)}\n`;
 }
 
 function buildRunSession(deps: OpencodeRunnerDeps) {
@@ -112,12 +95,7 @@ function buildRunSession(deps: OpencodeRunnerDeps) {
 
     // Capture stderr as a JSONL event so the audit stays machine-parseable.
     if (stderrText.trim()) {
-      await Bun.write(
-        auditFile,
-        (await Bun.file(auditFile)
-          .text()
-          .catch(() => "")) + formatSyntheticEvent({ type: "stderr", text: stderrText }),
-      );
+      await appendToAuditFile(auditFile, formatSyntheticEvent({ type: "stderr", text: stderrText }));
     }
 
     const scan = scanOpencodeStream(output);
@@ -129,16 +107,13 @@ function buildRunSession(deps: OpencodeRunnerDeps) {
       exportDoc = await runOpencodeExport(opencodeBin, scan.sessionID, cwd);
       if (exportDoc) {
         result = extractOpencodeResult(exportDoc);
-        await Bun.write(
+        await appendToAuditFile(
           auditFile,
-          (await Bun.file(auditFile)
-            .text()
-            .catch(() => "")) +
-            formatSyntheticEvent({
-              type: "opencode-export",
-              sessionID: scan.sessionID,
-              info: exportDoc.info,
-            }),
+          formatSyntheticEvent({
+            type: "opencode-export",
+            sessionID: scan.sessionID,
+            info: exportDoc.info,
+          }),
         );
       }
     }

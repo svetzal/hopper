@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { streamToAuditFile } from "./audit-stream.ts";
+import { appendToAuditFile, formatSyntheticEvent, streamToAuditFile } from "./audit-stream.ts";
 
 function makeStream(chunks: string[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
@@ -80,5 +80,57 @@ describe("streamToAuditFile", () => {
     expect(result).toBe('{"split":"yes"}');
     const content = await readFile(auditFile, "utf8");
     expect(content).toBe('{"split":"yes"}\n');
+  });
+});
+
+describe("formatSyntheticEvent", () => {
+  test("produces a single newline-terminated JSON row", () => {
+    const result = formatSyntheticEvent({ type: "stderr", text: "oops" });
+    expect(result).toBe('{"type":"stderr","text":"oops"}\n');
+    expect(result.endsWith("\n")).toBe(true);
+    expect(result.indexOf("\n")).toBe(result.length - 1);
+  });
+
+  test("serialises nested values", () => {
+    const result = formatSyntheticEvent({ type: "info", count: 3, flag: true });
+    expect(JSON.parse(result.trim())).toEqual({ type: "info", count: 3, flag: true });
+  });
+});
+
+describe("appendToAuditFile", () => {
+  let tempDir = "";
+
+  afterEach(async () => {
+    if (tempDir) {
+      await rm(tempDir, { recursive: true, force: true });
+      tempDir = "";
+    }
+  });
+
+  async function setup(): Promise<string> {
+    tempDir = await mkdtemp(join(tmpdir(), "append-audit-test-"));
+    return join(tempDir, "audit.jsonl");
+  }
+
+  test("appends to existing file content", async () => {
+    const auditFile = await setup();
+    await Bun.write(auditFile, '{"a":1}\n');
+    await appendToAuditFile(auditFile, '{"b":2}\n');
+    const content = await readFile(auditFile, "utf8");
+    expect(content).toBe('{"a":1}\n{"b":2}\n');
+  });
+
+  test("creates the file when absent (catch path starts from empty string)", async () => {
+    const auditFile = await setup();
+    await appendToAuditFile(auditFile, '{"x":1}\n');
+    const content = await readFile(auditFile, "utf8");
+    expect(content).toBe('{"x":1}\n');
+  });
+
+  test("writes nothing and does not create file for an empty event", async () => {
+    const auditFile = await setup();
+    await appendToAuditFile(auditFile, "");
+    const exists = await Bun.file(auditFile).exists();
+    expect(exists).toBe(false);
   });
 });

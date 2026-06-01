@@ -47,3 +47,12 @@ export async function streamToAuditFile(
   await writer.end();
   return lines.join("\n");
 }
+
+export function formatSyntheticEvent(payload: Record<string, unknown>): string {
+  return `${JSON.stringify(payload)}\n`;
+}
+
+export async function appendToAuditFile(auditFile: string, event: string): Promise<void> {
+  if (!event) return;
+  await Bun.write(auditFile, (await Bun.file(auditFile).text().catch(() => "")) + event);
+}

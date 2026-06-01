@@ -51,7 +51,8 @@ A pre-push hook runs `bun run lint` and `bun test` automatically.
 | `src/gateways/codex-gateway.ts` | `AgentRunner` implementation backed by `codex exec --json`. Streams Codex JSONL to the audit file and captures the canonical result via `--output-last-message`; craftsperson bodies are prepended to the prompt because Codex has no native `--agent` equivalent |
 | `src/gateways/opencode-argv.ts` | Pure argv builder for `opencode run --format json` invocations |
 | `src/gateways/opencode-config-content.ts` | Synthesises the `OPENCODE_CONFIG_CONTENT` env var that inlines a craftsperson agent definition for opencode |
-| `src/gateways/audit-stream.ts` | Shared `streamToAuditFile` used by both runners — writes each JSONL line as it arrives so coordinators can watch progress in real time |
+| `src/gateways/audit-stream.ts` | Shared `streamToAuditFile`, `formatSyntheticEvent`, and `appendToAuditFile` used by all runners — writes each JSONL line as it arrives so coordinators can watch progress in real time; the latter two are the canonical helpers for appending synthetic JSONL events to an audit file |
+| `src/gateways/craftsperson-loader.ts` | Shared `loadCraftspersonBody(name)` — loads the system-prompt body from `~/.claude/agents/<name>.md`; used by opencode and codex runners to inline craftsperson agents |
 | `src/gateways/runner-config.ts` | Loads `~/.hopper/runner-config.json` and resolves model tiers (`deep`/`balanced`/`fast`) to opencode-native model IDs |
 | `src/gateways/model-tier.ts` | Vendor-agnostic tier vocabulary (`deep`/`balanced`/`fast`) and the claude-side tier→`opus|sonnet|haiku` translation |
 | `src/extract-opencode-result.ts` | Pure parser for opencode JSONL streams (session ID + error events) and `opencode export` documents (final assistant text) |

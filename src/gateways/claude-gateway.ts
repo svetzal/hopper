@@ -1,7 +1,7 @@
 import { buildSessionPreamble, extractResult, formatStderrEvent } from "../extract-result.ts";
 import { type Profile, resolveProfileModel } from "../profile.ts";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
-import { streamToAuditFile } from "./audit-stream.ts";
+import { appendToAuditFile, streamToAuditFile } from "./audit-stream.ts";
 import { buildClaudeArgv } from "./claude-argv.ts";
 
 function resolveClaudeBin(): string {
@@ -43,15 +43,7 @@ async function runSession(
   // audit file stays machine-parseable. The raw-append behaviour we had
   // before produced bare error strings at the tail that broke line-by-line
   // consumers.
-  const stderrEvent = formatStderrEvent(stderr);
-  if (stderrEvent) {
-    await Bun.write(
-      auditFile,
-      (await Bun.file(auditFile)
-        .text()
-        .catch(() => "")) + stderrEvent,
-    );
-  }
+  await appendToAuditFile(auditFile, formatStderrEvent(stderr));
 
   const exitCode = await proc.exited;
   return { exitCode, result: extractResult(output) };
