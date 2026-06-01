@@ -1,8 +1,3 @@
-// Note: OpencodeGateway wraps the `opencode` CLI process and is not unit-tested
-// directly, as doing so requires the opencode binary to be installed. Its core
-// logic (argv construction, config-content synthesis, result extraction) is
-// covered by opencode-argv.test.ts, opencode-config-content.test.ts, and
-// extract-opencode-result.test.ts.
 import { unlink } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,7 +16,7 @@ import { buildOpencodeArgv } from "./opencode-argv.ts";
 import { resolveOpencodeEnv } from "./opencode-config-content.ts";
 
 function resolveOpencodeBin(): string {
-  const resolved = Bun.which("opencode");
+  const resolved = Bun.which("opencode", { PATH: process.env.PATH });
   if (!resolved) {
     throw new Error(
       "opencode executable not found on PATH. Ensure opencode is installed and available.",

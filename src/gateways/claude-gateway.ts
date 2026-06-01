@@ -1,8 +1,3 @@
-// The claude runner wraps the `claude` CLI process and is not unit-tested
-// directly, as doing so requires the claude binary to be installed. Its core
-// logic (JSONL result extraction and argv construction) is tested via
-// extract-result.test.ts and claude-argv.test.ts, and integration behaviour
-// is covered by worker-workflow tests.
 import { buildSessionPreamble, extractResult, formatStderrEvent } from "../extract-result.ts";
 import { type Profile, resolveProfileModel } from "../profile.ts";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
@@ -10,7 +5,7 @@ import { streamToAuditFile } from "./audit-stream.ts";
 import { buildClaudeArgv } from "./claude-argv.ts";
 
 function resolveClaudeBin(): string {
-  const resolved = Bun.which("claude");
+  const resolved = Bun.which("claude", { PATH: process.env.PATH });
   if (!resolved) {
     throw new Error(
       "claude executable not found on PATH. Ensure Claude Code is installed and available.",

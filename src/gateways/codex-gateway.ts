@@ -1,5 +1,3 @@
-// The Codex gateway wraps the `codex exec` CLI. Its argv construction is
-// covered by codex-argv.test.ts; integration requires Codex auth/config.
 import { unlink } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,7 +8,7 @@ import { streamToAuditFile } from "./audit-stream.ts";
 import { buildCodexArgv } from "./codex-argv.ts";
 
 function resolveCodexBin(): string {
-  const resolved = Bun.which("codex");
+  const resolved = Bun.which("codex", { PATH: process.env.PATH });
   if (!resolved) {
     throw new Error("codex executable not found on PATH. Ensure Codex CLI is installed.");
   }
