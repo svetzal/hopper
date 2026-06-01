@@ -7,7 +7,7 @@ import { createCodexRunner } from "./codex-gateway.ts";
 
 async function makeFakeBin(dir: string, name: string, lines: string[]): Promise<void> {
   const bin = join(dir, name);
-  await writeFile(bin, lines.join("\n") + "\n");
+  await writeFile(bin, `${lines.join("\n")}\n`);
   await chmod(bin, 0o755);
 }
 
@@ -35,7 +35,7 @@ const FAKE_CODEX_SCRIPT = [
   'printf "%s" "$FAKE_CODEX_STDOUT"',
   '[ -n "$FAKE_CODEX_STDERR" ] && printf "%s" "$FAKE_CODEX_STDERR" >&2',
   '[ -n "$OUTPUT_FILE" ] && printf "%s" "$FAKE_CODEX_RESULT" > "$OUTPUT_FILE"',
-  'exit "${FAKE_CODEX_EXIT:-0}"',
+  `exit "\${FAKE_CODEX_EXIT:-0}"`,
 ];
 
 const TEST_PROFILE: Profile = {
@@ -114,7 +114,7 @@ describe("codex-gateway", () => {
         }
       });
     expect(stderrLine).toBeDefined();
-    const parsed = JSON.parse(stderrLine!) as { type: string; text: string };
+    const parsed = JSON.parse(stderrLine ?? "") as { type: string; text: string };
     expect(parsed.text).toContain("codex error text");
   });
 

@@ -6,7 +6,7 @@ import { createClaudeRunner } from "./claude-gateway.ts";
 
 async function makeFakeBin(dir: string, name: string, lines: string[]): Promise<void> {
   const bin = join(dir, name);
-  await writeFile(bin, lines.join("\n") + "\n");
+  await writeFile(bin, `${lines.join("\n")}\n`);
   await chmod(bin, 0o755);
 }
 
@@ -16,7 +16,7 @@ const FAKE_CLAUDE_SCRIPT = [
   "#!/bin/sh",
   'printf "%s" "$FAKE_CLAUDE_STDOUT"',
   '[ -n "$FAKE_CLAUDE_STDERR" ] && printf "%s" "$FAKE_CLAUDE_STDERR" >&2',
-  'exit "${FAKE_CLAUDE_EXIT:-0}"',
+  `exit "\${FAKE_CLAUDE_EXIT:-0}"`,
 ];
 
 describe("claude-gateway", () => {
@@ -74,7 +74,7 @@ describe("claude-gateway", () => {
       }
     });
     expect(stderrLine).toBeDefined();
-    const parsed = JSON.parse(stderrLine!) as { type: string; text: string };
+    const parsed = JSON.parse(stderrLine ?? "") as { type: string; text: string };
     expect(parsed.text).toContain("some error output");
   });
 

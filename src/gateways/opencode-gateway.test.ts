@@ -18,7 +18,7 @@ const EXPORT_EXIT_FILE = join(TD, `hopper-test-oc-export-exit-${PID}.txt`);
 // It reads its behavior from temp files whose paths are embedded at script-
 // creation time.  This avoids any reliance on env-var propagation to the
 // `export` subprocess (which is spawned without an explicit env by the gateway).
-const FAKE_OPENCODE_SCRIPT = [
+const FAKE_OPENCODE_SCRIPT = `${[
   "#!/bin/sh",
   'SUBCMD="$1"',
   'case "$SUBCMD" in',
@@ -37,7 +37,7 @@ const FAKE_OPENCODE_SCRIPT = [
   "    exit 0",
   "    ;;",
   "esac",
-].join("\n") + "\n";
+].join("\n")}\n`;
 
 async function makeFakeBin(dir: string, name: string, script: string): Promise<void> {
   const bin = join(dir, name);
@@ -105,16 +105,13 @@ describe("opencode-gateway", () => {
         }
       });
     expect(stderrLine).toBeDefined();
-    const parsed = JSON.parse(stderrLine!) as { type: string; text: string };
+    const parsed = JSON.parse(stderrLine ?? "") as { type: string; text: string };
     expect(parsed.text).toContain("opencode error output");
   });
 
   test("when sessionID is found, export is called and opencode-export event is appended", async () => {
     const auditFile = join(tempDir, "audit.jsonl");
-    await writeControl(
-      RUN_STDOUT_FILE,
-      '{"type":"step_start","sessionID":"ses_abc123"}\n',
-    );
+    await writeControl(RUN_STDOUT_FILE, '{"type":"step_start","sessionID":"ses_abc123"}\n');
     await writeControl(EXPORT_STDOUT_FILE, makeExportDoc("the final answer"));
 
     const runner = createOpencodeRunner();
@@ -134,16 +131,13 @@ describe("opencode-gateway", () => {
         }
       });
     expect(exportLine).toBeDefined();
-    const exportEvent = JSON.parse(exportLine!) as { type: string; sessionID: string };
+    const exportEvent = JSON.parse(exportLine ?? "") as { type: string; sessionID: string };
     expect(exportEvent.sessionID).toBe("ses_abc123");
   });
 
   test("result equals extractOpencodeResult applied to the export document", async () => {
     const auditFile = join(tempDir, "audit.jsonl");
-    await writeControl(
-      RUN_STDOUT_FILE,
-      '{"type":"step_start","sessionID":"ses_xyz789"}\n',
-    );
+    await writeControl(RUN_STDOUT_FILE, '{"type":"step_start","sessionID":"ses_xyz789"}\n');
     await writeControl(EXPORT_STDOUT_FILE, makeExportDoc("  trimmed result  "));
 
     const runner = createOpencodeRunner();
@@ -155,10 +149,7 @@ describe("opencode-gateway", () => {
 
   test("when export exits non-zero, result is empty and no export event is appended", async () => {
     const auditFile = join(tempDir, "audit.jsonl");
-    await writeControl(
-      RUN_STDOUT_FILE,
-      '{"type":"step_start","sessionID":"ses_fail123"}\n',
-    );
+    await writeControl(RUN_STDOUT_FILE, '{"type":"step_start","sessionID":"ses_fail123"}\n');
     await writeControl(EXPORT_EXIT_FILE, "1");
 
     const runner = createOpencodeRunner();
