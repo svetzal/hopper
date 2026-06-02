@@ -102,13 +102,7 @@ async function resolveEngineeringCommitMessage(
   log: LogFn,
 ): Promise<string> {
   const prompt = buildCommitMessagePrompt(item.title, item.description, diffSummary);
-  const result = await safeGenerateText(
-    claude,
-    prompt,
-    profile,
-    "Commit message generation",
-    log,
-  );
+  const result = await safeGenerateText(claude, prompt, profile, "Commit message generation", log);
   if (!result.ok) return item.title;
   return resolveEngineeringCommitFallback(item, result.text, 0);
 }
