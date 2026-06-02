@@ -68,11 +68,11 @@ export function logClaimBanner(item: ClaimedItem, log: LogFn, extras?: string[])
   }
 }
 
-export async function safeVoid(fn: () => Promise<void>, label: string, log?: LogFn): Promise<void> {
+export async function safeVoid(fn: () => Promise<void>, label: string, log: LogFn): Promise<void> {
   try {
     await fn();
   } catch (e) {
-    log?.(`${label}: ${toErrorMessage(e)}`);
+    log(`${label}: ${toErrorMessage(e)}`);
   }
 }
 
@@ -80,15 +80,15 @@ export async function safeRequeue(
   itemId: string,
   reason: string,
   agentName: string,
-  log?: LogFn,
+  log: LogFn,
 ): Promise<void> {
   try {
     const outcome = await requeueItem(itemId, reason, agentName);
     if (!outcome.ok) {
-      log?.(`Requeue failed: ${outcome.error}`);
+      log(`Requeue failed: ${outcome.error}`);
     }
   } catch (e) {
-    log?.(`Requeue failed: ${toErrorMessage(e)}`);
+    log(`Requeue failed: ${toErrorMessage(e)}`);
   }
 }
 

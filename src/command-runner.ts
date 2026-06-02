@@ -2,6 +2,11 @@ import type { ParsedArgs } from "./cli.ts";
 import type { CommandResult } from "./command-result.ts";
 import { toErrorMessage } from "./error-utils.ts";
 
+export function fail(message: string, exitCode = 1): never {
+  console.error(message);
+  process.exit(exitCode);
+}
+
 export async function runCommand(
   fn: (parsed: ParsedArgs) => Promise<CommandResult>,
   parsed: ParsedArgs,

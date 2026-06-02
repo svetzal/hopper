@@ -38,6 +38,8 @@ export interface WorkerDeps {
   shell?: ShellGateway;
   profiles?: ProfilesGateway;
   workerShim?: WorkerShimGateway;
+  log?: (msg: string) => void;
+  claimNext?: (agentName: string) => Promise<import("../store.ts").ClaimedItem | null | undefined>;
 }
 
 interface CompletionContext {

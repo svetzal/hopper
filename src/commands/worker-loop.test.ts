@@ -4,10 +4,16 @@ import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import type { ProfilesGateway } from "../gateways/profiles-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
+import type { WorkerShimGateway } from "../gateways/worker-shim-gateway.ts";
 import type { ClaimedItem } from "../store.ts";
 import { callArgs, makeClaimedItem, typedMock } from "../test-helpers.ts";
 import type { WorkerConfig } from "../worker-workflow.ts";
-import { createCancellableSleep, runWorkerLoop, type WorkerLoopDeps } from "./worker-loop.ts";
+import {
+  createCancellableSleep,
+  runWorkerLoop,
+  type WorkerLoopDeps,
+  workerCommand,
+} from "./worker-loop.ts";
 
 const noop = mock(async () => {});
 
@@ -526,5 +532,40 @@ describe("runWorkerLoop", () => {
 
     const timeoutLog = logs.find((l) => l.includes("shutdown timeout reached"));
     expect(timeoutLog).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// workerCommand — Windows shim skip warning
+// ---------------------------------------------------------------------------
+
+describe("workerCommand", () => {
+  test("workerShim returning skipped-windows logs the PATH shims warning via log", async () => {
+    const logs: string[] = [];
+
+    const workerShim: WorkerShimGateway = {
+      synchronize: mock(async () => ({ status: "skipped-windows" as const })),
+    };
+
+    const profiles: ProfilesGateway = {
+      ...makeStubProfilesGateway(),
+      bootstrap: mock(async () => false),
+    };
+
+    await workerCommand(
+      { command: "worker", positional: [], flags: { once: true }, arrayFlags: {} },
+      {
+        log: (msg) => logs.push(msg),
+        claimNext: async () => null,
+        workerShim,
+        profiles,
+        claude: {} as AgentRunner,
+        git: {} as GitGateway,
+        fs: {} as FsGateway,
+        shell: {} as ShellGateway,
+      },
+    );
+
+    expect(logs.some((l) => l.includes("PATH shims are POSIX-only"))).toBe(true);
   });
 });

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { runCommand } from "./command-runner.ts";
+import { fail, runCommand } from "./command-runner.ts";
 import { addCommand } from "./commands/add.ts";
 import { createAgentResolver } from "./commands/add-agent-resolver.ts";
 import { auditCommand } from "./commands/audit.ts";
@@ -244,9 +244,8 @@ async function main(): Promise<void> {
       await workerCommand(parsed);
       break;
     default:
-      console.error(`Unknown command: ${parsed.command}`);
       printHelp();
-      process.exit(1);
+      fail(`Unknown command: ${parsed.command}`);
   }
 }
 

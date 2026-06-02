@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ParsedArgs } from "../cli.ts";
+import { fail } from "../command-runner.ts";
 import { toErrorMessage } from "../error-utils.ts";
 import { shortId } from "../format.ts";
 import type { AgentRunner } from "../gateways/agent-runner.ts";
@@ -188,11 +189,10 @@ export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Prom
   // determine which runner handles each session; the worker is runner-agnostic
   // by default. Surface a friendly error if anyone still passes the flag.
   if ("runner" in parsed.flags) {
-    console.error(
+    fail(
       "--runner was removed in hopper 3.0.0; runner selection is now per-item via profiles. " +
         "Use `hopper add --profile <name>` to queue items against a specific profile.",
     );
-    process.exit(1);
   }
 
   const hopperHome = join(homedir(), ".hopper");
@@ -202,12 +202,19 @@ export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Prom
   // shipped profile templates (anthropic / openai / openrouter / ollama).
   await profiles.bootstrap();
 
+  const log = deps?.log ?? ((msg: string) => console.log(msg));
+
   // Regenerate PATH shims idempotently so the investigation sandbox is always
   // up to date with the current INVESTIGATION_DISALLOWED_TOOLS list.
   const workerShim = deps?.workerShim ?? createWorkerShimGateway();
   const shimDir = join(hopperHome, "worker-shims");
   const denyMap = parseDisallowedTools(INVESTIGATION_DISALLOWED_TOOLS);
-  await workerShim.synchronize(shimDir, denyMap);
+  const shimResult = await workerShim.synchronize(shimDir, denyMap);
+  if (shimResult.status === "skipped-windows") {
+    log(
+      "Warning: PATH shims are POSIX-only; investigation sandbox on Windows relies on the denylist alone.",
+    );
+  }
 
   const claude = deps?.claude ?? createRoutingRunner();
   const fs = deps?.fs ?? createFsGateway();
@@ -216,10 +223,8 @@ export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Prom
   const config = resolveWorkerConfig(parsed.flags);
   const { sleep, cancel } = createCancellableSleep();
 
-  const log = (msg: string) => console.log(msg);
-
   const loopDeps: WorkerLoopDeps = {
-    claimNext: claimNextItem,
+    claimNext: deps?.claimNext ?? claimNextItem,
     processItem,
     sleep,
     log,

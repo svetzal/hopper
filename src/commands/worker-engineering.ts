@@ -54,29 +54,44 @@ import {
  * not a correctness-critical path — a transient I/O blip mid-flight must not
  * take down an otherwise-healthy engineering run.
  */
-async function safeRecordPhase(itemId: string, record: PhaseRecord, log?: LogFn): Promise<void> {
+async function safeRecordPhase(itemId: string, record: PhaseRecord, log: LogFn): Promise<void> {
   return safeVoid(() => recordItemPhase(itemId, record), "Phase recording failed", log);
 }
 
-async function safePersistBranchSlug(itemId: string, slug: string, log?: LogFn): Promise<void> {
+async function safePersistBranchSlug(itemId: string, slug: string, log: LogFn): Promise<void> {
   return safeVoid(() => setItemEngineeringBranchSlug(itemId, slug), "Slug persistence failed", log);
+}
+
+async function safeGenerateText(
+  claude: AgentRunner,
+  prompt: string,
+  profile: Profile,
+  label: string,
+  log: LogFn,
+): Promise<{ ok: true; text: string } | { ok: false }> {
+  try {
+    const { exitCode, text } = await claude.generateText(prompt, "fast", { profile });
+    if (exitCode !== 0) {
+      log(`${label} failed (exit ${exitCode})`);
+      return { ok: false };
+    }
+    return { ok: true, text };
+  } catch (e) {
+    log(`${label} failed: ${toErrorMessage(e)}`);
+    return { ok: false };
+  }
 }
 
 async function resolveEngineeringBranchSlug(
   claude: AgentRunner,
   profile: Profile,
   item: Item,
-  log?: LogFn,
+  log: LogFn,
 ): Promise<string | null> {
-  try {
-    const prompt = buildBranchSlugPrompt(item.title, item.description);
-    const { exitCode, text } = await claude.generateText(prompt, "fast", { profile });
-    if (exitCode !== 0) return null;
-    return normaliseBranchSlug(text);
-  } catch (e) {
-    log?.(`Branch slug generation failed: ${toErrorMessage(e)}`);
-    return null;
-  }
+  const prompt = buildBranchSlugPrompt(item.title, item.description);
+  const result = await safeGenerateText(claude, prompt, profile, "Branch slug generation", log);
+  if (!result.ok) return null;
+  return normaliseBranchSlug(result.text);
 }
 
 async function resolveEngineeringCommitMessage(
@@ -84,16 +99,18 @@ async function resolveEngineeringCommitMessage(
   profile: Profile,
   item: Item,
   diffSummary: string,
-  log?: LogFn,
+  log: LogFn,
 ): Promise<string> {
-  try {
-    const prompt = buildCommitMessagePrompt(item.title, item.description, diffSummary);
-    const { exitCode, text } = await claude.generateText(prompt, "fast", { profile });
-    return resolveEngineeringCommitFallback(item, text, exitCode);
-  } catch (e) {
-    log?.(`Commit message generation failed, using title: ${toErrorMessage(e)}`);
-    return item.title;
-  }
+  const prompt = buildCommitMessagePrompt(item.title, item.description, diffSummary);
+  const result = await safeGenerateText(
+    claude,
+    prompt,
+    profile,
+    "Commit message generation",
+    log,
+  );
+  if (!result.ok) return item.title;
+  return resolveEngineeringCommitFallback(item, result.text, 0);
 }
 
 export async function resolveValidateOutcomeWithFallback(
@@ -101,7 +118,7 @@ export async function resolveValidateOutcomeWithFallback(
   resultText: string,
   claude: Pick<AgentRunner, "generateText">,
   profile: Profile,
-  log?: (msg: string) => void,
+  log: LogFn = () => {},
 ): Promise<{ passed: boolean; reason: string; fallbackUsed?: boolean }> {
   const primary = resolveValidateOutcome(exitCode, resultText);
 
@@ -109,7 +126,7 @@ export async function resolveValidateOutcomeWithFallback(
     return primary;
   }
 
-  log?.("Validate marker missing — invoking fast fallback assessor...");
+  log("Validate marker missing — invoking fast fallback assessor...");
 
   try {
     const { exitCode: fallbackExitCode, text } = await claude.generateText(
@@ -119,7 +136,7 @@ export async function resolveValidateOutcomeWithFallback(
     );
 
     if (fallbackExitCode !== 0) {
-      log?.("Fallback assessor exited non-zero — defaulting to FAIL.");
+      log("Fallback assessor exited non-zero — defaulting to FAIL.");
       return {
         passed: false,
         reason: "fallback assessor could not classify (defaulting to FAIL)",
@@ -130,12 +147,12 @@ export async function resolveValidateOutcomeWithFallback(
     const verdict = normaliseValidateFallback(text);
 
     if (verdict === "PASS") {
-      log?.("Fallback assessor reported PASS.");
+      log("Fallback assessor reported PASS.");
       return { passed: true, reason: "fallback assessor reported PASS", fallbackUsed: true };
     }
 
     if (verdict === "FAIL") {
-      log?.("Fallback assessor reported FAIL.");
+      log("Fallback assessor reported FAIL.");
       return {
         passed: false,
         reason: "fallback assessor reported FAIL",
@@ -143,14 +160,14 @@ export async function resolveValidateOutcomeWithFallback(
       };
     }
 
-    log?.("Fallback assessor was UNCLEAR — defaulting to FAIL.");
+    log("Fallback assessor was UNCLEAR — defaulting to FAIL.");
     return {
       passed: false,
       reason: "fallback assessor could not classify (defaulting to FAIL)",
       fallbackUsed: true,
     };
   } catch {
-    log?.("Fallback assessor threw — defaulting to FAIL.");
+    log("Fallback assessor threw — defaulting to FAIL.");
     return {
       passed: false,
       reason: "fallback assessor could not classify (defaulting to FAIL)",

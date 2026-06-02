@@ -27,14 +27,26 @@ describe("WorkerShimGateway", () => {
       ["curl", "all"],
     ]);
 
-    await gateway.synchronize(shimDir, denyMap);
+    const result = await gateway.synchronize(shimDir, denyMap);
 
+    expect(result.status).toBe("synchronized");
     const gitContent = await readFile(join(shimDir, "git"), "utf8");
     const curlContent = await readFile(join(shimDir, "curl"), "utf8");
 
     expect(gitContent).toContain("#!/bin/sh");
     expect(gitContent).toContain("commit)");
     expect(curlContent).toContain("exit 1");
+  });
+
+  test("returns skipped-windows on win32 platform without creating files", async () => {
+    const win32Gateway = createWorkerShimGateway("win32");
+    const denyMap = new Map<string, ReadonlyArray<string> | "all">([["git", ["commit"]]]);
+
+    const result = await win32Gateway.synchronize(shimDir, denyMap);
+
+    expect(result.status).toBe("skipped-windows");
+    const gitExists = await Bun.file(join(shimDir, "git")).exists();
+    expect(gitExists).toBe(false);
   });
 
   test("sets executable bit on created shims", async () => {

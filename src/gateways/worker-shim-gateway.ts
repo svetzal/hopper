@@ -22,6 +22,8 @@ import { chmod, mkdir, readdir, readFile, stat, unlink, writeFile } from "node:f
 import { join } from "node:path";
 import { buildShimScript } from "./worker-shim-content.ts";
 
+export type SynchronizeResult = { status: "synchronized" } | { status: "skipped-windows" };
+
 export interface WorkerShimGateway {
   /**
    * Ensure `shimDir` contains exactly the shim files described by `denyMap`.
@@ -32,22 +34,23 @@ export interface WorkerShimGateway {
    * - Idempotent: files whose content matches the desired body are not rewritten
    *   (preserves mtime for external change detection).
    *
-   * On Windows this is a no-op (shims are POSIX-only).
+   * On Windows returns `{ status: "skipped-windows" }` (shims are POSIX-only).
+   * On all other platforms returns `{ status: "synchronized" }`.
    */
-  synchronize(shimDir: string, denyMap: Map<string, ReadonlyArray<string> | "all">): Promise<void>;
+  synchronize(
+    shimDir: string,
+    denyMap: Map<string, ReadonlyArray<string> | "all">,
+  ): Promise<SynchronizeResult>;
 }
 
-export function createWorkerShimGateway(): WorkerShimGateway {
+export function createWorkerShimGateway(platform: string = process.platform): WorkerShimGateway {
   return {
     async synchronize(
       shimDir: string,
       denyMap: Map<string, ReadonlyArray<string> | "all">,
-    ): Promise<void> {
-      if (process.platform === "win32") {
-        console.warn(
-          "hopper: PATH shims are POSIX-only; investigation sandbox on Windows relies on the denylist alone.",
-        );
-        return;
+    ): Promise<SynchronizeResult> {
+      if (platform === "win32") {
+        return { status: "skipped-windows" };
       }
 
       await mkdir(shimDir, { recursive: true });
@@ -95,6 +98,8 @@ export function createWorkerShimGateway(): WorkerShimGateway {
           await unlink(join(shimDir, filename)).catch(() => undefined);
         }
       }
+
+      return { status: "synchronized" };
     },
   };
 }
