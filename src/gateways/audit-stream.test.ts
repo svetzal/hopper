@@ -2,7 +2,21 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { appendToAuditFile, formatSyntheticEvent, streamToAuditFile } from "./audit-stream.ts";
+import { appendToAuditFile, formatSyntheticEvent, generateTempFilename, streamToAuditFile } from "./audit-stream.ts";
+
+describe("generateTempFilename", () => {
+  test("returns a path under tmpdir with prefix and extension", () => {
+    const result = generateTempFilename("hopper-codex-gen", "jsonl");
+    expect(result.startsWith(tmpdir())).toBe(true);
+    expect(result).toMatch(/hopper-codex-gen-\d+-[a-z0-9]{1,6}\.jsonl$/);
+  });
+
+  test("includes the supplied prefix and extension", () => {
+    const result = generateTempFilename("my-prefix", "txt");
+    expect(result).toContain("my-prefix");
+    expect(result.endsWith(".txt")).toBe(true);
+  });
+});
 
 function makeStream(chunks: string[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();

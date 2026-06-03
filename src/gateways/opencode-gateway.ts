@@ -1,6 +1,3 @@
-import { unlink } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
   extractOpencodeResult,
   type OpencodeExport,
@@ -8,12 +5,12 @@ import {
   resolveEffectiveExitCode,
   scanOpencodeStream,
 } from "../extract-opencode-result.ts";
-import type { Profile } from "../profile.ts";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
 import { appendToAuditFile, formatSyntheticEvent, streamToAuditFile } from "./audit-stream.ts";
 import { loadCraftspersonBody } from "./craftsperson-loader.ts";
 import { buildOpencodeArgv } from "./opencode-argv.ts";
 import { resolveOpencodeEnv } from "./opencode-config-content.ts";
+import { buildGenerateText } from "./runner-generate-text.ts";
 
 function resolveOpencodeBin(): string {
   const resolved = Bun.which("opencode", { PATH: process.env.PATH });
@@ -128,40 +125,6 @@ function buildRunSession(deps: OpencodeRunnerDeps) {
 }
 
 /**
- * Native generateText for the opencode runner — used for one-shot helpers
- * (branch slug, commit message, validate-fallback) when a profile selects
- * the opencode runner. Internally spawns `opencode run` with no agent and
- * no tools, captures the JSONL stream to a temp audit file, and extracts
- * the result via `opencode export`.
- *
- * Temp file lives under the OS temp dir and is unlinked after extraction.
- * Failure modes (opencode missing, session never identified, export fails)
- * surface as non-zero exit + empty text so the caller's graceful-degradation
- * path (deterministic fallback strings) kicks in.
- */
-async function opencodeGenerateText(
-  prompt: string,
-  model: string,
-  options: { profile: Profile; cwd?: string; appendSystemPrompt?: string },
-): Promise<{ exitCode: number; text: string }> {
-  const tmpAudit = join(
-    tmpdir(),
-    `hopper-opencode-gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jsonl`,
-  );
-  try {
-    const runner = buildRunSession({});
-    const { exitCode, result } = await runner(prompt, options.cwd ?? process.cwd(), tmpAudit, {
-      model,
-      profile: options.profile,
-      appendSystemPrompt: options.appendSystemPrompt,
-    });
-    return { exitCode, text: result.trim() };
-  } finally {
-    await unlink(tmpAudit).catch(() => undefined);
-  }
-}
-
-/**
  * Construct an opencode-backed {@link AgentRunner}.
  *
  * Optional `deps` lets tests substitute a custom craftsperson loader.
@@ -174,6 +137,6 @@ async function opencodeGenerateText(
 export function createOpencodeRunner(deps: OpencodeRunnerDeps = {}): AgentRunner {
   return {
     runSession: buildRunSession(deps),
-    generateText: opencodeGenerateText,
+    generateText: buildGenerateText(buildRunSession({}), "hopper-opencode-gen"),
   };
 }

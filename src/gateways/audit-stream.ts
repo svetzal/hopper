@@ -1,3 +1,6 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 /**
  * Runner-agnostic stdout-to-audit-file streamer.
  *
@@ -10,6 +13,10 @@
  * Returns the full captured output string for callers that still need to
  * parse it after the stream ends.
  */
+export function generateTempFilename(prefix: string, ext: string): string {
+  return join(tmpdir(), `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`);
+}
+
 export async function streamToAuditFile(
   stdout: ReadableStream<Uint8Array>,
   auditFile: string,

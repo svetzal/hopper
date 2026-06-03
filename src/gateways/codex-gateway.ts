@@ -1,11 +1,9 @@
 import { unlink } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import type { Profile } from "../profile.ts";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
-import { appendToAuditFile, formatSyntheticEvent, streamToAuditFile } from "./audit-stream.ts";
+import { appendToAuditFile, formatSyntheticEvent, generateTempFilename, streamToAuditFile } from "./audit-stream.ts";
 import { buildCodexArgv } from "./codex-argv.ts";
 import { loadCraftspersonBody } from "./craftsperson-loader.ts";
+import { buildGenerateText } from "./runner-generate-text.ts";
 
 function resolveCodexBin(): string {
   const resolved = Bun.which("codex", { PATH: process.env.PATH });
@@ -45,10 +43,7 @@ function buildRunSession(deps: CodexRunnerDeps) {
     options: SessionOptions = {},
   ): Promise<{ exitCode: number; result: string }> {
     const codexBin = resolveCodexBin();
-    const resultPath = join(
-      tmpdir(),
-      `hopper-codex-result-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`,
-    );
+    const resultPath = generateTempFilename("hopper-codex-result", "txt");
 
     const loader = deps.loadCraftsperson ?? loadCraftspersonBody;
     const craftspersonBody = options.agent ? await loader(options.agent) : null;
@@ -78,31 +73,9 @@ function buildRunSession(deps: CodexRunnerDeps) {
   };
 }
 
-async function codexGenerateText(
-  prompt: string,
-  model: string,
-  options: { profile: Profile; cwd?: string; appendSystemPrompt?: string },
-): Promise<{ exitCode: number; text: string }> {
-  const tmpAudit = join(
-    tmpdir(),
-    `hopper-codex-gen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jsonl`,
-  );
-  try {
-    const runner = buildRunSession({});
-    const { exitCode, result } = await runner(prompt, options.cwd ?? process.cwd(), tmpAudit, {
-      model,
-      profile: options.profile,
-      appendSystemPrompt: options.appendSystemPrompt,
-    });
-    return { exitCode, text: result.trim() };
-  } finally {
-    await unlink(tmpAudit).catch(() => undefined);
-  }
-}
-
 export function createCodexRunner(deps: CodexRunnerDeps = {}): AgentRunner {
   return {
     runSession: buildRunSession(deps),
-    generateText: codexGenerateText,
+    generateText: buildGenerateText(buildRunSession({}), "hopper-codex-gen"),
   };
 }
