@@ -8,8 +8,8 @@ import {
 } from "./audit-stream.ts";
 import { buildCodexArgv } from "./codex-argv.ts";
 import { loadCraftspersonBody } from "./craftsperson-loader.ts";
-import { buildGenerateText } from "./runner-generate-text.ts";
 import { resolveBinOnPath } from "./resolve-bin.ts";
+import { buildGenerateText } from "./runner-generate-text.ts";
 
 function buildCodexPrompt(
   prompt: string,

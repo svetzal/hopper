@@ -10,8 +10,8 @@ import { appendToAuditFile, formatSyntheticEvent, streamToAuditFile } from "./au
 import { loadCraftspersonBody } from "./craftsperson-loader.ts";
 import { buildOpencodeArgv } from "./opencode-argv.ts";
 import { resolveOpencodeEnv } from "./opencode-config-content.ts";
-import { buildGenerateText } from "./runner-generate-text.ts";
 import { resolveBinOnPath } from "./resolve-bin.ts";
+import { buildGenerateText } from "./runner-generate-text.ts";
 
 interface OpencodeRunnerDeps {
   /**
