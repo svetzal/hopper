@@ -1,6 +1,11 @@
 import { unlink } from "node:fs/promises";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
-import { appendToAuditFile, formatSyntheticEvent, generateTempFilename, streamToAuditFile } from "./audit-stream.ts";
+import {
+  appendToAuditFile,
+  formatSyntheticEvent,
+  generateTempFilename,
+  streamToAuditFile,
+} from "./audit-stream.ts";
 import { buildCodexArgv } from "./codex-argv.ts";
 import { loadCraftspersonBody } from "./craftsperson-loader.ts";
 import { buildGenerateText } from "./runner-generate-text.ts";

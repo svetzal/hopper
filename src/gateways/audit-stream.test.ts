@@ -2,7 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { appendToAuditFile, formatSyntheticEvent, generateTempFilename, streamToAuditFile } from "./audit-stream.ts";
+import {
+  appendToAuditFile,
+  formatSyntheticEvent,
+  generateTempFilename,
+  streamToAuditFile,
+} from "./audit-stream.ts";
 
 describe("generateTempFilename", () => {
   test("returns a path under tmpdir with prefix and extension", () => {

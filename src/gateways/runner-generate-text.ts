@@ -17,11 +17,16 @@ export function buildGenerateText(runSession: RunSession, tmpPrefix: string) {
   ): Promise<{ exitCode: number; text: string }> {
     const tmpAudit = generateTempFilename(tmpPrefix, "jsonl");
     try {
-      const { exitCode, result } = await runSession(prompt, options.cwd ?? process.cwd(), tmpAudit, {
-        model,
-        profile: options.profile,
-        appendSystemPrompt: options.appendSystemPrompt,
-      });
+      const { exitCode, result } = await runSession(
+        prompt,
+        options.cwd ?? process.cwd(),
+        tmpAudit,
+        {
+          model,
+          profile: options.profile,
+          appendSystemPrompt: options.appendSystemPrompt,
+        },
+      );
       return { exitCode, text: result.trim() };
     } finally {
       await unlink(tmpAudit).catch(() => undefined);
