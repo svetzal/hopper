@@ -11,16 +11,7 @@ import { loadCraftspersonBody } from "./craftsperson-loader.ts";
 import { buildOpencodeArgv } from "./opencode-argv.ts";
 import { resolveOpencodeEnv } from "./opencode-config-content.ts";
 import { buildGenerateText } from "./runner-generate-text.ts";
-
-function resolveOpencodeBin(): string {
-  const resolved = Bun.which("opencode", { PATH: process.env.PATH });
-  if (!resolved) {
-    throw new Error(
-      "opencode executable not found on PATH. Ensure opencode is installed and available.",
-    );
-  }
-  return resolved;
-}
+import { resolveBinOnPath } from "./resolve-bin.ts";
 
 interface OpencodeRunnerDeps {
   /**
@@ -56,7 +47,7 @@ function buildRunSession(deps: OpencodeRunnerDeps) {
     auditFile: string,
     options: SessionOptions = {},
   ): Promise<{ exitCode: number; result: string }> {
-    const opencodeBin = resolveOpencodeBin();
+    const opencodeBin = resolveBinOnPath("opencode", "Ensure opencode is installed and available.");
 
     // Build the inline agent config when a craftsperson is requested.
     // options.env (e.g. investigation PATH shims) is merged first so it forms

@@ -3,16 +3,7 @@ import { type Profile, resolveProfileModel } from "../profile.ts";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
 import { appendToAuditFile, streamToAuditFile } from "./audit-stream.ts";
 import { buildClaudeArgv } from "./claude-argv.ts";
-
-function resolveClaudeBin(): string {
-  const resolved = Bun.which("claude", { PATH: process.env.PATH });
-  if (!resolved) {
-    throw new Error(
-      "claude executable not found on PATH. Ensure Claude Code is installed and available.",
-    );
-  }
-  return resolved;
-}
+import { resolveBinOnPath } from "./resolve-bin.ts";
 
 async function runSession(
   prompt: string,
@@ -20,7 +11,8 @@ async function runSession(
   auditFile: string,
   options: SessionOptions = {},
 ): Promise<{ exitCode: number; result: string }> {
-  const argv = buildClaudeArgv(resolveClaudeBin(), prompt, options);
+  const claudeBin = resolveBinOnPath("claude", "Ensure Claude Code is installed and available.");
+  const argv = buildClaudeArgv(claudeBin, prompt, options);
   const spawnEnv = options.env ? { ...process.env, ...options.env } : undefined;
   const proc = Bun.spawn(argv, { cwd, env: spawnEnv, stdout: "pipe", stderr: "pipe" });
 
@@ -59,8 +51,9 @@ async function generateText(
   // on the claude side cannot siphon it into its value list. (See
   // src/gateways/claude-argv.ts for the same reasoning applied to runSession.)
   const resolvedModel = resolveProfileModel(model, options.profile) ?? model;
+  const claudeBin = resolveBinOnPath("claude", "Ensure Claude Code is installed and available.");
   const argv = [
-    resolveClaudeBin(),
+    claudeBin,
     "--print",
     "--dangerously-skip-permissions",
     "--model",

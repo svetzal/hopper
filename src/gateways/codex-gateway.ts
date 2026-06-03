@@ -9,14 +9,7 @@ import {
 import { buildCodexArgv } from "./codex-argv.ts";
 import { loadCraftspersonBody } from "./craftsperson-loader.ts";
 import { buildGenerateText } from "./runner-generate-text.ts";
-
-function resolveCodexBin(): string {
-  const resolved = Bun.which("codex", { PATH: process.env.PATH });
-  if (!resolved) {
-    throw new Error("codex executable not found on PATH. Ensure Codex CLI is installed.");
-  }
-  return resolved;
-}
+import { resolveBinOnPath } from "./resolve-bin.ts";
 
 function buildCodexPrompt(
   prompt: string,
@@ -47,7 +40,7 @@ function buildRunSession(deps: CodexRunnerDeps) {
     auditFile: string,
     options: SessionOptions = {},
   ): Promise<{ exitCode: number; result: string }> {
-    const codexBin = resolveCodexBin();
+    const codexBin = resolveBinOnPath("codex", "Ensure Codex CLI is installed.");
     const resultPath = generateTempFilename("hopper-codex-result", "txt");
 
     const loader = deps.loadCraftsperson ?? loadCraftspersonBody;
