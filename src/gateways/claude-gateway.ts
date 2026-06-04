@@ -1,7 +1,7 @@
-import { buildSessionPreamble, extractResult, formatStderrEvent } from "../extract-result.ts";
+import { buildSessionPreamble, extractResult } from "../extract-result.ts";
 import { type Profile, resolveProfileModel } from "../profile.ts";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
-import { appendToAuditFile, streamToAuditFile } from "./audit-stream.ts";
+import { appendToAuditFile, formatStderrEvent, streamToAuditFile } from "./audit-stream.ts";
 import { buildClaudeArgv } from "./claude-argv.ts";
 import { resolveBinOnPath } from "./resolve-bin.ts";
 

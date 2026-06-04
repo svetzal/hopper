@@ -2,7 +2,7 @@ import { unlink } from "node:fs/promises";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
 import {
   appendToAuditFile,
-  formatSyntheticEvent,
+  formatStderrEvent,
   generateTempFilename,
   streamToAuditFile,
 } from "./audit-stream.ts";
@@ -56,12 +56,7 @@ function buildRunSession(deps: CodexRunnerDeps) {
     ]);
     const exitCode = await proc.exited;
 
-    if (stderrText.trim()) {
-      await appendToAuditFile(
-        auditFile,
-        formatSyntheticEvent({ type: "stderr", text: stderrText }),
-      );
-    }
+    await appendToAuditFile(auditFile, formatStderrEvent(stderrText));
 
     const result = await Bun.file(resultPath)
       .text()

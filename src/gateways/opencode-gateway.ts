@@ -6,7 +6,7 @@ import {
   scanOpencodeStream,
 } from "../extract-opencode-result.ts";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
-import { appendToAuditFile, formatSyntheticEvent, streamToAuditFile } from "./audit-stream.ts";
+import { appendToAuditFile, formatStderrEvent, formatSyntheticEvent, streamToAuditFile } from "./audit-stream.ts";
 import { loadCraftspersonBody } from "./craftsperson-loader.ts";
 import { buildOpencodeArgv } from "./opencode-argv.ts";
 import { resolveOpencodeEnv } from "./opencode-config-content.ts";
@@ -82,12 +82,7 @@ function buildRunSession(deps: OpencodeRunnerDeps) {
     const rawExitCode = await proc.exited;
 
     // Capture stderr as a JSONL event so the audit stays machine-parseable.
-    if (stderrText.trim()) {
-      await appendToAuditFile(
-        auditFile,
-        formatSyntheticEvent({ type: "stderr", text: stderrText }),
-      );
-    }
+    await appendToAuditFile(auditFile, formatStderrEvent(stderrText));
 
     const scan = scanOpencodeStream(output);
 
