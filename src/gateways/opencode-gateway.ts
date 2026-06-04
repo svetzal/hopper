@@ -6,11 +6,7 @@ import {
   scanOpencodeStream,
 } from "../extract-opencode-result.ts";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
-import {
-  appendToAuditFile,
-  formatSyntheticEvent,
-  spawnStreamedSession,
-} from "./audit-stream.ts";
+import { appendToAuditFile, formatSyntheticEvent, spawnStreamedSession } from "./audit-stream.ts";
 import { loadCraftspersonBody } from "./craftsperson-loader.ts";
 import { buildOpencodeArgv } from "./opencode-argv.ts";
 import { resolveOpencodeEnv } from "./opencode-config-content.ts";

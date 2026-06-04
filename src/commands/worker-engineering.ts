@@ -307,7 +307,10 @@ async function runValidateAttempt(
   log(
     `Validate phase attempt ${attempt}/${maxAttempts} (deep, read-only git)...\nAudit log: ${validateAuditPath}`,
   );
-  let outcome: { passed: boolean; reason: string; fallbackUsed?: boolean } | undefined;
+  let outcome: { passed: boolean; reason: string; fallbackUsed?: boolean } = {
+    passed: false,
+    reason: "not resolved",
+  };
   const { result } = await runPhase(claude, profile, {
     itemId: item.id,
     prompt: buildValidatePrompt(item, planText),
@@ -334,7 +337,7 @@ async function runValidateAttempt(
     },
     log,
   });
-  return { outcome: outcome!, result };
+  return { outcome, result };
 }
 
 export async function runExecuteValidateLoop(
