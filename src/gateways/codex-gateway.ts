@@ -1,10 +1,9 @@
 import { unlink } from "node:fs/promises";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
 import {
-  appendToAuditFile,
-  formatStderrEvent,
   generateTempFilename,
-  streamToAuditFile,
+  mergeSpawnEnv,
+  spawnStreamedSession,
 } from "./audit-stream.ts";
 import { buildCodexArgv } from "./codex-argv.ts";
 import { loadCraftspersonBody } from "./craftsperson-loader.ts";
@@ -47,16 +46,11 @@ function buildRunSession(deps: CodexRunnerDeps) {
     const craftspersonBody = options.agent ? await loader(options.agent) : null;
     const effectivePrompt = buildCodexPrompt(prompt, options, craftspersonBody);
     const argv = buildCodexArgv(codexBin, effectivePrompt, options, resultPath);
-    const spawnEnv = options.env ? { ...process.env, ...options.env } : undefined;
-    const proc = Bun.spawn(argv, { cwd, env: spawnEnv, stdout: "pipe", stderr: "pipe" });
-
-    const [_, stderrText] = await Promise.all([
-      streamToAuditFile(proc.stdout, auditFile, ""),
-      new Response(proc.stderr).text(),
-    ]);
-    const exitCode = await proc.exited;
-
-    await appendToAuditFile(auditFile, formatStderrEvent(stderrText));
+    const { exitCode } = await spawnStreamedSession(argv, {
+      cwd,
+      env: mergeSpawnEnv(options.env),
+      auditFile,
+    });
 
     const result = await Bun.file(resultPath)
       .text()

@@ -85,3 +85,31 @@ export async function appendToAuditFile(auditFile: string, event: string): Promi
       .catch(() => "")) + event,
   );
 }
+
+export function mergeSpawnEnv(env?: Record<string, string>) {
+  return env ? { ...process.env, ...env } : undefined;
+}
+
+export async function spawnStreamedSession(
+  argv: string[],
+  opts: {
+    cwd: string;
+    env?: ReturnType<typeof mergeSpawnEnv> | Record<string, string>;
+    auditFile: string;
+    preamble?: string;
+  },
+): Promise<{ output: string; stderrText: string; exitCode: number }> {
+  const proc = Bun.spawn(argv, {
+    cwd: opts.cwd,
+    env: opts.env,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [output, stderrText] = await Promise.all([
+    streamToAuditFile(proc.stdout, opts.auditFile, opts.preamble ?? ""),
+    new Response(proc.stderr).text(),
+  ]);
+  const exitCode = await proc.exited;
+  await appendToAuditFile(opts.auditFile, formatStderrEvent(stderrText));
+  return { output, stderrText, exitCode };
+}

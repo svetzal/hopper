@@ -6,7 +6,7 @@ import {
   resolveEngineeringPreconditions,
 } from "../engineering-workflow.ts";
 import { toErrorMessage } from "../error-utils.ts";
-import type { AgentRunner } from "../gateways/agent-runner.ts";
+import type { AgentRunner, SessionOptions } from "../gateways/agent-runner.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import { buildEngineeringBranchName } from "../git-workflow.ts";
@@ -56,6 +56,35 @@ import {
  */
 async function safeRecordPhase(itemId: string, record: PhaseRecord, log: LogFn): Promise<void> {
   return safeVoid(() => recordItemPhase(itemId, record), "Phase recording failed", log);
+}
+
+async function runPhase(
+  claude: AgentRunner,
+  profile: Profile,
+  args: {
+    itemId: string;
+    prompt: string;
+    worktreePath: string;
+    auditFile: string;
+    sessionOptions: SessionOptions;
+    phaseRecord: (
+      run: { exitCode: number; result: string },
+      startedAt: string,
+      endedAt: string,
+    ) => PhaseRecord | Promise<PhaseRecord>;
+    log: LogFn;
+  },
+): Promise<{ result: string; exitCode: number }> {
+  const { itemId, prompt, worktreePath, auditFile, sessionOptions, phaseRecord, log } = args;
+  const startedAt = new Date().toISOString();
+  const run = await claude.runSession(prompt, worktreePath, auditFile, {
+    ...sessionOptions,
+    profile,
+  });
+  const endedAt = new Date().toISOString();
+  const record = await phaseRecord(run, startedAt, endedAt);
+  await safeRecordPhase(itemId, record, log);
+  return { result: run.result, exitCode: run.exitCode };
 }
 
 async function safePersistBranchSlug(itemId: string, slug: string, log: LogFn): Promise<void> {
@@ -179,27 +208,25 @@ export async function runPlanPhase(
 ): Promise<{ planText: string } | null> {
   const { claude, fs, profile } = deps;
   log(`Plan phase (deep, plan mode, read-only)...\nAudit log: ${paths.planAuditFile}`);
-  const planPrompt = buildPlanPrompt(item);
-  const planStartedAt = new Date().toISOString();
-  const planRun = await claude.runSession(planPrompt, worktreePath, paths.planAuditFile, {
-    ...buildPlanOptions(),
-    profile,
-  });
-  const planText = planRun.result.trim();
-  await safeRecordPhase(
-    item.id,
-    {
+  const { result, exitCode } = await runPhase(claude, profile, {
+    itemId: item.id,
+    prompt: buildPlanPrompt(item),
+    worktreePath,
+    auditFile: paths.planAuditFile,
+    sessionOptions: buildPlanOptions(),
+    phaseRecord: (run, startedAt, endedAt) => ({
       name: "plan",
-      startedAt: planStartedAt,
-      endedAt: new Date().toISOString(),
-      exitCode: planRun.exitCode,
-    },
+      startedAt,
+      endedAt,
+      exitCode: run.exitCode,
+    }),
     log,
-  );
-  if (planRun.exitCode !== 0 || !planText) {
-    const msg = `Plan phase failed (exit ${planRun.exitCode}); worktree + branch preserved for inspection.`;
+  });
+  const planText = result.trim();
+  if (exitCode !== 0 || !planText) {
+    const msg = `Plan phase failed (exit ${exitCode}); worktree + branch preserved for inspection.`;
     log(msg);
-    await fs.writeFile(paths.resultFile, `${planRun.result}\n\n${msg}`);
+    await fs.writeFile(paths.resultFile, `${result}\n\n${msg}`);
     return null;
   }
   log("Persisting plan to audit directory...");
@@ -249,23 +276,21 @@ async function runExecuteAttempt(
         attempt,
       )
     : buildExecutePrompt(item, planText);
-  const executeStartedAt = new Date().toISOString();
-  const executeRun = await claude.runSession(executePrompt, worktreePath, executeAuditPath, {
-    ...buildExecuteOptions(item.agent),
-    profile,
-  });
-  await safeRecordPhase(
-    item.id,
-    {
+  return runPhase(claude, profile, {
+    itemId: item.id,
+    prompt: executePrompt,
+    worktreePath,
+    auditFile: executeAuditPath,
+    sessionOptions: buildExecuteOptions(item.agent),
+    phaseRecord: (run, startedAt, endedAt) => ({
       name: "execute",
-      startedAt: executeStartedAt,
-      endedAt: new Date().toISOString(),
-      exitCode: executeRun.exitCode,
+      startedAt,
+      endedAt,
+      exitCode: run.exitCode,
       attempt,
-    },
+    }),
     log,
-  );
-  return { result: executeRun.result, exitCode: executeRun.exitCode };
+  });
 }
 
 async function runValidateAttempt(
@@ -282,34 +307,34 @@ async function runValidateAttempt(
   log(
     `Validate phase attempt ${attempt}/${maxAttempts} (deep, read-only git)...\nAudit log: ${validateAuditPath}`,
   );
-  const validateStartedAt = new Date().toISOString();
-  const validateRun = await claude.runSession(
-    buildValidatePrompt(item, planText),
+  let outcome: { passed: boolean; reason: string; fallbackUsed?: boolean } | undefined;
+  const { result } = await runPhase(claude, profile, {
+    itemId: item.id,
+    prompt: buildValidatePrompt(item, planText),
     worktreePath,
-    validateAuditPath,
-    { ...buildValidateOptions(), profile },
-  );
-  const outcome = await resolveValidateOutcomeWithFallback(
-    validateRun.exitCode,
-    validateRun.result,
-    claude,
-    profile,
-    log,
-  );
-  await safeRecordPhase(
-    item.id,
-    {
-      name: "validate",
-      startedAt: validateStartedAt,
-      endedAt: new Date().toISOString(),
-      exitCode: validateRun.exitCode,
-      passed: outcome.passed,
-      attempt,
-      ...(outcome.fallbackUsed ? { fallbackUsed: true } : {}),
+    auditFile: validateAuditPath,
+    sessionOptions: buildValidateOptions(),
+    phaseRecord: async (run, startedAt, endedAt) => {
+      outcome = await resolveValidateOutcomeWithFallback(
+        run.exitCode,
+        run.result,
+        claude,
+        profile,
+        log,
+      );
+      return {
+        name: "validate",
+        startedAt,
+        endedAt,
+        exitCode: run.exitCode,
+        passed: outcome.passed,
+        attempt,
+        ...(outcome.fallbackUsed ? { fallbackUsed: true } : {}),
+      };
     },
     log,
-  );
-  return { outcome, result: validateRun.result };
+  });
+  return { outcome: outcome!, result };
 }
 
 export async function runExecuteValidateLoop(

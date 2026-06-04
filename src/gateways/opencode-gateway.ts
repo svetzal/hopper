@@ -8,9 +8,8 @@ import {
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
 import {
   appendToAuditFile,
-  formatStderrEvent,
   formatSyntheticEvent,
-  streamToAuditFile,
+  spawnStreamedSession,
 } from "./audit-stream.ts";
 import { loadCraftspersonBody } from "./craftsperson-loader.ts";
 import { buildOpencodeArgv } from "./opencode-argv.ts";
@@ -72,22 +71,11 @@ function buildRunSession(deps: OpencodeRunnerDeps) {
     }
 
     const argv = buildOpencodeArgv(opencodeBin, prompt, options, cwd);
-    const proc = Bun.spawn(argv, {
+    const { output, exitCode: rawExitCode } = await spawnStreamedSession(argv, {
       cwd,
       env,
-      stdout: "pipe",
-      stderr: "pipe",
+      auditFile,
     });
-
-    const [output, stderrText] = await Promise.all([
-      streamToAuditFile(proc.stdout, auditFile, ""),
-      new Response(proc.stderr).text(),
-    ]);
-
-    const rawExitCode = await proc.exited;
-
-    // Capture stderr as a JSONL event so the audit stays machine-parseable.
-    await appendToAuditFile(auditFile, formatStderrEvent(stderrText));
 
     const scan = scanOpencodeStream(output);
 

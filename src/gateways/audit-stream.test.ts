@@ -7,6 +7,8 @@ import {
   formatStderrEvent,
   formatSyntheticEvent,
   generateTempFilename,
+  mergeSpawnEnv,
+  spawnStreamedSession,
   streamToAuditFile,
 } from "./audit-stream.ts";
 
@@ -149,6 +151,86 @@ describe("formatStderrEvent", () => {
     const line = formatStderrEvent(raw);
     const parsed = JSON.parse(line.trimEnd());
     expect(parsed.text).toBe(raw);
+  });
+});
+
+describe("mergeSpawnEnv", () => {
+  test("returns undefined when no env is provided", () => {
+    expect(mergeSpawnEnv(undefined)).toBeUndefined();
+    expect(mergeSpawnEnv()).toBeUndefined();
+  });
+
+  test("merges provided env over process.env when env is given", () => {
+    const result = mergeSpawnEnv({ MY_VAR: "hello" });
+    expect(result).not.toBeUndefined();
+    expect(result?.MY_VAR).toBe("hello");
+    expect(result?.PATH).toBe(process.env.PATH);
+  });
+
+  test("overrides process.env values with provided env values", () => {
+    const result = mergeSpawnEnv({ PATH: "/custom/bin" });
+    expect(result?.PATH).toBe("/custom/bin");
+  });
+});
+
+describe("spawnStreamedSession", () => {
+  let tempDir = "";
+
+  afterEach(async () => {
+    if (tempDir) {
+      await rm(tempDir, { recursive: true, force: true });
+      tempDir = "";
+    }
+  });
+
+  async function setup(): Promise<string> {
+    tempDir = await mkdtemp(join(tmpdir(), "spawn-streamed-test-"));
+    return join(tempDir, "audit.jsonl");
+  }
+
+  test("streams stdout to audit file and returns exit code", async () => {
+    const auditFile = await setup();
+    const { output, exitCode } = await spawnStreamedSession(
+      ["echo", '{"type":"msg","text":"hello"}'],
+      { cwd: process.cwd(), auditFile },
+    );
+    expect(exitCode).toBe(0);
+    expect(output).toContain('"hello"');
+    const content = await readFile(auditFile, "utf8");
+    expect(content).toContain('"hello"');
+  });
+
+  test("writes preamble before stream content when provided", async () => {
+    const auditFile = await setup();
+    await spawnStreamedSession(["echo", "line1"], {
+      cwd: process.cwd(),
+      auditFile,
+      preamble: '{"type":"preamble"}\n',
+    });
+    const content = await readFile(auditFile, "utf8");
+    expect(content.startsWith('{"type":"preamble"}')).toBe(true);
+  });
+
+  test("appends stderr as a JSONL event at the end of the audit file", async () => {
+    const auditFile = await setup();
+    await spawnStreamedSession(["sh", "-c", "echo out; echo err >&2"], {
+      cwd: process.cwd(),
+      auditFile,
+    });
+    const content = await readFile(auditFile, "utf8");
+    const lastLine = content.trimEnd().split("\n").pop() ?? "";
+    const parsed = JSON.parse(lastLine);
+    expect(parsed.type).toBe("stderr");
+    expect(parsed.text).toContain("err");
+  });
+
+  test("returns stderrText with captured stderr content", async () => {
+    const auditFile = await setup();
+    const { stderrText } = await spawnStreamedSession(["sh", "-c", "echo boom >&2"], {
+      cwd: process.cwd(),
+      auditFile,
+    });
+    expect(stderrText).toContain("boom");
   });
 });
 
