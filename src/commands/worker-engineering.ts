@@ -136,6 +136,14 @@ async function resolveEngineeringCommitMessage(
   return resolveEngineeringCommitFallback(item, result.text, 0);
 }
 
+const FALLBACK_UNCLASSIFIED_REASON = "fallback assessor could not classify (defaulting to FAIL)";
+
+const fallbackFailOutcome = (): { passed: false; reason: string; fallbackUsed: true } => ({
+  passed: false,
+  reason: FALLBACK_UNCLASSIFIED_REASON,
+  fallbackUsed: true,
+});
+
 export async function resolveValidateOutcomeWithFallback(
   exitCode: number,
   resultText: string,
@@ -160,11 +168,7 @@ export async function resolveValidateOutcomeWithFallback(
 
     if (fallbackExitCode !== 0) {
       log("Fallback assessor exited non-zero — defaulting to FAIL.");
-      return {
-        passed: false,
-        reason: "fallback assessor could not classify (defaulting to FAIL)",
-        fallbackUsed: true,
-      };
+      return fallbackFailOutcome();
     }
 
     const verdict = normaliseValidateFallback(text);
@@ -184,18 +188,10 @@ export async function resolveValidateOutcomeWithFallback(
     }
 
     log("Fallback assessor was UNCLEAR — defaulting to FAIL.");
-    return {
-      passed: false,
-      reason: "fallback assessor could not classify (defaulting to FAIL)",
-      fallbackUsed: true,
-    };
+    return fallbackFailOutcome();
   } catch {
     log("Fallback assessor threw — defaulting to FAIL.");
-    return {
-      passed: false,
-      reason: "fallback assessor could not classify (defaulting to FAIL)",
-      fallbackUsed: true,
-    };
+    return fallbackFailOutcome();
   }
 }
 
@@ -359,6 +355,14 @@ export async function runExecuteValidateLoop(
   const executeResults: string[] = [];
   const validateResults: string[] = [];
 
+  async function writeEngineeringFailure(msg: string): Promise<void> {
+    log(msg);
+    await fs.writeFile(
+      paths.resultFile,
+      buildEngineeringFailureResult(planText, executeResults, validateResults, msg),
+    );
+  }
+
   while (attempt < maxAttempts) {
     attempt += 1;
 
@@ -372,11 +376,7 @@ export async function runExecuteValidateLoop(
     executeResults.push(executeAttempt.result);
     if (executeAttempt.exitCode !== 0) {
       const msg = `Execute phase attempt ${attempt} failed (exit ${executeAttempt.exitCode}); worktree + branch preserved.`;
-      log(msg);
-      await fs.writeFile(
-        paths.resultFile,
-        buildEngineeringFailureResult(planText, executeResults, validateResults, msg),
-      );
+      await writeEngineeringFailure(msg);
       return { passed: false, reason: msg, executeResults, validateResults };
     }
 
@@ -395,11 +395,7 @@ export async function runExecuteValidateLoop(
 
   if (!outcome.passed) {
     const msg = `Validate did not pass after ${attempt}/${maxAttempts} attempt(s) (${outcome.reason}); worktree + branch preserved.`;
-    log(msg);
-    await fs.writeFile(
-      paths.resultFile,
-      buildEngineeringFailureResult(planText, executeResults, validateResults, msg),
-    );
+    await writeEngineeringFailure(msg);
     return { passed: false, reason: outcome.reason, executeResults, validateResults };
   }
 
