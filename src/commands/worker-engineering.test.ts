@@ -24,8 +24,11 @@ import {
   commitEngineeringChanges,
   processEngineeringItem,
   resolveValidateOutcomeWithFallback,
+  resolveWorkBranch,
+  runEngineeringPreconditions,
   runExecuteValidateLoop,
   runPlanPhase,
+  setupEngineeringWorktree,
 } from "./worker-engineering.ts";
 
 const mockSetItemEngineeringBranchSlug = mock(async (_id: string, _slug: string) => {});
@@ -413,6 +416,179 @@ describe("commitEngineeringChanges", () => {
     await commitEngineeringChanges(item, "/worktree", { git, claude, profile: TEST_PROFILE }, noop);
 
     expect(callOrder).toEqual(["stageAll", "diffSummary", "commitAll"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runEngineeringPreconditions
+// ---------------------------------------------------------------------------
+
+describe("runEngineeringPreconditions", () => {
+  const storeDir = setupTempStoreDir("hopper-precond-test-");
+  beforeEach(async () => {
+    await storeDir.beforeEach();
+    requeueItemMock.mockClear();
+  });
+  afterEach(storeDir.afterEach);
+
+  test("returns { ok: false } and requeues when workingDir is missing", async () => {
+    const item = makeClaimedItem({ id: ITEM_ID, workingDir: undefined, branch: "main" });
+    await store.saveItems([item]);
+    const fs = makeMockFs();
+
+    const result = await runEngineeringPreconditions(item, "test-agent", HOPPER_HOME, fs, noop);
+
+    expect(result.ok).toBe(false);
+    expect(requeueItemMock).toHaveBeenCalledTimes(1);
+    const [calledId, reason] = callArgs(requeueItemMock, 0);
+    expect(calledId).toBe(ITEM_ID);
+    expect(reason).toContain("--dir");
+  });
+
+  test("returns { ok: true, workingDir, branch } when both fields present", async () => {
+    const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
+    const fs = makeMockFs();
+
+    const result = await runEngineeringPreconditions(item, "test-agent", HOPPER_HOME, fs, noop);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.workingDir).toBe("/repo");
+      expect(result.branch).toBe("main");
+    }
+    expect(requeueItemMock).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveWorkBranch
+// ---------------------------------------------------------------------------
+
+describe("resolveWorkBranch", () => {
+  beforeEach(() => {
+    mockSetItemEngineeringBranchSlug.mockClear();
+  });
+
+  test("cached slug → generateText NOT called, returns deterministic branch name", async () => {
+    const item = makeClaimedItem({ id: ITEM_ID, engineeringBranchSlug: "my-slug" });
+    const claude: AgentRunner = {
+      runSession: mock(async () => ({ exitCode: 0, result: "" })),
+      generateText: mock(async () => ({ exitCode: 0, text: "" })),
+    };
+
+    const workBranch = await resolveWorkBranch(item, { claude, profile: TEST_PROFILE }, noop);
+
+    expect(claude.generateText).not.toHaveBeenCalled();
+    expect(mockSetItemEngineeringBranchSlug).not.toHaveBeenCalled();
+    expect(workBranch).toContain("my-slug");
+  });
+
+  test("no cached slug → generateText called and slug persisted", async () => {
+    const item = makeClaimedItem({ id: ITEM_ID });
+    const claude: AgentRunner = {
+      runSession: mock(async () => ({ exitCode: 0, result: "" })),
+      generateText: mock(async () => ({ exitCode: 0, text: "generated-slug" })),
+    };
+
+    const workBranch = await resolveWorkBranch(item, { claude, profile: TEST_PROFILE }, noop);
+
+    expect(claude.generateText).toHaveBeenCalledTimes(1);
+    expect(mockSetItemEngineeringBranchSlug).toHaveBeenCalledTimes(1);
+    const [persistedId, persistedSlug] = callArgs(mockSetItemEngineeringBranchSlug, 0);
+    expect(persistedId).toBe(ITEM_ID);
+    expect(persistedSlug).toBe("generated-slug");
+    expect(workBranch).toContain("generated-slug");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setupEngineeringWorktree
+// ---------------------------------------------------------------------------
+
+describe("setupEngineeringWorktree", () => {
+  const storeDir = setupTempStoreDir("hopper-worktree-test-");
+  beforeEach(async () => {
+    await storeDir.beforeEach();
+    requeueItemMock.mockClear();
+  });
+  afterEach(storeDir.afterEach);
+
+  function makeCtx(worktreePath = `/tmp/test-hopper-eng/worktrees/${ITEM_ID}`) {
+    return {
+      workingDir: "/repo",
+      branch: "main",
+      workBranch: "hopper-eng/test-slug-aaaaaaaa",
+      worktreePath,
+      paths: makePaths(),
+    };
+  }
+
+  test("success → returns { ok: true } and calls orchestrateWorktreeSetup", async () => {
+    const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
+    const git = makeMockGit();
+    const fs = makeMockFs();
+
+    const result = await setupEngineeringWorktree(
+      item,
+      "test-agent",
+      HOPPER_HOME,
+      makeCtx(),
+      { git, fs },
+      noop,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(git.createWorktree).toHaveBeenCalled();
+  });
+
+  test("StaleEngineeringBranchError → returns { ok: false } with 'Stale branch:' requeue reason", async () => {
+    const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
+    await store.saveItems([item]);
+    const git = makeMockGit({
+      branchExists: mock(async () => true),
+      listWorktreesForBranch: mock(async () => []),
+      branchIsAncestorOf: mock(async () => false),
+    });
+    const fs = makeMockFs();
+
+    const result = await setupEngineeringWorktree(
+      item,
+      "test-agent",
+      HOPPER_HOME,
+      makeCtx(),
+      { git, fs },
+      noop,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(requeueItemMock).toHaveBeenCalledTimes(1);
+    const [, reason] = callArgs(requeueItemMock, 0);
+    expect(reason).toContain("Stale branch");
+  });
+
+  test("generic error → returns { ok: false } with 'Worktree setup failed:' requeue reason", async () => {
+    const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
+    await store.saveItems([item]);
+    const git = makeMockGit({
+      createWorktree: mock(async () => {
+        throw new Error("disk full");
+      }),
+    });
+    const fs = makeMockFs();
+
+    const result = await setupEngineeringWorktree(
+      item,
+      "test-agent",
+      HOPPER_HOME,
+      makeCtx(),
+      { git, fs },
+      noop,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(requeueItemMock).toHaveBeenCalledTimes(1);
+    const [, reason] = callArgs(requeueItemMock, 0);
+    expect(reason).toContain("Worktree setup failed");
   });
 });
 

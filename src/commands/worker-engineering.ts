@@ -471,16 +471,13 @@ export async function teardownMergeAndComplete(ctx: TeardownContext): Promise<vo
   await logCompleteOutcome(item.claimToken, agentName, finalResult, log);
 }
 
-export async function processEngineeringItem(
+export async function runEngineeringPreconditions(
   item: ClaimedItem,
   agentName: string,
   hopperHome: string,
-  deps: { git: GitGateway; claude: AgentRunner; fs: FsGateway; profile: Profile },
-  concurrency: number = 1,
-): Promise<void> {
-  const { git, claude, fs, profile } = deps;
-  const log = createLogger(item.id, concurrency);
-
+  fs: FsGateway,
+  log: LogFn,
+): Promise<{ ok: true; workingDir: string; branch: string } | { ok: false }> {
   const preconditions = resolveEngineeringPreconditions(item);
   if (!preconditions.ok) {
     log(preconditions.reason);
@@ -492,21 +489,17 @@ export async function processEngineeringItem(
       log,
     );
     await safeRequeue(item.id, preconditions.reason, agentName, log);
-    return;
+    return { ok: false };
   }
-  const { workingDir, branch } = preconditions;
+  return { ok: true, workingDir: preconditions.workingDir, branch: preconditions.branch };
+}
 
-  logClaimBanner(item, log, [
-    `Dir:     ${workingDir}`,
-    `Branch:  ${branch}`,
-    `Type:    engineering${item.agent ? ` (agent: ${item.agent})` : ""}`,
-  ]);
-
-  const paths = resolveEngineeringAuditPaths(item.id, hopperHome);
-  const worktreePath = join(hopperHome, "worktrees", item.id);
-
-  // Resolve branch slug — use cached value when available so re-claims always
-  // produce the same work-branch name regardless of LLM non-determinism.
+export async function resolveWorkBranch(
+  item: ClaimedItem,
+  deps: { claude: AgentRunner; profile: Profile },
+  log: LogFn,
+): Promise<string> {
+  const { claude, profile } = deps;
   let slug: string | null;
   const slugSource = resolveBranchSlugSource(item);
   if (slugSource.type === "cached") {
@@ -521,10 +514,25 @@ export async function processEngineeringItem(
   }
   const workBranch = buildEngineeringBranchName(item.id, slug);
   log(`Work branch: ${workBranch}`);
+  return workBranch;
+}
 
-  // Pre-spawn setup: auto-requeue on failure so the item doesn't get stuck
-  // in `in_progress`. Post-spawn failures propagate to the worker loop's
-  // last-resort safety net.
+export async function setupEngineeringWorktree(
+  item: ClaimedItem,
+  agentName: string,
+  hopperHome: string,
+  ctx: {
+    workingDir: string;
+    branch: string;
+    workBranch: string;
+    worktreePath: string;
+    paths: EngineeringAuditPaths;
+  },
+  deps: { git: GitGateway; fs: FsGateway },
+  log: LogFn,
+): Promise<{ ok: boolean }> {
+  const { workingDir, branch, workBranch, worktreePath, paths } = ctx;
+  const { git, fs } = deps;
   try {
     await fs.ensureDir(paths.auditDir);
     await fs.ensureDir(join(hopperHome, "worktrees"));
@@ -538,6 +546,7 @@ export async function processEngineeringItem(
       workBranchOverride: workBranch,
       log,
     });
+    return { ok: true };
   } catch (e) {
     const reason =
       e instanceof StaleEngineeringBranchError
@@ -545,15 +554,49 @@ export async function processEngineeringItem(
         : `Worktree setup failed: ${toErrorMessage(e)}`;
     log(`Pre-spawn failure — auto-requeueing: ${reason}`);
     await safeRequeue(item.id, reason, agentName, log);
-    return;
+    return { ok: false };
   }
+}
 
-  // --- Plan phase -------------------------------------------------------
+export async function processEngineeringItem(
+  item: ClaimedItem,
+  agentName: string,
+  hopperHome: string,
+  deps: { git: GitGateway; claude: AgentRunner; fs: FsGateway; profile: Profile },
+  concurrency: number = 1,
+): Promise<void> {
+  const { git, claude, fs, profile } = deps;
+  const log = createLogger(item.id, concurrency);
+
+  const preconditions = await runEngineeringPreconditions(item, agentName, hopperHome, fs, log);
+  if (!preconditions.ok) return;
+  const { workingDir, branch } = preconditions;
+
+  logClaimBanner(item, log, [
+    `Dir:     ${workingDir}`,
+    `Branch:  ${branch}`,
+    `Type:    engineering${item.agent ? ` (agent: ${item.agent})` : ""}`,
+  ]);
+
+  const paths = resolveEngineeringAuditPaths(item.id, hopperHome);
+  const worktreePath = join(hopperHome, "worktrees", item.id);
+
+  const workBranch = await resolveWorkBranch(item, { claude, profile }, log);
+
+  const worktreeSetup = await setupEngineeringWorktree(
+    item,
+    agentName,
+    hopperHome,
+    { workingDir, branch, workBranch, worktreePath, paths },
+    { git, fs },
+    log,
+  );
+  if (!worktreeSetup.ok) return;
+
   const planResult = await runPlanPhase(item, worktreePath, paths, { claude, fs, profile }, log);
   if (!planResult) return;
   const { planText } = planResult;
 
-  // --- Execute / Validate loop ----------------------------------------
   const loopResult = await runExecuteValidateLoop({
     item,
     worktreePath,
@@ -565,7 +608,6 @@ export async function processEngineeringItem(
   });
   if (!loopResult.passed) return;
 
-  // --- Commit (Hopper + Haiku) -----------------------------------------
   const { dirty } = await commitEngineeringChanges(
     item,
     worktreePath,
@@ -573,7 +615,6 @@ export async function processEngineeringItem(
     log,
   );
 
-  // --- Worktree teardown + merge/push + complete -----------------------
   await teardownMergeAndComplete({
     item,
     agentName,
