@@ -1,32 +1,29 @@
 import { buildSessionPreamble, extractResult } from "../extract-result.ts";
 import { type Profile, resolveProfileModel } from "../profile.ts";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
-import { mergeSpawnEnv, spawnStreamedSession } from "./audit-stream.ts";
+import { mergeSpawnEnv } from "./audit-stream.ts";
 import { buildClaudeArgv } from "./claude-argv.ts";
 import { resolveBinOnPath } from "./resolve-bin.ts";
+import { buildRunnerRunSession } from "./runner-session.ts";
 
-async function runSession(
-  prompt: string,
-  cwd: string,
-  auditFile: string,
-  options: SessionOptions = {},
-): Promise<{ exitCode: number; result: string }> {
-  const claudeBin = resolveBinOnPath("claude", "Ensure Claude Code is installed and available.");
-  const argv = buildClaudeArgv(claudeBin, prompt, options);
-  const existing = options.append
-    ? await Bun.file(auditFile)
-        .text()
-        .catch(() => "")
-    : "";
-  const preamble = buildSessionPreamble(existing, options.append ?? false);
-  const { output, exitCode } = await spawnStreamedSession(argv, {
-    cwd,
-    env: mergeSpawnEnv(options.env),
-    auditFile,
-    preamble,
-  });
-  return { exitCode, result: extractResult(output) };
-}
+const runSession = buildRunnerRunSession({
+  bin: "claude",
+  hint: "Ensure Claude Code is installed and available.",
+  // Claude resolves agents natively via --agent in buildClaudeArgv; craftspersonBody stays null.
+  resolvePrompt: (prompt, _options, _craftspersonBody) => prompt,
+  resolveEnv: (options, _craftspersonBody) => mergeSpawnEnv(options.env),
+  buildArgv(bin, effectivePrompt, options, _cwd, _auditFile) {
+    return { argv: buildClaudeArgv(bin, effectivePrompt, options), callCtx: undefined };
+  },
+  buildPreamble: async (auditFile, options) => {
+    const existing = options.append
+      ? await Bun.file(auditFile).text().catch(() => "")
+      : "";
+    return buildSessionPreamble(existing, options.append ?? false);
+  },
+  extractOutcome: (output, exitCode, _bin, _cwd, _auditFile, _callCtx) =>
+    Promise.resolve({ exitCode, result: extractResult(output) }),
+});
 
 async function generateText(
   prompt: string,

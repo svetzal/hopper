@@ -19,3 +19,20 @@ export async function loadCraftspersonBody(name: string): Promise<string | null>
   if (contents == null) return null;
   return extractCraftspersonBody(contents);
 }
+
+/**
+ * Resolve the craftsperson body for an agent session.
+ *
+ * Encapsulates the repeated `(deps.loadCraftsperson ?? loadCraftspersonBody)`
+ * fallback and the `agent ? await loader(agent) : null` guard that was
+ * previously duplicated across the opencode and codex gateway modules.
+ *
+ * Returns null when no agent is requested, without calling the loader.
+ */
+export async function resolveCraftspersonBody(
+  loader: ((name: string) => Promise<string | null>) | undefined,
+  agent: string | undefined,
+): Promise<string | null> {
+  if (!agent) return null;
+  return (loader ?? loadCraftspersonBody)(agent);
+}

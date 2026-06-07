@@ -6,12 +6,11 @@ import {
   scanOpencodeStream,
 } from "../extract-opencode-result.ts";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
-import { appendToAuditFile, formatSyntheticEvent, spawnStreamedSession } from "./audit-stream.ts";
-import { loadCraftspersonBody } from "./craftsperson-loader.ts";
+import { appendToAuditFile, formatSyntheticEvent } from "./audit-stream.ts";
 import { buildOpencodeArgv } from "./opencode-argv.ts";
 import { resolveOpencodeEnv } from "./opencode-config-content.ts";
-import { resolveBinOnPath } from "./resolve-bin.ts";
 import { buildGenerateText } from "./runner-generate-text.ts";
+import { buildRunnerRunSession } from "./runner-session.ts";
 
 interface OpencodeRunnerDeps {
   /**
@@ -41,62 +40,54 @@ async function runOpencodeExport(
 }
 
 function buildRunSession(deps: OpencodeRunnerDeps) {
-  return async function runSession(
-    prompt: string,
-    cwd: string,
-    auditFile: string,
-    options: SessionOptions = {},
-  ): Promise<{ exitCode: number; result: string }> {
-    const opencodeBin = resolveBinOnPath("opencode", "Ensure opencode is installed and available.");
-
-    // Build the inline agent config when a craftsperson is requested.
-    // options.env (e.g. investigation PATH shims) is merged first so it forms
-    // the base; resolveOpencodeEnv then overlays OPENCODE_CONFIG_CONTENT on top.
-    const baseEnv: Record<string, string> = options.env
-      ? { ...(process.env as Record<string, string>), ...options.env }
-      : (process.env as Record<string, string>);
-
-    let env: Record<string, string> | undefined;
-    if (options.agent || options.appendSystemPrompt) {
-      const loader = deps.loadCraftsperson ?? loadCraftspersonBody;
-      const craftspersonBody = options.agent ? await loader(options.agent) : null;
-      env = resolveOpencodeEnv(craftspersonBody, options, baseEnv);
-    } else if (options.env) {
-      // No craftsperson injection but caller supplied extra env vars
-      env = baseEnv;
-    }
-
-    const argv = buildOpencodeArgv(opencodeBin, prompt, options, cwd);
-    const { output, exitCode: rawExitCode } = await spawnStreamedSession(argv, {
-      cwd,
-      env,
-      auditFile,
-    });
-
-    const scan = scanOpencodeStream(output);
-
-    // Fetch the canonical session document for the final-result text.
-    let result = "";
-    let exportDoc: OpencodeExport | null = null;
-    if (scan.sessionID) {
-      exportDoc = await runOpencodeExport(opencodeBin, scan.sessionID, cwd);
-      if (exportDoc) {
-        result = extractOpencodeResult(exportDoc);
-        await appendToAuditFile(
-          auditFile,
-          formatSyntheticEvent({
-            type: "opencode-export",
-            sessionID: scan.sessionID,
-            info: exportDoc.info,
-          }),
-        );
+  return buildRunnerRunSession({
+    bin: "opencode",
+    hint: "Ensure opencode is installed and available.",
+    loadCraftsperson: deps.loadCraftsperson,
+    resolvePrompt: (prompt, _options, _craftspersonBody) => prompt,
+    resolveEnv(options, craftspersonBody) {
+      // options.env (e.g. investigation PATH shims) is merged first so it forms
+      // the base; resolveOpencodeEnv then overlays OPENCODE_CONFIG_CONTENT on top.
+      const baseEnv: Record<string, string> = options.env
+        ? { ...(process.env as Record<string, string>), ...options.env }
+        : (process.env as Record<string, string>);
+      if (options.agent || options.appendSystemPrompt) {
+        return resolveOpencodeEnv(craftspersonBody, options, baseEnv);
       }
-    }
+      if (options.env) {
+        return baseEnv;
+      }
+      return undefined;
+    },
+    buildArgv(bin, effectivePrompt, options, cwd, _auditFile) {
+      return {
+        argv: buildOpencodeArgv(bin, effectivePrompt, options, cwd),
+        callCtx: undefined,
+      };
+    },
+    async extractOutcome(output, rawExitCode, bin, cwd, auditFile, _callCtx) {
+      const scan = scanOpencodeStream(output);
 
-    const effectiveExitCode = resolveEffectiveExitCode(rawExitCode, scan.errors.length);
+      // Fetch the canonical session document for the final-result text.
+      let result = "";
+      if (scan.sessionID) {
+        const exportDoc = await runOpencodeExport(bin, scan.sessionID, cwd);
+        if (exportDoc) {
+          result = extractOpencodeResult(exportDoc);
+          await appendToAuditFile(
+            auditFile,
+            formatSyntheticEvent({
+              type: "opencode-export",
+              sessionID: scan.sessionID,
+              info: exportDoc.info,
+            }),
+          );
+        }
+      }
 
-    return { exitCode: effectiveExitCode, result };
-  };
+      return { exitCode: resolveEffectiveExitCode(rawExitCode, scan.errors.length), result };
+    },
+  });
 }
 
 /**

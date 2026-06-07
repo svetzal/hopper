@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { resolveCraftspersonBody } from "./craftsperson-loader.ts";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -31,6 +32,40 @@ async function loadCraftspersonBodyAt(basePath: string, name: string): Promise<s
   if (contents == null) return null;
   return extractCraftspersonBody(contents);
 }
+
+describe("resolveCraftspersonBody", () => {
+  test("returns null without calling loader when agent is undefined", async () => {
+    let loaderCalled = false;
+    const result = await resolveCraftspersonBody(
+      async () => {
+        loaderCalled = true;
+        return "body";
+      },
+      undefined,
+    );
+    expect(result).toBeNull();
+    expect(loaderCalled).toBe(false);
+  });
+
+  test("calls custom loader with agent name and returns its result", async () => {
+    let loaderCalledWith: string | undefined;
+    const result = await resolveCraftspersonBody(
+      async (name) => {
+        loaderCalledWith = name;
+        return "custom body";
+      },
+      "my-agent",
+    );
+    expect(loaderCalledWith).toBe("my-agent");
+    expect(result).toBe("custom body");
+  });
+
+  test("falls back to loadCraftspersonBody when loader is undefined", async () => {
+    // The default loader reads ~/.claude/agents/<name>.md; a nonexistent agent returns null.
+    const result = await resolveCraftspersonBody(undefined, "nonexistent-agent-xyz-test");
+    expect(result).toBeNull();
+  });
+});
 
 describe("loadCraftspersonBody", () => {
   test("returns the extracted body for an existing agent file", async () => {

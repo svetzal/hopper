@@ -1,6 +1,32 @@
 import type { SessionOptions } from "./gateways/agent-runner.ts";
 import type { Item } from "./store.ts";
 
+/**
+ * Shared preamble template for single-phase prompts.
+ *
+ * Emits: `${header}\n\nTitle: ...\nDescription: ...\n\n[## Plan...]\n\n## Instructions\n\n${instructions}`
+ *
+ * The optional `planText` inserts a `## Plan (from the planning phase)` section
+ * between the description and the instructions heading — used by the execute
+ * and validate phases.
+ */
+function buildPhasePrompt(
+  header: string,
+  item: Item,
+  instructions: string,
+  planText?: string,
+): string {
+  const planSection = planText ? `## Plan (from the planning phase)\n\n${planText}\n\n` : "";
+  return (
+    `${header}\n\n` +
+    `Title: ${item.title}\n` +
+    `Description: ${item.description}\n\n` +
+    planSection +
+    `## Instructions\n\n` +
+    instructions
+  );
+}
+
 export type EngineeringPhase = "plan" | "execute" | "validate";
 
 /**
@@ -127,17 +153,15 @@ export const INVESTIGATION_DISALLOWED_TOOLS: readonly string[] = [
  * that Hopper captures into the item's `result` field.
  */
 export function buildInvestigationPrompt(item: Item): string {
-  return (
-    `You have been assigned an INVESTIGATION task. Your deliverable is a written findings report in markdown — NOT code changes.\n\n` +
-    `Title: ${item.title}\n` +
-    `Description: ${item.description}\n\n` +
-    `## Instructions\n\n` +
+  return buildPhasePrompt(
+    "You have been assigned an INVESTIGATION task. Your deliverable is a written findings report in markdown — NOT code changes.",
+    item,
     `1. Read and analyze source, docs, and any other references needed to answer the question.\n` +
-    `2. You have read-only tools plus a sandboxed Bash with mutating commands denied. Do not attempt git mutations, hopper queue mutations, package installs, or network egress — they will be blocked. Use Bash to read queue/audit/git state (\`hopper show --json\`, \`hopper audit\`, \`git log\`, \`jq\`, etc.).\n` +
-    `3. Produce your final response as a markdown findings report. Use headings, bullets, and fenced code snippets as appropriate.\n` +
-    `4. Cite specific files and line numbers where relevant (e.g. \`src/foo.ts:42\`).\n` +
-    `5. Be concrete and actionable. Flag uncertainty explicitly rather than guessing.\n\n` +
-    `Your final message will be captured verbatim as the investigation result.\n`
+      `2. You have read-only tools plus a sandboxed Bash with mutating commands denied. Do not attempt git mutations, hopper queue mutations, package installs, or network egress — they will be blocked. Use Bash to read queue/audit/git state (\`hopper show --json\`, \`hopper audit\`, \`git log\`, \`jq\`, etc.).\n` +
+      `3. Produce your final response as a markdown findings report. Use headings, bullets, and fenced code snippets as appropriate.\n` +
+      `4. Cite specific files and line numbers where relevant (e.g. \`src/foo.ts:42\`).\n` +
+      `5. Be concrete and actionable. Flag uncertainty explicitly rather than guessing.\n\n` +
+      `Your final message will be captured verbatim as the investigation result.\n`,
   );
 }
 
@@ -178,19 +202,17 @@ export const PLAN_TOOLS: readonly string[] = [
 ];
 
 export function buildPlanPrompt(item: Item): string {
-  return (
-    `You are the PLANNING phase of a multi-phase engineering workflow.\n\n` +
-    `Title: ${item.title}\n` +
-    `Description: ${item.description}\n\n` +
-    `## Instructions\n\n` +
+  return buildPhasePrompt(
+    "You are the PLANNING phase of a multi-phase engineering workflow.",
+    item,
     `1. Analyse the task and emit a plan as your final response. Do NOT write any files — you do not have Write/Edit tools.\n` +
-    `2. Cover:\n` +
-    `   - **Approach** — the engineering strategy in a few sentences.\n` +
-    `   - **Files to touch** — specific paths, with what changes in each.\n` +
-    `   - **Risks** — what could break; how to detect it.\n` +
-    `   - **Validation commands** — the exact test / lint / type-check commands the Validate phase must run, with expected outcomes.\n` +
-    `3. Be concrete. Cite file paths and line numbers (e.g. \`src/foo.ts:42\`).\n` +
-    `4. Your final message is captured verbatim and inlined into the Execute and Validate phase prompts.\n`
+      `2. Cover:\n` +
+      `   - **Approach** — the engineering strategy in a few sentences.\n` +
+      `   - **Files to touch** — specific paths, with what changes in each.\n` +
+      `   - **Risks** — what could break; how to detect it.\n` +
+      `   - **Validation commands** — the exact test / lint / type-check commands the Validate phase must run, with expected outcomes.\n` +
+      `3. Be concrete. Cite file paths and line numbers (e.g. \`src/foo.ts:42\`).\n` +
+      `4. Your final message is captured verbatim and inlined into the Execute and Validate phase prompts.\n`,
   );
 }
 
@@ -223,18 +245,15 @@ export function buildPlanOptions(): SessionOptions {
 export const EXECUTE_DISALLOWED_TOOLS: readonly string[] = [...GIT_MUTATION_DENYLIST];
 
 export function buildExecutePrompt(item: Item, planText: string): string {
-  return (
-    `You are the EXECUTE phase of a multi-phase engineering workflow.\n\n` +
-    `Title: ${item.title}\n` +
-    `Description: ${item.description}\n\n` +
-    `## Plan (from the planning phase)\n\n` +
-    `${planText}\n\n` +
-    `## Instructions\n\n` +
+  return buildPhasePrompt(
+    "You are the EXECUTE phase of a multi-phase engineering workflow.",
+    item,
     `1. Follow the plan above. Implement the changes in the current worktree.\n` +
-    `2. Do NOT commit, push, branch, merge, stash, reset, or otherwise mutate git state — Hopper owns all git operations.\n` +
-    `3. You may read git state (\`git diff\`, \`git log\`, \`git status\`) for context, but do not mutate it.\n` +
-    `4. Stop when the code and tests are in place. The next phase (Validate) will run the plan's validation commands.\n` +
-    `5. Provide a short summary of what you changed in your final message.\n`
+      `2. Do NOT commit, push, branch, merge, stash, reset, or otherwise mutate git state — Hopper owns all git operations.\n` +
+      `3. You may read git state (\`git diff\`, \`git log\`, \`git status\`) for context, but do not mutate it.\n` +
+      `4. Stop when the code and tests are in place. The next phase (Validate) will run the plan's validation commands.\n` +
+      `5. Provide a short summary of what you changed in your final message.\n`,
+    planText,
   );
 }
 
@@ -306,20 +325,17 @@ export const VALIDATE_ALLOWED_TOOLS: readonly string[] = [
 export const VALIDATE_TOOLS: readonly string[] = ["Read", "Grep", "Glob", "Bash", "Task"];
 
 export function buildValidatePrompt(item: Item, planText: string): string {
-  return (
-    `You are the VALIDATE phase of a multi-phase engineering workflow.\n\n` +
-    `Title: ${item.title}\n` +
-    `Description: ${item.description}\n\n` +
-    `## Plan (from the planning phase)\n\n` +
-    `${planText}\n\n` +
-    `## Instructions\n\n` +
+  return buildPhasePrompt(
+    "You are the VALIDATE phase of a multi-phase engineering workflow.",
+    item,
     `1. Run the validation commands listed in the plan (test suite, linter, type checker, any project-specific checks).\n` +
-    `2. Inspect the diff with \`git diff\` / \`git log\` / \`git status\` / \`git show\` to judge whether the worktree now satisfies the plan.\n` +
-    `3. Do not mutate git state — no commit, branch, checkout, merge, reset, or push. Hopper owns all git mutations.\n` +
-    `4. If validation fails, report which checks failed with their output. Only fix trivial issues (e.g. an unused import) yourself — anything larger is a signal to requeue.\n` +
-    `5. End your final message with one of these exact tokens on its own line:\n` +
-    `   - \`VALIDATE: PASS\` — all checks passed and the diff satisfies the plan.\n` +
-    `   - \`VALIDATE: FAIL\` — something is wrong; include the failure details above.\n`
+      `2. Inspect the diff with \`git diff\` / \`git log\` / \`git status\` / \`git show\` to judge whether the worktree now satisfies the plan.\n` +
+      `3. Do not mutate git state — no commit, branch, checkout, merge, reset, or push. Hopper owns all git mutations.\n` +
+      `4. If validation fails, report which checks failed with their output. Only fix trivial issues (e.g. an unused import) yourself — anything larger is a signal to requeue.\n` +
+      `5. End your final message with one of these exact tokens on its own line:\n` +
+      `   - \`VALIDATE: PASS\` — all checks passed and the diff satisfies the plan.\n` +
+      `   - \`VALIDATE: FAIL\` — something is wrong; include the failure details above.\n`,
+    planText,
   );
 }
 

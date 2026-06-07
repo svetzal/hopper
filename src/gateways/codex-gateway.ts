@@ -1,10 +1,9 @@
 import { unlink } from "node:fs/promises";
 import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
-import { generateTempFilename, mergeSpawnEnv, spawnStreamedSession } from "./audit-stream.ts";
+import { generateTempFilename, mergeSpawnEnv } from "./audit-stream.ts";
 import { buildCodexArgv } from "./codex-argv.ts";
-import { loadCraftspersonBody } from "./craftsperson-loader.ts";
-import { resolveBinOnPath } from "./resolve-bin.ts";
 import { buildGenerateText } from "./runner-generate-text.ts";
+import { buildRunnerRunSession } from "./runner-session.ts";
 
 function buildCodexPrompt(
   prompt: string,
@@ -29,31 +28,23 @@ interface CodexRunnerDeps {
 }
 
 function buildRunSession(deps: CodexRunnerDeps) {
-  return async function runSession(
-    prompt: string,
-    cwd: string,
-    auditFile: string,
-    options: SessionOptions = {},
-  ): Promise<{ exitCode: number; result: string }> {
-    const codexBin = resolveBinOnPath("codex", "Ensure Codex CLI is installed.");
-    const resultPath = generateTempFilename("hopper-codex-result", "txt");
-
-    const loader = deps.loadCraftsperson ?? loadCraftspersonBody;
-    const craftspersonBody = options.agent ? await loader(options.agent) : null;
-    const effectivePrompt = buildCodexPrompt(prompt, options, craftspersonBody);
-    const argv = buildCodexArgv(codexBin, effectivePrompt, options, resultPath);
-    const { exitCode } = await spawnStreamedSession(argv, {
-      cwd,
-      env: mergeSpawnEnv(options.env),
-      auditFile,
-    });
-
-    const result = await Bun.file(resultPath)
-      .text()
-      .catch(() => "");
-    await unlink(resultPath).catch(() => undefined);
-    return { exitCode, result: result.trim() };
-  };
+  return buildRunnerRunSession({
+    bin: "codex",
+    hint: "Ensure Codex CLI is installed.",
+    loadCraftsperson: deps.loadCraftsperson,
+    resolvePrompt: buildCodexPrompt,
+    resolveEnv: (options, _craftspersonBody) => mergeSpawnEnv(options.env),
+    buildArgv(bin, effectivePrompt, options, _cwd, _auditFile) {
+      const resultPath = generateTempFilename("hopper-codex-result", "txt");
+      return { argv: buildCodexArgv(bin, effectivePrompt, options, resultPath), callCtx: resultPath };
+    },
+    async extractOutcome(_output, exitCode, _bin, _cwd, _auditFile, callCtx) {
+      const resultPath = callCtx as string;
+      const result = await Bun.file(resultPath).text().catch(() => "");
+      await unlink(resultPath).catch(() => undefined);
+      return { exitCode, result: result.trim() };
+    },
+  });
 }
 
 export function createCodexRunner(deps: CodexRunnerDeps = {}): AgentRunner {
