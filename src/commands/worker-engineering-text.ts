@@ -1,5 +1,5 @@
-import { toErrorMessage } from "../error-utils.ts";
 import { resolveEngineeringCommitFallback } from "../engineering-workflow.ts";
+import { toErrorMessage } from "../error-utils.ts";
 import type { AgentRunner } from "../gateways/agent-runner.ts";
 import type { Profile } from "../profile.ts";
 import type { Item } from "../store.ts";
