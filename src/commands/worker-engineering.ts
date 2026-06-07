@@ -9,14 +9,28 @@ import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import { buildEngineeringBranchName } from "../git-workflow.ts";
 import type { Profile } from "../profile.ts";
-import type { ClaimedItem, Item } from "../store.ts";
+import type { ClaimedItem } from "../store.ts";
 import { setItemEngineeringBranchSlug } from "../store.ts";
-import { buildPlanOptions, buildPlanPrompt, resolveBranchSlugSource } from "../task-type-workflow.ts";
+import {
+  buildPlanOptions,
+  buildPlanPrompt,
+  resolveBranchSlugSource,
+} from "../task-type-workflow.ts";
 import {
   type EngineeringAuditPaths,
   resolveAuditPaths,
   resolveEngineeringAuditPaths,
 } from "../worker-workflow.ts";
+import {
+  type ExecuteValidateContext,
+  runExecuteValidateLoop,
+  runPhase,
+} from "./worker-engineering-loop.ts";
+import {
+  resolveEngineeringBranchSlug,
+  resolveEngineeringCommitMessage,
+  resolveValidateOutcomeWithFallback,
+} from "./worker-engineering-text.ts";
 import {
   createLogger,
   type LogFn,
@@ -24,21 +38,11 @@ import {
   logCompleteOutcome,
   mergeAndPush,
   orchestrateWorktreeSetup,
+  StaleEngineeringBranchError,
   safeRequeue,
   safeVoid,
-  StaleEngineeringBranchError,
   teardownWorktree,
 } from "./worker-shared.ts";
-import {
-  resolveEngineeringBranchSlug,
-  resolveEngineeringCommitMessage,
-  resolveValidateOutcomeWithFallback,
-} from "./worker-engineering-text.ts";
-import {
-  type ExecuteValidateContext,
-  runExecuteValidateLoop,
-  runPhase,
-} from "./worker-engineering-loop.ts";
 
 // Orchestration and phase-step functions take a single typed context object;
 // thin leaf helpers (e.g. commitWorktreeChanges, executeWork) take positional args.
@@ -60,9 +64,7 @@ async function safePersistBranchSlug(itemId: string, slug: string, log: LogFn): 
   return safeVoid(() => setItemEngineeringBranchSlug(itemId, slug), "Slug persistence failed", log);
 }
 
-export async function runPlanPhase(
-  ctx: EngineeringContext,
-): Promise<{ planText: string } | null> {
+export async function runPlanPhase(ctx: EngineeringContext): Promise<{ planText: string } | null> {
   const { item, worktreePath, paths, deps, log } = ctx;
   const { claude, fs, profile } = deps;
   log(`Plan phase (deep, plan mode, read-only)...\nAudit log: ${paths.planAuditFile}`);
