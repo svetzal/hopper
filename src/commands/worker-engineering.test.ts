@@ -22,6 +22,7 @@ import {
 import type { EngineeringAuditPaths } from "../worker-workflow.ts";
 import {
   commitEngineeringChanges,
+  type EngineeringContext,
   processEngineeringItem,
   resolveValidateOutcomeWithFallback,
   resolveWorkBranch,
@@ -59,7 +60,43 @@ function makeMockFs(): FsGateway {
   };
 }
 
+function makeMockClaude(): AgentRunner {
+  return {
+    runSession: mock(async () => ({ exitCode: 0, result: "" })),
+    generateText: mock(async () => ({ exitCode: 0, text: "" })),
+  };
+}
+
 const noop: (msg: string) => void = () => {};
+
+function makeEngineeringCtx(overrides?: {
+  item?: ReturnType<typeof makeClaimedItem>;
+  claude?: AgentRunner;
+  fs?: FsGateway;
+  git?: GitGateway;
+  worktreePath?: string;
+  paths?: EngineeringAuditPaths;
+  log?: (msg: string) => void;
+}): EngineeringContext {
+  const {
+    item = makeClaimedItem({ id: ITEM_ID }),
+    claude = makeMockClaude(),
+    fs = makeMockFs(),
+    git = makeMockGit(),
+    worktreePath = "/worktree",
+    paths = makePaths(),
+    log = noop,
+  } = overrides ?? {};
+  return {
+    item,
+    agentName: "test-agent",
+    worktreePath,
+    hopperHome: HOPPER_HOME,
+    paths,
+    deps: { git, claude, fs, profile: TEST_PROFILE },
+    log,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // runPlanPhase
@@ -75,15 +112,8 @@ describe("runPlanPhase", () => {
       })),
       generateText: mock(async () => ({ exitCode: 0, text: "" })),
     };
-    const fs = makeMockFs();
 
-    const result = await runPlanPhase(
-      item,
-      "/worktree",
-      makePaths(),
-      { claude, fs, profile: TEST_PROFILE },
-      noop,
-    );
+    const result = await runPlanPhase(makeEngineeringCtx({ item, claude }));
 
     expect(result).not.toBeNull();
     expect(result?.planText).toBe("## Approach\nDo the thing.");
@@ -95,15 +125,8 @@ describe("runPlanPhase", () => {
       runSession: mock(async () => ({ exitCode: 1, result: "Plan crashed." })),
       generateText: mock(async () => ({ exitCode: 0, text: "" })),
     };
-    const fs = makeMockFs();
 
-    const result = await runPlanPhase(
-      item,
-      "/worktree",
-      makePaths(),
-      { claude, fs, profile: TEST_PROFILE },
-      noop,
-    );
+    const result = await runPlanPhase(makeEngineeringCtx({ item, claude }));
 
     expect(result).toBeNull();
   });
@@ -114,15 +137,8 @@ describe("runPlanPhase", () => {
       runSession: mock(async () => ({ exitCode: 0, result: "   " })),
       generateText: mock(async () => ({ exitCode: 0, text: "" })),
     };
-    const fs = makeMockFs();
 
-    const result = await runPlanPhase(
-      item,
-      "/worktree",
-      makePaths(),
-      { claude, fs, profile: TEST_PROFILE },
-      noop,
-    );
+    const result = await runPlanPhase(makeEngineeringCtx({ item, claude }));
 
     expect(result).toBeNull();
   });
@@ -136,7 +152,7 @@ describe("runPlanPhase", () => {
     };
     const fs = makeMockFs();
 
-    await runPlanPhase(item, "/worktree", paths, { claude, fs, profile: TEST_PROFILE }, noop);
+    await runPlanPhase(makeEngineeringCtx({ item, claude, fs, paths }));
 
     const writeFileMock = typedMock(fs.writeFile);
     const planWrite = writeFileMock.mock.calls.find((c) => c[0] === paths.planFile);
@@ -153,7 +169,7 @@ describe("runPlanPhase", () => {
     };
     const fs = makeMockFs();
 
-    await runPlanPhase(item, "/worktree", paths, { claude, fs, profile: TEST_PROFILE }, noop);
+    await runPlanPhase(makeEngineeringCtx({ item, claude, fs, paths }));
 
     const planFailWriteMock = typedMock(fs.writeFile);
     const resultWrite = planFailWriteMock.mock.calls.find((c) => c[0] === paths.resultFile);
@@ -342,9 +358,6 @@ describe("runExecuteValidateLoop", () => {
 // ---------------------------------------------------------------------------
 
 describe("commitEngineeringChanges", () => {
-  // SKIPPED: Blocked by prod bug in worker-engineering.ts:290 — `profile` is
-  // referenced inside commitEngineeringChanges but not destructured from
-  // `deps` (the `deps` type doesn't even include profile). Unskip once the
   test("returns { dirty: true } and commits when worktree is dirty", async () => {
     const item = makeClaimedItem({ id: ITEM_ID });
     const git = makeMockGit({
@@ -355,12 +368,7 @@ describe("commitEngineeringChanges", () => {
       generateText: mock(async () => ({ exitCode: 0, text: "feat: my commit" })),
     };
 
-    const result = await commitEngineeringChanges(
-      item,
-      "/worktree",
-      { git, claude, profile: TEST_PROFILE },
-      noop,
-    );
+    const result = await commitEngineeringChanges(makeEngineeringCtx({ item, git, claude }));
 
     expect(result.dirty).toBe(true);
     expect(git.commitAll).toHaveBeenCalledTimes(1);
@@ -376,12 +384,7 @@ describe("commitEngineeringChanges", () => {
       generateText: mock(async () => ({ exitCode: 0, text: "" })),
     };
 
-    const result = await commitEngineeringChanges(
-      item,
-      "/worktree",
-      { git, claude, profile: TEST_PROFILE },
-      noop,
-    );
+    const result = await commitEngineeringChanges(makeEngineeringCtx({ item, git, claude }));
 
     expect(result.dirty).toBe(false);
     expect(git.commitAll).not.toHaveBeenCalled();
@@ -413,7 +416,7 @@ describe("commitEngineeringChanges", () => {
       generateText: mock(async () => ({ exitCode: 0, text: "feat: implement foo" })),
     };
 
-    await commitEngineeringChanges(item, "/worktree", { git, claude, profile: TEST_PROFILE }, noop);
+    await commitEngineeringChanges(makeEngineeringCtx({ item, git, claude }));
 
     expect(callOrder).toEqual(["stageAll", "diffSummary", "commitAll"]);
   });
@@ -436,7 +439,7 @@ describe("runEngineeringPreconditions", () => {
     await store.saveItems([item]);
     const fs = makeMockFs();
 
-    const result = await runEngineeringPreconditions(item, "test-agent", HOPPER_HOME, fs, noop);
+    const result = await runEngineeringPreconditions(makeEngineeringCtx({ item, fs }));
 
     expect(result.ok).toBe(false);
     expect(requeueItemMock).toHaveBeenCalledTimes(1);
@@ -449,7 +452,7 @@ describe("runEngineeringPreconditions", () => {
     const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
     const fs = makeMockFs();
 
-    const result = await runEngineeringPreconditions(item, "test-agent", HOPPER_HOME, fs, noop);
+    const result = await runEngineeringPreconditions(makeEngineeringCtx({ item, fs }));
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -476,7 +479,7 @@ describe("resolveWorkBranch", () => {
       generateText: mock(async () => ({ exitCode: 0, text: "" })),
     };
 
-    const workBranch = await resolveWorkBranch(item, { claude, profile: TEST_PROFILE }, noop);
+    const workBranch = await resolveWorkBranch(makeEngineeringCtx({ item, claude }));
 
     expect(claude.generateText).not.toHaveBeenCalled();
     expect(mockSetItemEngineeringBranchSlug).not.toHaveBeenCalled();
@@ -490,7 +493,7 @@ describe("resolveWorkBranch", () => {
       generateText: mock(async () => ({ exitCode: 0, text: "generated-slug" })),
     };
 
-    const workBranch = await resolveWorkBranch(item, { claude, profile: TEST_PROFILE }, noop);
+    const workBranch = await resolveWorkBranch(makeEngineeringCtx({ item, claude }));
 
     expect(claude.generateText).toHaveBeenCalledTimes(1);
     expect(mockSetItemEngineeringBranchSlug).toHaveBeenCalledTimes(1);
@@ -513,15 +516,12 @@ describe("setupEngineeringWorktree", () => {
   });
   afterEach(storeDir.afterEach);
 
-  function makeCtx(worktreePath = `/tmp/test-hopper-eng/worktrees/${ITEM_ID}`) {
-    return {
-      workingDir: "/repo",
-      branch: "main",
-      workBranch: "hopper-eng/test-slug-aaaaaaaa",
-      worktreePath,
-      paths: makePaths(),
-    };
-  }
+  const defaultWorktreePath = `/tmp/test-hopper-eng/worktrees/${ITEM_ID}`;
+  const defaultSetup = {
+    workingDir: "/repo",
+    branch: "main",
+    workBranch: "hopper-eng/test-slug-aaaaaaaa",
+  };
 
   test("success → returns { ok: true } and calls orchestrateWorktreeSetup", async () => {
     const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
@@ -529,12 +529,8 @@ describe("setupEngineeringWorktree", () => {
     const fs = makeMockFs();
 
     const result = await setupEngineeringWorktree(
-      item,
-      "test-agent",
-      HOPPER_HOME,
-      makeCtx(),
-      { git, fs },
-      noop,
+      makeEngineeringCtx({ item, git, fs, worktreePath: defaultWorktreePath }),
+      defaultSetup,
     );
 
     expect(result.ok).toBe(true);
@@ -552,12 +548,8 @@ describe("setupEngineeringWorktree", () => {
     const fs = makeMockFs();
 
     const result = await setupEngineeringWorktree(
-      item,
-      "test-agent",
-      HOPPER_HOME,
-      makeCtx(),
-      { git, fs },
-      noop,
+      makeEngineeringCtx({ item, git, fs, worktreePath: defaultWorktreePath }),
+      defaultSetup,
     );
 
     expect(result.ok).toBe(false);
@@ -577,12 +569,8 @@ describe("setupEngineeringWorktree", () => {
     const fs = makeMockFs();
 
     const result = await setupEngineeringWorktree(
-      item,
-      "test-agent",
-      HOPPER_HOME,
-      makeCtx(),
-      { git, fs },
-      noop,
+      makeEngineeringCtx({ item, git, fs, worktreePath: defaultWorktreePath }),
+      defaultSetup,
     );
 
     expect(result.ok).toBe(false);
@@ -918,10 +906,7 @@ describe("processEngineeringItem", () => {
     const logs: string[] = [];
 
     const result = await commitEngineeringChanges(
-      item,
-      "/worktree",
-      { git, claude, profile: TEST_PROFILE },
-      (msg) => logs.push(msg),
+      makeEngineeringCtx({ item, git, claude, log: (msg) => logs.push(msg) }),
     );
 
     expect(result.dirty).toBe(true);
