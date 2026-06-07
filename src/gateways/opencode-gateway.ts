@@ -5,7 +5,7 @@ import {
   resolveEffectiveExitCode,
   scanOpencodeStream,
 } from "../extract-opencode-result.ts";
-import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
+import type { AgentRunner } from "./agent-runner.ts";
 import { appendToAuditFile, formatSyntheticEvent } from "./audit-stream.ts";
 import { buildOpencodeArgv } from "./opencode-argv.ts";
 import { resolveOpencodeEnv } from "./opencode-config-content.ts";

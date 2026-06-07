@@ -62,7 +62,12 @@ export function buildRunnerRunSession(spec: RunnerSessionSpec) {
     const env = spec.resolveEnv(options, craftspersonBody);
     const { argv, callCtx } = spec.buildArgv(bin, effectivePrompt, options, cwd, auditFile);
     const preamble = spec.buildPreamble ? await spec.buildPreamble(auditFile, options) : undefined;
-    const { output, exitCode } = await spawnStreamedSession(argv, { cwd, env, auditFile, preamble });
+    const { output, exitCode } = await spawnStreamedSession(argv, {
+      cwd,
+      env,
+      auditFile,
+      preamble,
+    });
     return spec.extractOutcome(output, exitCode, bin, cwd, auditFile, callCtx);
   };
 }

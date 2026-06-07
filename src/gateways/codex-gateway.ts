@@ -36,11 +36,16 @@ function buildRunSession(deps: CodexRunnerDeps) {
     resolveEnv: (options, _craftspersonBody) => mergeSpawnEnv(options.env),
     buildArgv(bin, effectivePrompt, options, _cwd, _auditFile) {
       const resultPath = generateTempFilename("hopper-codex-result", "txt");
-      return { argv: buildCodexArgv(bin, effectivePrompt, options, resultPath), callCtx: resultPath };
+      return {
+        argv: buildCodexArgv(bin, effectivePrompt, options, resultPath),
+        callCtx: resultPath,
+      };
     },
     async extractOutcome(_output, exitCode, _bin, _cwd, _auditFile, callCtx) {
       const resultPath = callCtx as string;
-      const result = await Bun.file(resultPath).text().catch(() => "");
+      const result = await Bun.file(resultPath)
+        .text()
+        .catch(() => "");
       await unlink(resultPath).catch(() => undefined);
       return { exitCode, result: result.trim() };
     },

@@ -1,6 +1,6 @@
 import { buildSessionPreamble, extractResult } from "../extract-result.ts";
 import { type Profile, resolveProfileModel } from "../profile.ts";
-import type { AgentRunner, SessionOptions } from "./agent-runner.ts";
+import type { AgentRunner } from "./agent-runner.ts";
 import { mergeSpawnEnv } from "./audit-stream.ts";
 import { buildClaudeArgv } from "./claude-argv.ts";
 import { resolveBinOnPath } from "./resolve-bin.ts";
@@ -17,7 +17,9 @@ const runSession = buildRunnerRunSession({
   },
   buildPreamble: async (auditFile, options) => {
     const existing = options.append
-      ? await Bun.file(auditFile).text().catch(() => "")
+      ? await Bun.file(auditFile)
+          .text()
+          .catch(() => "")
       : "";
     return buildSessionPreamble(existing, options.append ?? false);
   },
