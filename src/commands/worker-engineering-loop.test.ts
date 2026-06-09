@@ -38,13 +38,6 @@ function makeMockFs(): FsGateway {
   };
 }
 
-function makeMockClaude(): AgentRunner {
-  return {
-    runSession: mock(async () => ({ exitCode: 0, result: "" })),
-    generateText: mock(async () => ({ exitCode: 0, text: "" })),
-  };
-}
-
 const noop: (msg: string) => void = () => {};
 
 // ---------------------------------------------------------------------------

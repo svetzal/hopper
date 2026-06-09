@@ -40,12 +40,8 @@ describe("safeGenerateText", () => {
     };
     const logs: string[] = [];
 
-    const result = await safeGenerateText(
-      claude,
-      "prompt",
-      TEST_PROFILE,
-      "My label",
-      (msg) => logs.push(msg),
+    const result = await safeGenerateText(claude, "prompt", TEST_PROFILE, "My label", (msg) =>
+      logs.push(msg),
     );
 
     expect(result).toEqual({ ok: false });
@@ -61,12 +57,8 @@ describe("safeGenerateText", () => {
     };
     const logs: string[] = [];
 
-    const result = await safeGenerateText(
-      claude,
-      "prompt",
-      TEST_PROFILE,
-      "My label",
-      (msg) => logs.push(msg),
+    const result = await safeGenerateText(claude, "prompt", TEST_PROFILE, "My label", (msg) =>
+      logs.push(msg),
     );
 
     expect(result).toEqual({ ok: false });

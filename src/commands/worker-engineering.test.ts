@@ -687,4 +687,3 @@ describe("processEngineeringItem", () => {
     expect(deps.git.createWorktree).not.toHaveBeenCalled();
   });
 });
-
