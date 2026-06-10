@@ -1,8 +1,8 @@
 // Convention: orchestration/phase steps take a single typed context object;
 // thin leaf helpers (commitWorktreeChanges, executeWork, etc.) take positional args.
 
-import { toErrorMessage } from "../error-utils.ts";
 import { StaleEngineeringBranchError } from "../engineering-errors.ts";
+import { toErrorMessage } from "../error-utils.ts";
 import { shortId } from "../format.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway, MergeOutcome } from "../gateways/git-gateway.ts";
