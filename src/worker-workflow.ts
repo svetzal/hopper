@@ -175,6 +175,32 @@ export function resolveAutoRequeue(exitCode: number, extractedResult: string): A
   return { shouldAutoRequeue: false };
 }
 
+export type CompletionPlan =
+  | { kind: "complete"; finalResult: string }
+  | { kind: "auto-requeue"; finalResult: string; reason: string }
+  | { kind: "manual-requeue"; finalResult: string };
+
+/**
+ * Compose the completion and auto-requeue decisions into a single resolved
+ * plan so the imperative shell can execute without making any branching
+ * decisions of its own.
+ */
+export function resolveCompletionPlan(
+  exitCode: number,
+  result: string,
+  mergeNote: string,
+): CompletionPlan {
+  const { action, result: finalResult } = resolveCompletionAction(exitCode, result, mergeNote);
+  if (action === "complete") {
+    return { kind: "complete", finalResult };
+  }
+  const autoRequeue = resolveAutoRequeue(exitCode, result);
+  if (autoRequeue.shouldAutoRequeue) {
+    return { kind: "auto-requeue", finalResult, reason: autoRequeue.reason };
+  }
+  return { kind: "manual-requeue", finalResult };
+}
+
 // ---------------------------------------------------------------------------
 // Worker config
 // ---------------------------------------------------------------------------

@@ -2,8 +2,8 @@ import { join } from "node:path";
 import {
   buildEngineeringTranscript,
   resolveEngineeringPreconditions,
+  resolveWorktreeSetupFailureReason,
 } from "../engineering-workflow.ts";
-import { toErrorMessage } from "../error-utils.ts";
 import type { AgentRunner } from "../gateways/agent-runner.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
@@ -38,7 +38,6 @@ import {
   logClaimBanner,
   mergeAndPush,
   orchestrateWorktreeSetup,
-  StaleEngineeringBranchError,
   safeRequeue,
   safeVoid,
   teardownWorktree,
@@ -229,10 +228,7 @@ export async function setupEngineeringWorktree(
     });
     return { ok: true };
   } catch (e) {
-    const reason =
-      e instanceof StaleEngineeringBranchError
-        ? `Stale branch: ${e.message}`
-        : `Worktree setup failed: ${toErrorMessage(e)}`;
+    const reason = resolveWorktreeSetupFailureReason(e);
     log(`Pre-spawn failure — auto-requeueing: ${reason}`);
     await safeRequeue(item.id, reason, agentName, log);
     return { ok: false };

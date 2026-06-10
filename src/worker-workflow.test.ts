@@ -9,6 +9,7 @@ import {
   resolveAutoRequeue,
   resolveCompletionAction,
   resolveCompletionLabels,
+  resolveCompletionPlan,
   resolveEngineeringAuditPaths,
   resolveExecutionPlan,
   resolveLoopAction,
@@ -587,6 +588,54 @@ describe("worker-workflow", () => {
       const labels = resolveCompletionLabels({ command: undefined });
       expect(labels.outputLabel).toBe("Claude");
       expect(labels.sessionLabel).toBe("Claude session");
+    });
+  });
+
+  describe("resolveCompletionPlan", () => {
+    test("exit 0 → complete with combined finalResult", () => {
+      const plan = resolveCompletionPlan(0, "Task done.", "");
+      expect(plan.kind).toBe("complete");
+      if (plan.kind === "complete") {
+        expect(plan.finalResult).toBe("Task done.");
+      }
+    });
+
+    test("exit 0 with mergeNote → complete with appended note", () => {
+      const plan = resolveCompletionPlan(0, "Done.", "\n\n---\nMerge: ok");
+      expect(plan.kind).toBe("complete");
+      if (plan.kind === "complete") {
+        expect(plan.finalResult).toBe("Done.\n\n---\nMerge: ok");
+      }
+    });
+
+    test("non-zero exit + sentinel result → auto-requeue with startup reason", () => {
+      const plan = resolveCompletionPlan(1, "(see audit log for details)", "");
+      expect(plan.kind).toBe("auto-requeue");
+      if (plan.kind === "auto-requeue") {
+        expect(plan.reason).toContain("startup");
+        expect(plan.reason).toContain("1");
+      }
+    });
+
+    test("non-zero exit + empty result → auto-requeue", () => {
+      const plan = resolveCompletionPlan(1, "", "");
+      expect(plan.kind).toBe("auto-requeue");
+    });
+
+    test("non-zero exit + real captured result → manual-requeue", () => {
+      const plan = resolveCompletionPlan(1, "Partial output. Ran into X.", "");
+      expect(plan.kind).toBe("manual-requeue");
+      if (plan.kind === "manual-requeue") {
+        expect(plan.finalResult).toBe("Partial output. Ran into X.");
+      }
+    });
+
+    test("non-zero exit + real result with mergeNote → manual-requeue with combined result", () => {
+      const plan = resolveCompletionPlan(2, "Some output", "\n---\nNote");
+      expect(plan.kind).toBe("manual-requeue");
+      if (plan.kind === "manual-requeue") {
+        expect(plan.finalResult).toBe("Some output\n---\nNote");
+      }
     });
   });
 });

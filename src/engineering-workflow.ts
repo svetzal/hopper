@@ -1,3 +1,5 @@
+import { StaleEngineeringBranchError } from "./engineering-errors.ts";
+import { toErrorMessage } from "./error-utils.ts";
 import { normaliseCommitMessage } from "./task-type-workflow.ts";
 
 /**
@@ -49,6 +51,16 @@ export function buildEngineeringFailureResult(
   failureMessage: string,
 ): string {
   return `${buildEngineeringTranscript(planText, executeResults, validateResults)}\n\n${failureMessage}`;
+}
+
+/**
+ * Classify a worktree-setup exception as a human-readable requeue reason.
+ * Pure — no I/O, suitable for use in catch blocks before dispatching to safeRequeue.
+ */
+export function resolveWorktreeSetupFailureReason(e: unknown): string {
+  return e instanceof StaleEngineeringBranchError
+    ? `Stale branch: ${e.message}`
+    : `Worktree setup failed: ${toErrorMessage(e)}`;
 }
 
 /**

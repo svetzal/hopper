@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { StaleEngineeringBranchError } from "./engineering-errors.ts";
 import {
   buildEngineeringFailureResult,
   buildEngineeringTranscript,
   resolveEngineeringCommitFallback,
   resolveEngineeringPreconditions,
+  resolveWorktreeSetupFailureReason,
 } from "./engineering-workflow.ts";
 
 describe("resolveEngineeringPreconditions", () => {
@@ -100,5 +102,33 @@ describe("resolveEngineeringCommitFallback", () => {
   test("returns item title when text is empty string", () => {
     const result = resolveEngineeringCommitFallback(item, "", 0);
     expect(result).toBe("My task title");
+  });
+});
+
+describe("resolveWorktreeSetupFailureReason", () => {
+  test("StaleEngineeringBranchError with active worktrees → 'Stale branch:' prefix", () => {
+    const e = new StaleEngineeringBranchError("hopper-eng/my-slug-abcd1234", ["/worktrees/id"]);
+    const reason = resolveWorktreeSetupFailureReason(e);
+    expect(reason).toContain("Stale branch:");
+    expect(reason).toContain("hopper-eng/my-slug-abcd1234");
+  });
+
+  test("StaleEngineeringBranchError with no worktrees (diverged) → 'Stale branch:' prefix", () => {
+    const e = new StaleEngineeringBranchError("hopper-eng/my-slug-abcd1234", []);
+    const reason = resolveWorktreeSetupFailureReason(e);
+    expect(reason).toContain("Stale branch:");
+  });
+
+  test("generic Error → 'Worktree setup failed:' prefix with message", () => {
+    const e = new Error("disk full");
+    const reason = resolveWorktreeSetupFailureReason(e);
+    expect(reason).toContain("Worktree setup failed:");
+    expect(reason).toContain("disk full");
+  });
+
+  test("non-Error thrown value → 'Worktree setup failed:' prefix", () => {
+    const reason = resolveWorktreeSetupFailureReason("something went wrong");
+    expect(reason).toContain("Worktree setup failed:");
+    expect(reason).toContain("something went wrong");
   });
 });

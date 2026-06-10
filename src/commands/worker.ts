@@ -10,9 +10,8 @@ import type { ClaimedItem, Item } from "../store.ts";
 import {
   buildCommitMessage,
   resolveAuditPaths,
-  resolveAutoRequeue,
-  resolveCompletionAction,
   resolveCompletionLabels,
+  resolveCompletionPlan,
   resolveExecutionPlan,
   resolveMergeAction,
   resolvePostClaudeAction,
@@ -56,7 +55,7 @@ interface CompletionContext {
 
 async function handleCompletion(ctx: CompletionContext): Promise<void> {
   const { item, agentName, exitCode, result, mergeNote, workBranch, fs, resultFile, log } = ctx;
-  const { action, result: finalResult } = resolveCompletionAction(exitCode, result, mergeNote);
+  const plan = resolveCompletionPlan(exitCode, result, mergeNote);
 
   const { outputLabel, sessionLabel } = resolveCompletionLabels(item);
   log(`--- ${outputLabel} Output ---`);
@@ -64,32 +63,30 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
   if (mergeNote) log(mergeNote.trim());
   log("---------------------");
 
-  if (action === "complete") {
-    await finalizeCompletion({
-      fs,
-      resultFile,
-      finalResult,
-      claimToken: item.claimToken,
-      agentName,
-      log,
-    });
-  } else {
-    await fs.writeFile(resultFile, finalResult);
-    log(`${sessionLabel} failed for: ${item.title} (${item.id})`);
-    if (workBranch) log(`Work branch ${workBranch} preserved for review.`);
-
-    // A non-zero exit with no captured result almost always means Claude
-    // never ran (argv / environment / startup error). Auto-requeue those so
-    // the queue heals without operator intervention. Items that produced any
-    // real result stay wedged at in_progress on purpose — there's probably
-    // something worth reading before the operator decides whether to retry.
-    const autoRequeue = resolveAutoRequeue(exitCode, result);
-    if (autoRequeue.shouldAutoRequeue) {
-      log(`Auto-requeueing: ${item.title} (${autoRequeue.reason}).`);
-      await safeRequeue(item.id, autoRequeue.reason, agentName, log);
-    } else {
+  switch (plan.kind) {
+    case "complete":
+      await finalizeCompletion({
+        fs,
+        resultFile,
+        finalResult: plan.finalResult,
+        claimToken: item.claimToken,
+        agentName,
+        log,
+      });
+      break;
+    case "auto-requeue":
+      await fs.writeFile(resultFile, plan.finalResult);
+      log(`${sessionLabel} failed for: ${item.title} (${item.id})`);
+      if (workBranch) log(`Work branch ${workBranch} preserved for review.`);
+      log(`Auto-requeueing: ${item.title} (${plan.reason}).`);
+      await safeRequeue(item.id, plan.reason, agentName, log);
+      break;
+    case "manual-requeue":
+      await fs.writeFile(resultFile, plan.finalResult);
+      log(`${sessionLabel} failed for: ${item.title} (${item.id})`);
+      if (workBranch) log(`Work branch ${workBranch} preserved for review.`);
       log(`Use 'hopper requeue ${item.id} --reason "..."' to retry.`);
-    }
+      break;
   }
 }
 

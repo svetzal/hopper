@@ -143,6 +143,17 @@ export async function saveItems(items: Item[]): Promise<void> {
   return gateway.save(items);
 }
 
+async function transactConditional<R>(
+  workflow: (items: Item[]) => { items: Item[]; changed: boolean; value: R },
+): Promise<R> {
+  const items = await loadItems();
+  const outcome = workflow(items);
+  if (outcome.changed) {
+    await saveItems(outcome.items);
+  }
+  return outcome.value;
+}
+
 async function transact<W extends { items: Item[] }, T>(
   workflow: (items: Item[]) => Result<W>,
   map: (value: W) => T,
@@ -157,25 +168,22 @@ async function transact<W extends { items: Item[] }, T>(
 async function transactIfChanged(
   workflow: (items: Item[]) => { items: Item[]; changed: boolean },
 ): Promise<void> {
-  const items = await loadItems();
-  const outcome = workflow(items);
-  if (outcome.changed) {
-    await saveItems(outcome.items);
-  }
+  await transactConditional((items) => ({ ...workflow(items), value: undefined }));
 }
 
 export async function addItem(item: Item): Promise<void> {
-  const items = await loadItems();
-  await saveItems(prependItem(items, item));
+  await transactConditional((items) => ({
+    items: prependItem(items, item),
+    changed: true,
+    value: undefined,
+  }));
 }
 
 export async function claimNextItem(agent?: string): Promise<ClaimedItem | undefined> {
-  const items = await loadItems();
-  const result = claimNext(items, agent, new Date(), crypto.randomUUID(), process.cwd());
-  if (result.claimed) {
-    await saveItems(result.items);
-  }
-  return result.claimed;
+  return transactConditional((items) => {
+    const result = claimNext(items, agent, new Date(), crypto.randomUUID(), process.cwd());
+    return { items: result.items, changed: !!result.claimed, value: result.claimed };
+  });
 }
 
 export interface CompleteResult {
