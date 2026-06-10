@@ -33,9 +33,9 @@ import {
 } from "./worker-engineering-text.ts";
 import {
   createLogger,
+  finalizeCompletion,
   type LogFn,
   logClaimBanner,
-  logCompleteOutcome,
   mergeAndPush,
   orchestrateWorktreeSetup,
   StaleEngineeringBranchError,
@@ -156,9 +156,7 @@ export async function teardownMergeAndComplete(ctx: TeardownContext): Promise<vo
 
   const combined = buildEngineeringTranscript(planText, executeResults, validateResults);
   const finalResult = combined + mergeNote;
-  await fs.writeFile(paths.resultFile, finalResult);
-
-  await logCompleteOutcome(item.claimToken, agentName, finalResult, log);
+  await finalizeCompletion({ fs, resultFile: paths.resultFile, finalResult, claimToken: item.claimToken, agentName, log });
 }
 
 export async function runEngineeringPreconditions(

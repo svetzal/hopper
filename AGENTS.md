@@ -66,7 +66,7 @@ A pre-push hook runs `bun run lint` and `bun test` automatically.
 | `src/commands/worker.ts` | Generic-item flow (`handleCompletion`, `commitWorktreeChanges`, `executeWork`) + `processItem` dispatcher that delegates engineering items to `worker-engineering.ts` |
 | `src/commands/worker-engineering.ts` | Engineering pipeline imperative shell: `runPlanPhase`, `runExecuteValidateLoop`, `commitEngineeringChanges`, `teardownMergeAndComplete`, `processEngineeringItem` |
 | `src/commands/worker-loop.ts` | Worker loop entry point: `WorkerLoopDeps`, `runWorkerLoop`, `workerCommand` — the poll/claim/dispatch cycle and CLI entry |
-| `src/commands/worker-shared.ts` | Shared orchestration helpers used by both worker flows: `createLogger`, `orchestrateWorktreeSetup`, `orchestrateMerge`, `mergeAndPush`, `teardownWorktree` |
+| `src/commands/worker-shared.ts` | Shared orchestration helpers used by both worker flows: `createLogger`, `finalizeCompletion`, `orchestrateWorktreeSetup`, `orchestrateMerge`, `mergeAndPush`, `teardownWorktree` |
 | `src/commands/*.ts` | One file per CLI command, each returns `CommandResult` |
 | `src/text-imports.d.ts` | Type declaration for Bun's `*.md` text imports |
 

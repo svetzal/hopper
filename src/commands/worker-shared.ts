@@ -3,6 +3,7 @@
 
 import { toErrorMessage } from "../error-utils.ts";
 import { shortId } from "../format.ts";
+import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway, MergeOutcome } from "../gateways/git-gateway.ts";
 import {
   buildWorkBranchName,
@@ -39,6 +40,19 @@ export class StaleEngineeringBranchError extends Error {
     );
     this.name = "StaleEngineeringBranchError";
   }
+}
+
+export async function finalizeCompletion(ctx: {
+  fs: FsGateway;
+  resultFile: string;
+  finalResult: string;
+  claimToken: string;
+  agentName: string;
+  log: LogFn;
+}): Promise<void> {
+  const { fs, resultFile, finalResult, claimToken, agentName, log } = ctx;
+  await fs.writeFile(resultFile, finalResult);
+  await logCompleteOutcome(claimToken, agentName, finalResult, log);
 }
 
 export async function logCompleteOutcome(

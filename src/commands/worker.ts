@@ -22,9 +22,9 @@ import {
 import { processEngineeringItem } from "./worker-engineering.ts";
 import {
   createLogger,
+  finalizeCompletion,
   type LogFn,
   logClaimBanner,
-  logCompleteOutcome,
   mergeAndPush,
   orchestrateWorktreeSetup,
   safeRequeue,
@@ -57,7 +57,6 @@ interface CompletionContext {
 async function handleCompletion(ctx: CompletionContext): Promise<void> {
   const { item, agentName, exitCode, result, mergeNote, workBranch, fs, resultFile, log } = ctx;
   const { action, result: finalResult } = resolveCompletionAction(exitCode, result, mergeNote);
-  await fs.writeFile(resultFile, finalResult);
 
   const { outputLabel, sessionLabel } = resolveCompletionLabels(item);
   log(`--- ${outputLabel} Output ---`);
@@ -66,8 +65,9 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
   log("---------------------");
 
   if (action === "complete") {
-    await logCompleteOutcome(item.claimToken, agentName, finalResult, log);
+    await finalizeCompletion({ fs, resultFile, finalResult, claimToken: item.claimToken, agentName, log });
   } else {
+    await fs.writeFile(resultFile, finalResult);
     log(`${sessionLabel} failed for: ${item.title} (${item.id})`);
     if (workBranch) log(`Work branch ${workBranch} preserved for review.`);
 

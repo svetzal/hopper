@@ -1,13 +1,28 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import type { FsGateway } from "../gateways/fs-gateway.ts";
+import { ok } from "../result.ts";
+import type { Item } from "../store.ts";
+import * as storeModule from "../store.ts";
 import { makeClaimedItem, makeMockGit } from "../test-helpers.ts";
 import {
   createLogger,
+  finalizeCompletion,
   mergeAndPush,
   orchestrateMerge,
   orchestrateWorktreeSetup,
   StaleEngineeringBranchError,
   teardownWorktree,
 } from "./worker-shared.ts";
+
+mock.module("../store.ts", () => ({
+  ...storeModule,
+  completeItem: mock(async () =>
+    ok({
+      completed: { id: "x", title: "done", status: "completed", createdAt: "" } as Item,
+      recurred: undefined,
+    }),
+  ),
+}));
 
 const ITEM_ID = "aaaaaaaa-0000-0000-0000-000000000000";
 const REPO_DIR = "/repo";
@@ -470,6 +485,69 @@ describe("mergeAndPush", () => {
 
     expect(git.push).not.toHaveBeenCalled();
     expect(note).toContain("conflict");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// finalizeCompletion
+// ---------------------------------------------------------------------------
+
+describe("finalizeCompletion", () => {
+  function makeMockFs(): FsGateway {
+    return {
+      ensureDir: mock(async () => {}),
+      writeFile: mock(async () => {}),
+    };
+  }
+
+  test("writes result file before marking complete", async () => {
+    const fs = makeMockFs();
+    const calls: string[] = [];
+    (fs.writeFile as ReturnType<typeof mock>).mockImplementation(async () => {
+      calls.push("writeFile");
+    });
+
+    const { completeItem } = await import("../store.ts");
+    (completeItem as ReturnType<typeof mock>).mockImplementation(async () => {
+      calls.push("completeItem");
+      return ok({
+        completed: { id: "x", title: "done", status: "completed", createdAt: "" } as Item,
+        recurred: undefined,
+      });
+    });
+
+    await finalizeCompletion({
+      fs,
+      resultFile: "/tmp/result.txt",
+      finalResult: "all done",
+      claimToken: "tok-abc",
+      agentName: "test-agent",
+      log: () => {},
+    });
+
+    expect(calls).toEqual(["writeFile", "completeItem"]);
+    expect(fs.writeFile as ReturnType<typeof mock>).toHaveBeenCalledWith(
+      "/tmp/result.txt",
+      "all done",
+    );
+  });
+
+  test("calls writeFile with resultFile and finalResult", async () => {
+    const fs = makeMockFs();
+
+    await finalizeCompletion({
+      fs,
+      resultFile: "/path/to/result",
+      finalResult: "task output",
+      claimToken: "tok-xyz",
+      agentName: "agent-1",
+      log: () => {},
+    });
+
+    expect(fs.writeFile as ReturnType<typeof mock>).toHaveBeenCalledWith(
+      "/path/to/result",
+      "task output",
+    );
   });
 });
 
