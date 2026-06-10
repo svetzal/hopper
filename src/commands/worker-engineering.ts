@@ -156,7 +156,14 @@ export async function teardownMergeAndComplete(ctx: TeardownContext): Promise<vo
 
   const combined = buildEngineeringTranscript(planText, executeResults, validateResults);
   const finalResult = combined + mergeNote;
-  await finalizeCompletion({ fs, resultFile: paths.resultFile, finalResult, claimToken: item.claimToken, agentName, log });
+  await finalizeCompletion({
+    fs,
+    resultFile: paths.resultFile,
+    finalResult,
+    claimToken: item.claimToken,
+    agentName,
+    log,
+  });
 }
 
 export async function runEngineeringPreconditions(

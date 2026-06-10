@@ -65,7 +65,14 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
   log("---------------------");
 
   if (action === "complete") {
-    await finalizeCompletion({ fs, resultFile, finalResult, claimToken: item.claimToken, agentName, log });
+    await finalizeCompletion({
+      fs,
+      resultFile,
+      finalResult,
+      claimToken: item.claimToken,
+      agentName,
+      log,
+    });
   } else {
     await fs.writeFile(resultFile, finalResult);
     log(`${sessionLabel} failed for: ${item.title} (${item.id})`);
