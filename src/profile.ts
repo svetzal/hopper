@@ -226,6 +226,21 @@ export function resolveProfileBinding(
 }
 
 /**
+ * Collapse the session→{@link ModelBinding} resolution into one place.
+ *
+ * Three-way precedence: profile present → resolve via profile bindings;
+ * model-only (no profile) → bare-model binding; neither → undefined.
+ * Callers that previously duplicated this ternary in argv builders should
+ * call this instead.
+ */
+export function resolveSessionBinding(
+  model: string | undefined,
+  profile: Profile | undefined,
+): ModelBinding | undefined {
+  return profile ? resolveProfileBinding(model, profile) : model ? { model } : undefined;
+}
+
+/**
  * Convenience wrapper that returns just the resolved model string. Effort
  * overrides from the profile are dropped — callers that care about effort
  * should use {@link resolveProfileBinding}.

@@ -5,6 +5,7 @@ import {
   parseProfile,
   resolveProfileBinding,
   resolveProfileModel,
+  resolveSessionBinding,
 } from "./profile.ts";
 
 describe("isValidProfileName", () => {
@@ -244,6 +245,31 @@ describe("resolveProfileModel", () => {
 
   test("returns unmapped strings unchanged so the runner reports the error", () => {
     expect(resolveProfileModel("unknown-tier", profile)).toBe("unknown-tier");
+  });
+});
+
+describe("resolveSessionBinding", () => {
+  const profile: Profile = {
+    name: "anthropic",
+    runner: "claude",
+    models: {
+      deep: { model: "opus", effort: "max" },
+      balanced: { model: "sonnet" },
+      fast: { model: "haiku" },
+    },
+  };
+
+  test("profile present → resolves via profile bindings", () => {
+    expect(resolveSessionBinding("deep", profile)).toEqual({ model: "opus", effort: "max" });
+    expect(resolveSessionBinding("balanced", profile)).toEqual({ model: "sonnet" });
+  });
+
+  test("model-only (no profile) → bare-model binding", () => {
+    expect(resolveSessionBinding("some-model", undefined)).toEqual({ model: "some-model" });
+  });
+
+  test("neither model nor profile → undefined", () => {
+    expect(resolveSessionBinding(undefined, undefined)).toBeUndefined();
   });
 });
 

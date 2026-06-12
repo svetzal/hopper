@@ -133,4 +133,29 @@ describe("claude-gateway", () => {
       runner.runSession("test prompt", tempDir, join(tempDir, "audit.jsonl")),
     ).rejects.toThrow("claude executable not found");
   });
+
+  test("generateText delegates through runSession and returns trimmed text", async () => {
+    // Override the fake claude in fakeDir to emit a fixed result JSONL line so
+    // we do not depend on env inheritance from the parent process.
+    await makeFakeBin(fakeDir, "claude", [
+      "#!/bin/sh",
+      'printf \'{"type":"result","result":"branch-slug-result"}\\n\'',
+    ]);
+    const runner = createClaudeRunner();
+    const profile = {
+      name: "anthropic",
+      runner: "claude" as const,
+      models: {
+        deep: { model: "opus" },
+        balanced: { model: "sonnet" },
+        fast: { model: "haiku" },
+      },
+    };
+    const { exitCode, text } = await runner.generateText("summarize this", "balanced", {
+      profile,
+      cwd: tempDir,
+    });
+    expect(exitCode).toBe(0);
+    expect(text).toBe("branch-slug-result");
+  });
 });

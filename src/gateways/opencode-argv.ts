@@ -1,4 +1,4 @@
-import { resolveProfileBinding } from "../profile.ts";
+import { resolveSessionBinding } from "../profile.ts";
 import type { SessionOptions } from "./agent-runner.ts";
 
 /**
@@ -34,11 +34,7 @@ export function buildOpencodeArgv(
 ): string[] {
   const argv: string[] = [opencodeBin, "run", "--format", "json", "--dangerously-skip-permissions"];
 
-  const binding = options.profile
-    ? resolveProfileBinding(options.model, options.profile)
-    : options.model
-      ? { model: options.model }
-      : undefined;
+  const binding = resolveSessionBinding(options.model, options.profile);
   if (binding?.model) {
     argv.push("--model", binding.model);
   }

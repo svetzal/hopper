@@ -60,79 +60,47 @@ export interface ProfilesGateway {
 /** Default fallback when `config.json` is missing or malformed. */
 export const FALLBACK_DEFAULT_PROFILE = "openai";
 
+const shippedProfile = (runner: string, models: Record<string, string>) =>
+  JSON.stringify({ runner, models }, null, 2);
+
 /**
  * Shipped profile templates. The keys are the profile names; the values are
  * pretty-printed JSON bodies suitable for writing verbatim to disk.
  */
 export const SHIPPED_PROFILES: Record<string, string> = {
-  anthropic: JSON.stringify(
-    {
-      runner: "claude",
-      models: {
-        deep: "opus",
-        balanced: "sonnet",
-        fast: "haiku",
-      },
-    },
-    null,
-    2,
-  ),
-  openai: JSON.stringify(
-    {
-      runner: "opencode",
-      models: {
-        deep: "openai/gpt-5.5",
-        balanced: "openai/gpt-5.4",
-        fast: "openai/gpt-5.4-mini",
-        "gpt-5.3-codex": "openai/gpt-5.3-codex",
-      },
-    },
-    null,
-    2,
-  ),
-  codex: JSON.stringify(
-    {
-      runner: "codex",
-      models: {
-        deep: "gpt-5.5",
-        balanced: "gpt-5.4",
-        fast: "gpt-5.4-mini",
-        "gpt-5.3-codex": "gpt-5.3-codex",
-      },
-    },
-    null,
-    2,
-  ),
-  openrouter: JSON.stringify(
-    {
-      runner: "opencode",
-      models: {
-        deep: "openrouter/z-ai/glm-5.1",
-        balanced: "openrouter/anthropic/claude-sonnet-4.6",
-        fast: "openrouter/google/gemini-2.5-flash",
-        "glm-5.1": "openrouter/z-ai/glm-5.1",
-      },
-    },
-    null,
-    2,
-  ),
-  ollama: JSON.stringify(
-    {
-      runner: "opencode",
-      models: {
-        deep: "ollama/qwen3.6:27b-coding-bf16",
-        balanced: "ollama/qwen3.6:27b-coding-mxfp8",
-        fast: "ollama/qwen3.6:35b-a3b-coding-nvfp4",
-        "qwen-bf16": "ollama/qwen3.6:27b-coding-bf16",
-        "qwen-mxfp8": "ollama/qwen3.6:27b-coding-mxfp8",
-        "qwen-nvfp4": "ollama/qwen3.6:35b-a3b-coding-nvfp4",
-        "gpt-oss-120b": "ollama/gpt-oss:120b",
-        "gpt-oss-20b": "ollama/gpt-oss:20b",
-      },
-    },
-    null,
-    2,
-  ),
+  anthropic: shippedProfile("claude", {
+    deep: "opus",
+    balanced: "sonnet",
+    fast: "haiku",
+  }),
+  openai: shippedProfile("opencode", {
+    deep: "openai/gpt-5.5",
+    balanced: "openai/gpt-5.4",
+    fast: "openai/gpt-5.4-mini",
+    "gpt-5.3-codex": "openai/gpt-5.3-codex",
+  }),
+  codex: shippedProfile("codex", {
+    deep: "gpt-5.5",
+    balanced: "gpt-5.4",
+    fast: "gpt-5.4-mini",
+    "gpt-5.3-codex": "gpt-5.3-codex",
+  }),
+  openrouter: shippedProfile("opencode", {
+    deep: "openrouter/z-ai/glm-5.1",
+    balanced: "openrouter/anthropic/claude-sonnet-4.6",
+    fast: "openrouter/google/gemini-2.5-flash",
+    "glm-5.1": "openrouter/z-ai/glm-5.1",
+  }),
+  ollama: shippedProfile("opencode", {
+    deep: "ollama/qwen3.6:27b-coding-bf16",
+    balanced: "ollama/qwen3.6:27b-coding-mxfp8",
+    fast: "ollama/qwen3.6:35b-a3b-coding-nvfp4",
+    "qwen-bf16": "ollama/qwen3.6:27b-coding-bf16",
+    "qwen-mxfp8": "ollama/qwen3.6:27b-coding-mxfp8",
+    "qwen-nvfp4": "ollama/qwen3.6:35b-a3b-coding-nvfp4",
+    "gpt-oss-120b": "ollama/gpt-oss:120b",
+    "gpt-oss-20b": "ollama/gpt-oss:20b",
+  }),
 };
 
 function parseConfig(raw: string): HopperConfig {
