@@ -30,7 +30,7 @@
     "vitepress": "^1.6.4"
   },
   "dependencies": {
-    "@types/node": "^25.9.2"
+    "@types/node": "^25.9.3"
   },
   "overrides": {
     "vite": "6.4.3"
