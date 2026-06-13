@@ -4,17 +4,21 @@ import type { Item } from "./store.ts";
 /**
  * Shared preamble template for single-phase prompts.
  *
- * Emits: `${header}\n\nTitle: ...\nDescription: ...\n\n[## Plan...]\n\n## Instructions\n\n${instructions}`
+ * Emits: `${header}\n\nTitle: ...\nDescription: ...\n\n[## Plan...]\n\n[extraSections]## Instructions\n\n${instructions}`
  *
  * The optional `planText` inserts a `## Plan (from the planning phase)` section
  * between the description and the instructions heading — used by the execute
  * and validate phases.
+ *
+ * The optional `extraSections` slot is inserted after the plan section and before
+ * `## Instructions` — used by the remediation prompt to inline prior-attempt context.
  */
 function buildPhasePrompt(
   header: string,
   item: Item,
   instructions: string,
   planText?: string,
+  extraSections?: string,
 ): string {
   const planSection = planText ? `## Plan (from the planning phase)\n\n${planText}\n\n` : "";
   return (
@@ -22,6 +26,7 @@ function buildPhasePrompt(
     `Title: ${item.title}\n` +
     `Description: ${item.description}\n\n` +
     planSection +
+    (extraSections ?? "") +
     `## Instructions\n\n` +
     instructions
   );
@@ -244,12 +249,19 @@ export function buildPlanOptions(): SessionOptions {
  */
 export const EXECUTE_DISALLOWED_TOOLS: readonly string[] = [...GIT_MUTATION_DENYLIST];
 
+/**
+ * Single source of truth for the prose form of Hopper's git-ownership rule.
+ * The machine-enforced form is {@link EXECUTE_DISALLOWED_TOOLS}.
+ */
+export const GIT_OWNERSHIP_INSTRUCTION =
+  "Do NOT commit, push, branch, merge, stash, reset, or otherwise mutate git state — Hopper owns all git operations.";
+
 export function buildExecutePrompt(item: Item, planText: string): string {
   return buildPhasePrompt(
     "You are the EXECUTE phase of a multi-phase engineering workflow.",
     item,
     `1. Follow the plan above. Implement the changes in the current worktree.\n` +
-      `2. Do NOT commit, push, branch, merge, stash, reset, or otherwise mutate git state — Hopper owns all git operations.\n` +
+      `2. ${GIT_OWNERSHIP_INSTRUCTION}\n` +
       `3. You may read git state (\`git diff\`, \`git log\`, \`git status\`) for context, but do not mutate it.\n` +
       `4. Stop when the code and tests are in place. The next phase (Validate) will run the plan's validation commands.\n` +
       `5. Provide a short summary of what you changed in your final message.\n`,
@@ -282,24 +294,19 @@ export function buildExecuteRemediationPrompt(
   priorValidateResult: string,
   attempt: number,
 ): string {
-  return (
+  return buildPhasePrompt(
     `You are the EXECUTE phase of a multi-phase engineering workflow. ` +
-    `This is remediation attempt ${attempt} — an earlier execute pass completed, ` +
-    `but the validate phase that followed reported failures.\n\n` +
-    `Title: ${item.title}\n` +
-    `Description: ${item.description}\n\n` +
-    `## Plan (from the planning phase)\n\n` +
-    `${planText}\n\n` +
-    `## What the previous execute attempt reported\n\n` +
-    `${priorExecuteResult}\n\n` +
-    `## Validate-phase failure output\n\n` +
-    `${priorValidateResult}\n\n` +
-    `## Instructions\n\n` +
+      `This is remediation attempt ${attempt} — an earlier execute pass completed, ` +
+      `but the validate phase that followed reported failures.`,
+    item,
     `1. Focus on fixing ONLY the issues surfaced by the validate phase. Do not redo changes that already landed correctly.\n` +
-    `2. Do NOT commit, push, branch, merge, stash, reset, or otherwise mutate git state — Hopper owns all git operations.\n` +
-    `3. You may read git state (\`git diff\`, \`git log\`, \`git status\`) to see what's already in the worktree.\n` +
-    `4. Stop when the fixes are in place. Validate will run again after you return.\n` +
-    `5. Provide a short summary of what you changed in this attempt.\n`
+      `2. ${GIT_OWNERSHIP_INSTRUCTION}\n` +
+      `3. You may read git state (\`git diff\`, \`git log\`, \`git status\`) to see what's already in the worktree.\n` +
+      `4. Stop when the fixes are in place. Validate will run again after you return.\n` +
+      `5. Provide a short summary of what you changed in this attempt.\n`,
+    planText,
+    `## What the previous execute attempt reported\n\n${priorExecuteResult}\n\n` +
+      `## Validate-phase failure output\n\n${priorValidateResult}\n\n`,
   );
 }
 
@@ -330,7 +337,7 @@ export function buildValidatePrompt(item: Item, planText: string): string {
     item,
     `1. Run the validation commands listed in the plan (test suite, linter, type checker, any project-specific checks).\n` +
       `2. Inspect the diff with \`git diff\` / \`git log\` / \`git status\` / \`git show\` to judge whether the worktree now satisfies the plan.\n` +
-      `3. Do not mutate git state — no commit, branch, checkout, merge, reset, or push. Hopper owns all git mutations.\n` +
+      `3. ${GIT_OWNERSHIP_INSTRUCTION}\n` +
       `4. If validation fails, report which checks failed with their output. Only fix trivial issues (e.g. an unused import) yourself — anything larger is a signal to requeue.\n` +
       `5. End your final message with one of these exact tokens on its own line:\n` +
       `   - \`VALIDATE: PASS\` — all checks passed and the diff satisfies the plan.\n` +
