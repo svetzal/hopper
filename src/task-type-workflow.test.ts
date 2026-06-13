@@ -279,42 +279,84 @@ describe("buildExecuteRemediationPrompt", () => {
   const priorValidate = "Test `parser edge case` failed with exit 1.";
 
   test("includes item title and description", () => {
-    const prompt = buildExecuteRemediationPrompt(makeEngItem(), plan, priorExecute, priorValidate, 2);
+    const prompt = buildExecuteRemediationPrompt(
+      makeEngItem(),
+      plan,
+      priorExecute,
+      priorValidate,
+      2,
+    );
     expect(prompt).toContain("Add --quiet flag");
     expect(prompt).toContain("Suppress non-error output");
   });
 
   test("inlines the plan text verbatim", () => {
-    const prompt = buildExecuteRemediationPrompt(makeEngItem(), plan, priorExecute, priorValidate, 2);
+    const prompt = buildExecuteRemediationPrompt(
+      makeEngItem(),
+      plan,
+      priorExecute,
+      priorValidate,
+      2,
+    );
     expect(prompt).toContain(plan);
     expect(prompt).toContain("## Plan (from the planning phase)");
   });
 
   test("inlines the prior execute result verbatim", () => {
-    const prompt = buildExecuteRemediationPrompt(makeEngItem(), plan, priorExecute, priorValidate, 2);
+    const prompt = buildExecuteRemediationPrompt(
+      makeEngItem(),
+      plan,
+      priorExecute,
+      priorValidate,
+      2,
+    );
     expect(prompt).toContain(priorExecute);
     expect(prompt).toContain("## What the previous execute attempt reported");
   });
 
   test("inlines the prior validate result verbatim", () => {
-    const prompt = buildExecuteRemediationPrompt(makeEngItem(), plan, priorExecute, priorValidate, 2);
+    const prompt = buildExecuteRemediationPrompt(
+      makeEngItem(),
+      plan,
+      priorExecute,
+      priorValidate,
+      2,
+    );
     expect(prompt).toContain(priorValidate);
     expect(prompt).toContain("## Validate-phase failure output");
   });
 
   test("includes the attempt number", () => {
-    const prompt = buildExecuteRemediationPrompt(makeEngItem(), plan, priorExecute, priorValidate, 3);
+    const prompt = buildExecuteRemediationPrompt(
+      makeEngItem(),
+      plan,
+      priorExecute,
+      priorValidate,
+      3,
+    );
     expect(prompt).toContain("attempt 3");
   });
 
   test("forbids git mutations via the shared ownership instruction", () => {
-    const prompt = buildExecuteRemediationPrompt(makeEngItem(), plan, priorExecute, priorValidate, 1);
+    const prompt = buildExecuteRemediationPrompt(
+      makeEngItem(),
+      plan,
+      priorExecute,
+      priorValidate,
+      1,
+    );
     expect(prompt.toLowerCase()).toContain("hopper owns all git");
     expect(prompt.toLowerCase()).toContain("do not commit");
   });
 
   test("contains ## Instructions heading", () => {
-    const prompt = buildExecuteRemediationPrompt(makeEngItem(), plan, priorExecute, priorValidate, 1);
+    const prompt = buildExecuteRemediationPrompt(
+      makeEngItem(),
+      plan,
+      priorExecute,
+      priorValidate,
+      1,
+    );
     expect(prompt).toContain("## Instructions");
   });
 });
