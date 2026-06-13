@@ -96,7 +96,7 @@ describe("buildRunnerRunSession", () => {
 
   test("callCtx from buildArgv is passed through unchanged to extractOutcome", async () => {
     const callCtxSentinel = { id: "callCtx-sentinel" };
-    let capturedCallCtx: unknown = undefined;
+    let capturedCallCtx: unknown;
 
     const spec = makeSpec({
       buildArgv: (bin) => ({ argv: [bin], callCtx: callCtxSentinel }),
