@@ -7,7 +7,6 @@ import { shortId } from "../format.ts";
 import type { AgentRunner } from "../gateways/agent-runner.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway, MergeOutcome } from "../gateways/git-gateway.ts";
-import type { Profile } from "../profile.ts";
 import {
   buildWorkBranchName,
   resolveBranchSetup,
@@ -15,11 +14,17 @@ import {
   resolveMergeCommitResult,
   resolveMergeStep,
 } from "../git-workflow.ts";
+import type { Profile } from "../profile.ts";
 import { type ClaimedItem, completeItem, type Item, requeueItem } from "../store.ts";
 
 export type LogFn = (message: string) => void;
 
-export type WorkerRunnerDeps = { git: GitGateway; claude: AgentRunner; fs: FsGateway; profile: Profile };
+export type WorkerRunnerDeps = {
+  git: GitGateway;
+  claude: AgentRunner;
+  fs: FsGateway;
+  profile: Profile;
+};
 
 export { StaleEngineeringBranchError };
 

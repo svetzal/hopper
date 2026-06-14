@@ -114,7 +114,7 @@ export function resolveMergeAction(
   workBranch: string | undefined,
   item: Item,
 ): MergeAction {
-  if (claudeExitCode === 0 && !!workBranch && !!item.workingDir && !!item.branch) {
+  if (claudeExitCode === 0 && workBranch && item.workingDir && item.branch) {
     return { shouldMerge: true, workBranch };
   }
   return { shouldMerge: false };
