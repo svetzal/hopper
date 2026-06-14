@@ -107,13 +107,17 @@ export function resolvePostClaudeAction(
  * Merging only happens when Claude exited cleanly, a work branch was created,
  * and the item carries both a repo directory and a target branch name.
  */
+export type MergeAction = { shouldMerge: true; workBranch: string } | { shouldMerge: false };
+
 export function resolveMergeAction(
   claudeExitCode: number,
   workBranch: string | undefined,
   item: Item,
-): { shouldMerge: boolean } {
-  const shouldMerge = claudeExitCode === 0 && !!workBranch && !!item.workingDir && !!item.branch;
-  return { shouldMerge };
+): MergeAction {
+  if (claudeExitCode === 0 && !!workBranch && !!item.workingDir && !!item.branch) {
+    return { shouldMerge: true, workBranch };
+  }
+  return { shouldMerge: false };
 }
 
 // ---------------------------------------------------------------------------

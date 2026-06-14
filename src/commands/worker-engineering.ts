@@ -4,11 +4,7 @@ import {
   resolveEngineeringPreconditions,
   resolveWorktreeSetupFailureReason,
 } from "../engineering-workflow.ts";
-import type { AgentRunner } from "../gateways/agent-runner.ts";
-import type { FsGateway } from "../gateways/fs-gateway.ts";
-import type { GitGateway } from "../gateways/git-gateway.ts";
 import { buildEngineeringBranchName } from "../git-workflow.ts";
-import type { Profile } from "../profile.ts";
 import type { ClaimedItem } from "../store.ts";
 import { setItemEngineeringBranchSlug } from "../store.ts";
 import {
@@ -41,6 +37,7 @@ import {
   safeRequeue,
   safeVoid,
   teardownWorktree,
+  type WorkerRunnerDeps,
 } from "./worker-shared.ts";
 
 // Orchestration and phase-step functions take a single typed context object;
@@ -55,7 +52,7 @@ export interface EngineeringContext {
   worktreePath: string;
   hopperHome: string;
   paths: EngineeringAuditPaths;
-  deps: { git: GitGateway; claude: AgentRunner; fs: FsGateway; profile: Profile };
+  deps: WorkerRunnerDeps;
   log: LogFn;
 }
 
@@ -127,7 +124,7 @@ export interface TeardownContext {
   executeResults: readonly string[];
   validateResults: readonly string[];
   paths: EngineeringAuditPaths;
-  deps: { git: GitGateway; fs: FsGateway };
+  deps: Pick<WorkerRunnerDeps, "git" | "fs">;
   log: LogFn;
 }
 
@@ -239,7 +236,7 @@ export async function processEngineeringItem(
   item: ClaimedItem,
   agentName: string,
   hopperHome: string,
-  deps: { git: GitGateway; claude: AgentRunner; fs: FsGateway; profile: Profile },
+  deps: WorkerRunnerDeps,
   concurrency: number = 1,
 ): Promise<void> {
   const log = createLogger(item.id, concurrency);

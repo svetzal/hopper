@@ -1,6 +1,5 @@
 import { buildEngineeringFailureResult } from "../engineering-workflow.ts";
 import type { AgentRunner, SessionOptions } from "../gateways/agent-runner.ts";
-import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { Profile } from "../profile.ts";
 import type { ClaimedItem, PhaseRecord } from "../store.ts";
 import { recordItemPhase } from "../store.ts";
@@ -13,7 +12,7 @@ import {
 } from "../task-type-workflow.ts";
 import { type EngineeringAuditPaths, resolveAttemptAuditPath } from "../worker-workflow.ts";
 import { resolveValidateOutcomeWithFallback } from "./worker-engineering-text.ts";
-import { type LogFn, safeVoid } from "./worker-shared.ts";
+import { type LogFn, safeVoid, type WorkerRunnerDeps } from "./worker-shared.ts";
 
 async function safeRecordPhase(itemId: string, record: PhaseRecord, log: LogFn): Promise<void> {
   return safeVoid(() => recordItemPhase(itemId, record), "Phase recording failed", log);
@@ -61,7 +60,7 @@ export interface ExecuteValidateContext {
   planText: string;
   paths: EngineeringAuditPaths;
   hopperHome: string;
-  deps: { claude: AgentRunner; fs: FsGateway; profile: Profile };
+  deps: Pick<WorkerRunnerDeps, "claude" | "fs" | "profile">;
   log: LogFn;
 }
 

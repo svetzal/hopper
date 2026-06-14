@@ -161,6 +161,7 @@ describe("worker-workflow", () => {
       const item = makeItem({ workingDir: "/repo", branch: "main" });
       expect(resolveMergeAction(0, "hopper/abcdef12", item)).toEqual({
         shouldMerge: true,
+        workBranch: "hopper/abcdef12",
       });
     });
 

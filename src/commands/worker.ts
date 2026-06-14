@@ -259,11 +259,10 @@ export async function processItem(
       worktreePath = undefined;
     }
 
-    const { shouldMerge } = resolveMergeAction(exitCode, workBranch, item);
-    const mergeNote =
-      shouldMerge && workBranch && item.workingDir && item.branch
-        ? await mergeAndPush(git, item, workBranch, log)
-        : "";
+    const mergeAction = resolveMergeAction(exitCode, workBranch, item);
+    const mergeNote = mergeAction.shouldMerge
+      ? await mergeAndPush(git, item, mergeAction.workBranch, log)
+      : "";
 
     await handleCompletion({
       item,
