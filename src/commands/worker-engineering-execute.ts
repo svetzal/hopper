@@ -11,8 +11,8 @@ import {
   buildValidatePrompt,
 } from "../task-type-workflow.ts";
 import { type EngineeringAuditPaths, resolveAttemptAuditPath } from "../worker-workflow.ts";
-import { resolveValidateOutcomeWithFallback } from "./worker-engineering-text.ts";
-import { type LogFn, safeVoid, type WorkerRunnerDeps } from "./worker-shared.ts";
+import { resolveValidateOutcomeWithFallback } from "./worker-engineering-generate.ts";
+import { type LogFn, safeVoid, type WorkerRunnerDeps } from "./worker-orchestration.ts";
 
 async function safeRecordPhase(itemId: string, record: PhaseRecord, log: LogFn): Promise<void> {
   return safeVoid(() => recordItemPhase(itemId, record), "Phase recording failed", log);

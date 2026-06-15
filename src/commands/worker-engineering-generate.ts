@@ -12,7 +12,7 @@ import {
   normaliseValidateFallback,
   resolveValidateOutcome,
 } from "../task-type-workflow.ts";
-import type { LogFn } from "./worker-shared.ts";
+import type { LogFn } from "./worker-orchestration.ts";
 
 export async function safeGenerateText(
   claude: AgentRunner,

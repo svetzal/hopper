@@ -7,7 +7,7 @@ import {
   resolveEngineeringCommitMessage,
   resolveValidateOutcomeWithFallback,
   safeGenerateText,
-} from "./worker-engineering-text.ts";
+} from "./worker-engineering-generate.ts";
 
 const TEST_PROFILE: Profile = {
   name: "test",

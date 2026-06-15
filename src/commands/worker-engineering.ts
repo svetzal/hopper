@@ -21,12 +21,12 @@ import {
   type ExecuteValidateContext,
   runExecuteValidateLoop,
   runPhase,
-} from "./worker-engineering-loop.ts";
+} from "./worker-engineering-execute.ts";
 import {
   resolveEngineeringBranchSlug,
   resolveEngineeringCommitMessage,
   resolveValidateOutcomeWithFallback,
-} from "./worker-engineering-text.ts";
+} from "./worker-engineering-generate.ts";
 import {
   createLogger,
   finalizeCompletion,
@@ -38,7 +38,7 @@ import {
   safeVoid,
   teardownWorktree,
   type WorkerRunnerDeps,
-} from "./worker-shared.ts";
+} from "./worker-orchestration.ts";
 
 // Orchestration and phase-step functions take a single typed context object;
 // thin leaf helpers (e.g. commitWorktreeChanges, executeWork) take positional args.

@@ -28,7 +28,7 @@ import {
   orchestrateWorktreeSetup,
   safeRequeue,
   teardownWorktree,
-} from "./worker-shared.ts";
+} from "./worker-orchestration.ts";
 
 export interface WorkerDeps {
   git?: GitGateway;

@@ -5,7 +5,7 @@ import type { Profile } from "../profile.ts";
 import type { PhaseRecord } from "../store.ts";
 import { callArgs, makeClaimedItem, makeMockStoreModule, typedMock } from "../test-helpers.ts";
 import type { EngineeringAuditPaths } from "../worker-workflow.ts";
-import { runExecuteValidateLoop, runPhase } from "./worker-engineering-loop.ts";
+import { runExecuteValidateLoop, runPhase } from "./worker-engineering-execute.ts";
 
 const TEST_PROFILE: Profile = {
   name: "test",

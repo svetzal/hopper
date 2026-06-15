@@ -26,8 +26,8 @@ import {
   resolveWorkerConfig,
   type WorkerConfig,
 } from "../worker-workflow.ts";
-import { processItem, type WorkerDeps } from "./worker.ts";
-import { safeRequeue } from "./worker-shared.ts";
+import { processItem, type WorkerDeps } from "./worker-generic.ts";
+import { safeRequeue } from "./worker-orchestration.ts";
 
 export interface WorkerLoopDeps {
   claimNext: (agentName: string) => Promise<ClaimedItem | null | undefined>;

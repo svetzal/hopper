@@ -14,7 +14,7 @@ import {
   setupTempStoreDir,
   typedMock,
 } from "../test-helpers.ts";
-import { processItem } from "./worker.ts";
+import { processItem } from "./worker-generic.ts";
 
 const storeMocks = makeMockStoreModule();
 mock.module("../store.ts", () => storeMocks.moduleObject);
