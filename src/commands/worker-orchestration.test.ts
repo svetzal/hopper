@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import { ok } from "../result.ts";
 import type { Item } from "../store.ts";
@@ -14,15 +14,13 @@ import {
   teardownWorktree,
 } from "./worker-orchestration.ts";
 
-mock.module("../store.ts", () => ({
-  ...storeModule,
-  completeItem: mock(async () =>
-    ok({
-      completed: { id: "x", title: "done", status: "completed", createdAt: "" } as Item,
-      recurred: undefined,
-    }),
-  ),
-}));
+const completeItemSpy = spyOn(storeModule, "completeItem").mockImplementation(async () =>
+  ok({
+    completed: { id: "x", title: "done", status: "completed", createdAt: "" } as Item,
+    recurred: undefined,
+  }),
+);
+afterAll(() => completeItemSpy.mockRestore());
 
 const ITEM_ID = "aaaaaaaa-0000-0000-0000-000000000000";
 const REPO_DIR = "/repo";

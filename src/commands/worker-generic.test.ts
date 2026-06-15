@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { AgentRunner } from "../gateways/agent-runner.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { ProfilesGateway } from "../gateways/profiles-gateway.ts";
@@ -9,18 +9,29 @@ import * as store from "../store.ts";
 import {
   callArgs,
   makeClaimedItem,
+  makeItem,
   makeMockGit,
-  makeMockStoreModule,
   setupTempStoreDir,
   typedMock,
 } from "../test-helpers.ts";
 import { processItem } from "./worker-generic.ts";
 
-const storeMocks = makeMockStoreModule();
-mock.module("../store.ts", () => storeMocks.moduleObject);
-const completeItemMock = storeMocks.mocks.completeItem;
-const recordItemPhaseMock = storeMocks.mocks.recordItemPhase;
-const requeueItemMock = storeMocks.mocks.requeueItem;
+const realRequeueItem = store.requeueItem;
+const completeItemSpy = spyOn(store, "completeItem").mockImplementation(async () =>
+  ok({ completed: makeItem({ title: "done", status: "completed" }), recurred: undefined }),
+);
+const recordItemPhaseSpy = spyOn(store, "recordItemPhase").mockImplementation(async () => {});
+const requeueItemSpy = spyOn(store, "requeueItem").mockImplementation(async (id, reason, agent) =>
+  realRequeueItem(id, reason, agent),
+);
+afterAll(() => {
+  completeItemSpy.mockRestore();
+  recordItemPhaseSpy.mockRestore();
+  requeueItemSpy.mockRestore();
+});
+const completeItemMock = completeItemSpy;
+const recordItemPhaseMock = recordItemPhaseSpy;
+const requeueItemMock = requeueItemSpy;
 
 function makeMockClaude(exitCode = 0, result = "Done."): AgentRunner {
   return {

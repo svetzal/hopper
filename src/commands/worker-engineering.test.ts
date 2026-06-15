@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { AgentRunner } from "../gateways/agent-runner.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
@@ -15,7 +15,6 @@ import {
   callArgs,
   makeClaimedItem,
   makeMockGit,
-  makeMockStoreModule,
   setupTempStoreDir,
   typedMock,
 } from "../test-helpers.ts";
@@ -30,12 +29,35 @@ import {
   setupEngineeringWorktree,
 } from "./worker-engineering.ts";
 
-const mockSetItemEngineeringBranchSlug = mock(async (_id: string, _slug: string) => {});
-const storeMocks = makeMockStoreModule({
-  setItemEngineeringBranchSlug: mockSetItemEngineeringBranchSlug,
+const realRequeueItem = store.requeueItem;
+const completeItemSpy = spyOn(store, "completeItem").mockImplementation(async () => ({
+  ok: true as const,
+  value: {
+    completed: {
+      id: "x",
+      title: "done",
+      status: "completed" as const,
+      description: "",
+      createdAt: "",
+    },
+    recurred: undefined,
+  },
+}));
+const recordItemPhaseSpy = spyOn(store, "recordItemPhase").mockImplementation(async () => {});
+const requeueItemSpy = spyOn(store, "requeueItem").mockImplementation(async (id, reason, agent) =>
+  realRequeueItem(id, reason, agent),
+);
+const mockSetItemEngineeringBranchSlug = spyOn(
+  store,
+  "setItemEngineeringBranchSlug",
+).mockImplementation(async () => {});
+afterAll(() => {
+  completeItemSpy.mockRestore();
+  recordItemPhaseSpy.mockRestore();
+  requeueItemSpy.mockRestore();
+  mockSetItemEngineeringBranchSlug.mockRestore();
 });
-mock.module("../store.ts", () => storeMocks.moduleObject);
-const requeueItemMock = storeMocks.mocks.requeueItem;
+const requeueItemMock = requeueItemSpy;
 
 const HOPPER_HOME = "/tmp/test-hopper-eng";
 const ITEM_ID = "aaaaaaaa-0000-0000-0000-000000000000";

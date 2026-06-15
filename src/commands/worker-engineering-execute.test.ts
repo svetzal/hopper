@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { AgentRunner, SessionOptions } from "../gateways/agent-runner.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { Profile } from "../profile.ts";
 import type { PhaseRecord } from "../store.ts";
-import { callArgs, makeClaimedItem, makeMockStoreModule, typedMock } from "../test-helpers.ts";
+import * as storeModule from "../store.ts";
+import { callArgs, makeClaimedItem, typedMock } from "../test-helpers.ts";
 import type { EngineeringAuditPaths } from "../worker-workflow.ts";
 import { runExecuteValidateLoop, runPhase } from "./worker-engineering-execute.ts";
 
@@ -13,9 +14,25 @@ const TEST_PROFILE: Profile = {
   models: { deep: { model: "opus" }, balanced: { model: "sonnet" }, fast: { model: "haiku" } },
 };
 
-const storeMocks = makeMockStoreModule();
-mock.module("../store.ts", () => storeMocks.moduleObject);
-const recordItemPhaseMock = storeMocks.mocks.recordItemPhase;
+const completeItemSpy = spyOn(storeModule, "completeItem").mockImplementation(async () => ({
+  ok: true as const,
+  value: {
+    completed: {
+      id: "x",
+      title: "done",
+      status: "completed" as const,
+      description: "",
+      createdAt: "",
+    },
+    recurred: undefined,
+  },
+}));
+const recordItemPhaseSpy = spyOn(storeModule, "recordItemPhase").mockImplementation(async () => {});
+afterAll(() => {
+  completeItemSpy.mockRestore();
+  recordItemPhaseSpy.mockRestore();
+});
+const recordItemPhaseMock = recordItemPhaseSpy;
 
 const HOPPER_HOME = "/tmp/test-hopper-loop";
 const ITEM_ID = "aaaaaaaa-0000-0000-0000-000000000000";
