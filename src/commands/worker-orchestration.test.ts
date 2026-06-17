@@ -3,7 +3,7 @@ import type { FsGateway } from "../gateways/fs-gateway.ts";
 import { ok } from "../result.ts";
 import type { Item } from "../store.ts";
 import * as storeModule from "../store.ts";
-import { makeClaimedItem, makeMockGit } from "../test-helpers.ts";
+import { makeMockGit } from "../test-helpers.ts";
 import {
   createLogger,
   finalizeCompletion,

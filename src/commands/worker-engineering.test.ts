@@ -3,8 +3,8 @@ import type { AgentRunner } from "../gateways/agent-runner.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import type { Profile } from "../profile.ts";
-import * as store from "../store.ts";
 import type { EngineeringItem } from "../store.ts";
+import * as store from "../store.ts";
 
 const TEST_PROFILE: Profile = {
   name: "test",
@@ -20,15 +20,14 @@ import {
   typedMock,
 } from "../test-helpers.ts";
 
-function makeEngineeringItem(
-  overrides?: Partial<store.ClaimedItem>,
-): EngineeringItem {
+function makeEngineeringItem(overrides?: Partial<store.ClaimedItem>): EngineeringItem {
   return makeClaimedItem({
     workingDir: "/repo",
     branch: "main",
     ...overrides,
   }) as EngineeringItem;
 }
+
 import type { EngineeringAuditPaths } from "../worker-workflow.ts";
 import {
   commitEngineeringChanges,
