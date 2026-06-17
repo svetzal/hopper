@@ -7,30 +7,34 @@ import {
   resolveEngineeringPreconditions,
   resolveWorktreeSetupFailureReason,
 } from "./engineering-workflow.ts";
+import { makeClaimedItem } from "./test-helpers.ts";
 
 describe("resolveEngineeringPreconditions", () => {
-  test("returns ok with validated values when both workingDir and branch are present", () => {
-    expect(resolveEngineeringPreconditions({ workingDir: "/repo", branch: "main" })).toEqual({
-      ok: true,
-      workingDir: "/repo",
-      branch: "main",
-    });
+  test("returns ok with narrowed item when both workingDir and branch are present", () => {
+    const item = makeClaimedItem({ workingDir: "/repo", branch: "main" });
+    const result = resolveEngineeringPreconditions(item);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.item.workingDir).toBe("/repo");
+      expect(result.item.branch).toBe("main");
+      expect(result.item.id).toBe(item.id);
+    }
   });
 
   test("returns failure when workingDir is missing", () => {
-    const result = resolveEngineeringPreconditions({ branch: "main" });
+    const result = resolveEngineeringPreconditions(makeClaimedItem({ branch: "main" }));
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain("--dir");
   });
 
   test("returns failure when branch is missing", () => {
-    const result = resolveEngineeringPreconditions({ workingDir: "/repo" });
+    const result = resolveEngineeringPreconditions(makeClaimedItem({ workingDir: "/repo" }));
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain("--branch");
   });
 
   test("returns failure when both are missing", () => {
-    const result = resolveEngineeringPreconditions({});
+    const result = resolveEngineeringPreconditions(makeClaimedItem());
     expect(result.ok).toBe(false);
   });
 });

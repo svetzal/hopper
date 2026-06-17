@@ -15,7 +15,7 @@ import {
   resolveMergeStep,
 } from "../git-workflow.ts";
 import type { Profile } from "../profile.ts";
-import { type ClaimedItem, completeItem, type Item, requeueItem } from "../store.ts";
+import { type ClaimedItem, completeItem, requeueItem } from "../store.ts";
 
 export type LogFn = (message: string) => void;
 
@@ -219,12 +219,11 @@ export async function orchestrateMerge(
 
 export async function mergeAndPush(
   git: GitGateway,
-  item: Item,
+  repoDir: string,
+  targetBranch: string,
   workBranch: string,
   log: LogFn,
 ): Promise<string> {
-  const targetBranch = item.branch as string;
-  const repoDir = item.workingDir as string;
   log(`Merging ${workBranch} → ${targetBranch}...`);
   const mergeResult = await orchestrateMerge(git, repoDir, targetBranch, workBranch);
   log(mergeResult.message);

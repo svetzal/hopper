@@ -434,9 +434,8 @@ describe("mergeAndPush", () => {
       push: mock(async () => ({ success: true, message: "Pushed." })),
       pushTags: mock(async () => ({ success: true, message: "Tags pushed." })),
     });
-    const item = makeClaimedItem({ branch: TARGET_BRANCH, workingDir: REPO_DIR });
 
-    const note = await mergeAndPush(git, item, WORK_BRANCH, noop);
+    const note = await mergeAndPush(git, REPO_DIR, TARGET_BRANCH, WORK_BRANCH, noop);
 
     expect(git.push).toHaveBeenCalledWith(REPO_DIR, TARGET_BRANCH);
     expect(git.pushTags).toHaveBeenCalledWith(REPO_DIR);
@@ -450,9 +449,8 @@ describe("mergeAndPush", () => {
       push: mock(async () => ({ success: false, message: "Push failed: remote rejected." })),
       pushTags: mock(async () => ({ success: true, message: "Tags pushed." })),
     });
-    const item = makeClaimedItem({ branch: TARGET_BRANCH, workingDir: REPO_DIR });
 
-    const note = await mergeAndPush(git, item, WORK_BRANCH, noop);
+    const note = await mergeAndPush(git, REPO_DIR, TARGET_BRANCH, WORK_BRANCH, noop);
 
     expect(note).toContain("Push failed: remote rejected.");
   });
@@ -464,9 +462,8 @@ describe("mergeAndPush", () => {
       push: mock(async () => ({ success: true, message: "Pushed." })),
       pushTags: mock(async () => ({ success: false, message: "Tag push failed: no tags." })),
     });
-    const item = makeClaimedItem({ branch: TARGET_BRANCH, workingDir: REPO_DIR });
 
-    const note = await mergeAndPush(git, item, WORK_BRANCH, noop);
+    const note = await mergeAndPush(git, REPO_DIR, TARGET_BRANCH, WORK_BRANCH, noop);
 
     expect(note).toContain("Tag push failed: no tags.");
   });
@@ -477,9 +474,8 @@ describe("mergeAndPush", () => {
       mergeFastForward: mock(async () => 1),
       mergeCommit: mock(async () => 1),
     });
-    const item = makeClaimedItem({ branch: TARGET_BRANCH, workingDir: REPO_DIR });
 
-    const note = await mergeAndPush(git, item, WORK_BRANCH, noop);
+    const note = await mergeAndPush(git, REPO_DIR, TARGET_BRANCH, WORK_BRANCH, noop);
 
     expect(git.push).not.toHaveBeenCalled();
     expect(note).toContain("conflict");

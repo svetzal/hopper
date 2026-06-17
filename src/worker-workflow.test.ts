@@ -162,6 +162,8 @@ describe("worker-workflow", () => {
       expect(resolveMergeAction(0, "hopper/abcdef12", item)).toEqual({
         shouldMerge: true,
         workBranch: "hopper/abcdef12",
+        repoDir: "/repo",
+        targetBranch: "main",
       });
     });
 

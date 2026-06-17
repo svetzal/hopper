@@ -4,6 +4,7 @@ import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import type { Profile } from "../profile.ts";
 import * as store from "../store.ts";
+import type { EngineeringItem } from "../store.ts";
 
 const TEST_PROFILE: Profile = {
   name: "test",
@@ -18,6 +19,16 @@ import {
   setupTempStoreDir,
   typedMock,
 } from "../test-helpers.ts";
+
+function makeEngineeringItem(
+  overrides?: Partial<store.ClaimedItem>,
+): EngineeringItem {
+  return makeClaimedItem({
+    workingDir: "/repo",
+    branch: "main",
+    ...overrides,
+  }) as EngineeringItem;
+}
 import type { EngineeringAuditPaths } from "../worker-workflow.ts";
 import {
   commitEngineeringChanges,
@@ -90,7 +101,7 @@ function makeMockClaude(): AgentRunner {
 const noop: (msg: string) => void = () => {};
 
 function makeEngineeringCtx(overrides?: {
-  item?: ReturnType<typeof makeClaimedItem>;
+  item?: EngineeringItem;
   claude?: AgentRunner;
   fs?: FsGateway;
   git?: GitGateway;
@@ -99,7 +110,7 @@ function makeEngineeringCtx(overrides?: {
   log?: (msg: string) => void;
 }): EngineeringContext {
   const {
-    item = makeClaimedItem({ id: ITEM_ID }),
+    item = makeEngineeringItem({ id: ITEM_ID }),
     claude = makeMockClaude(),
     fs = makeMockFs(),
     git = makeMockGit(),
@@ -124,7 +135,7 @@ function makeEngineeringCtx(overrides?: {
 
 describe("runPlanPhase", () => {
   test("returns { planText } on success", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
+    const item = makeEngineeringItem({ id: ITEM_ID });
     const claude: AgentRunner = {
       runSession: mock(async () => ({
         exitCode: 0,
@@ -140,7 +151,7 @@ describe("runPlanPhase", () => {
   });
 
   test("returns null when plan exit code is non-zero", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID });
+    const item = makeEngineeringItem({ id: ITEM_ID });
     const claude: AgentRunner = {
       runSession: mock(async () => ({ exitCode: 1, result: "Plan crashed." })),
       generateText: mock(async () => ({ exitCode: 0, text: "" })),
@@ -152,7 +163,7 @@ describe("runPlanPhase", () => {
   });
 
   test("returns null when plan text is empty after trimming", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID });
+    const item = makeEngineeringItem({ id: ITEM_ID });
     const claude: AgentRunner = {
       runSession: mock(async () => ({ exitCode: 0, result: "   " })),
       generateText: mock(async () => ({ exitCode: 0, text: "" })),
@@ -164,7 +175,7 @@ describe("runPlanPhase", () => {
   });
 
   test("writes plan file on success", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID });
+    const item = makeEngineeringItem({ id: ITEM_ID });
     const paths = makePaths();
     const claude: AgentRunner = {
       runSession: mock(async () => ({ exitCode: 0, result: "plan content" })),
@@ -181,7 +192,7 @@ describe("runPlanPhase", () => {
   });
 
   test("writes failure result file on non-zero exit", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID });
+    const item = makeEngineeringItem({ id: ITEM_ID });
     const paths = makePaths();
     const claude: AgentRunner = {
       runSession: mock(async () => ({ exitCode: 2, result: "crashed" })),
@@ -204,7 +215,7 @@ describe("runPlanPhase", () => {
 
 describe("commitEngineeringChanges", () => {
   test("returns { dirty: true } and commits when worktree is dirty", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID });
+    const item = makeEngineeringItem({ id: ITEM_ID });
     const git = makeMockGit({
       isWorktreeDirty: mock(async () => true),
     });
@@ -220,7 +231,7 @@ describe("commitEngineeringChanges", () => {
   });
 
   test("returns { dirty: false } and skips commit when worktree is clean", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID });
+    const item = makeEngineeringItem({ id: ITEM_ID });
     const git = makeMockGit({
       isWorktreeDirty: mock(async () => false),
     });
@@ -241,7 +252,7 @@ describe("commitEngineeringChanges", () => {
     // Regression: a from-scratch project leaves every file untracked. `git
     // diff HEAD` excludes untracked, so the commit-message model would see an
     // empty diff. stageAll must run before diffSummary.
-    const item = makeClaimedItem({ id: ITEM_ID });
+    const item = makeEngineeringItem({ id: ITEM_ID });
     const callOrder: string[] = [];
     const git = makeMockGit({
       isWorktreeDirty: mock(async () => true),
@@ -284,7 +295,7 @@ describe("runEngineeringPreconditions", () => {
     await store.saveItems([item]);
     const fs = makeMockFs();
 
-    const result = await runEngineeringPreconditions(makeEngineeringCtx({ item, fs }));
+    const result = await runEngineeringPreconditions(item, "test-agent", HOPPER_HOME, { fs }, noop);
 
     expect(result.ok).toBe(false);
     expect(requeueItemMock).toHaveBeenCalledTimes(1);
@@ -293,16 +304,16 @@ describe("runEngineeringPreconditions", () => {
     expect(reason).toContain("--dir");
   });
 
-  test("returns { ok: true, workingDir, branch } when both fields present", async () => {
+  test("returns { ok: true, item } when both fields present", async () => {
     const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
     const fs = makeMockFs();
 
-    const result = await runEngineeringPreconditions(makeEngineeringCtx({ item, fs }));
+    const result = await runEngineeringPreconditions(item, "test-agent", HOPPER_HOME, { fs }, noop);
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.workingDir).toBe("/repo");
-      expect(result.branch).toBe("main");
+      expect(result.item.workingDir).toBe("/repo");
+      expect(result.item.branch).toBe("main");
     }
     expect(requeueItemMock).not.toHaveBeenCalled();
   });
@@ -318,7 +329,7 @@ describe("resolveWorkBranch", () => {
   });
 
   test("cached slug → generateText NOT called, returns deterministic branch name", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID, engineeringBranchSlug: "my-slug" });
+    const item = makeEngineeringItem({ id: ITEM_ID, engineeringBranchSlug: "my-slug" });
     const claude: AgentRunner = {
       runSession: mock(async () => ({ exitCode: 0, result: "" })),
       generateText: mock(async () => ({ exitCode: 0, text: "" })),
@@ -332,7 +343,7 @@ describe("resolveWorkBranch", () => {
   });
 
   test("no cached slug → generateText called and slug persisted", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID });
+    const item = makeEngineeringItem({ id: ITEM_ID });
     const claude: AgentRunner = {
       runSession: mock(async () => ({ exitCode: 0, result: "" })),
       generateText: mock(async () => ({ exitCode: 0, text: "generated-slug" })),
@@ -369,7 +380,7 @@ describe("setupEngineeringWorktree", () => {
   };
 
   test("success → returns { ok: true } and calls orchestrateWorktreeSetup", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
+    const item = makeEngineeringItem({ id: ITEM_ID });
     const git = makeMockGit();
     const fs = makeMockFs();
 
@@ -383,7 +394,7 @@ describe("setupEngineeringWorktree", () => {
   });
 
   test("StaleEngineeringBranchError → returns { ok: false } with 'Stale branch:' requeue reason", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
+    const item = makeEngineeringItem({ id: ITEM_ID });
     await store.saveItems([item]);
     const git = makeMockGit({
       branchExists: mock(async () => true),
@@ -404,7 +415,7 @@ describe("setupEngineeringWorktree", () => {
   });
 
   test("generic error → returns { ok: false } with 'Worktree setup failed:' requeue reason", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
+    const item = makeEngineeringItem({ id: ITEM_ID });
     await store.saveItems([item]);
     const git = makeMockGit({
       createWorktree: mock(async () => {
@@ -646,7 +657,7 @@ describe("processEngineeringItem", () => {
   });
 
   test("generateText throws during commit message generation → falls back to item title", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID });
+    const item = makeEngineeringItem({ id: ITEM_ID });
     const git = makeMockGit({
       isWorktreeDirty: mock(async () => true),
     });

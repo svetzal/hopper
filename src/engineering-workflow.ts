@@ -1,23 +1,27 @@
 import { StaleEngineeringBranchError } from "./engineering-errors.ts";
 import { toErrorMessage } from "./error-utils.ts";
+import type { ClaimedItem, EngineeringItem } from "./store.ts";
 import { normaliseCommitMessage } from "./task-type-workflow.ts";
+
+function hasEngineeringMetadata(item: ClaimedItem): item is EngineeringItem {
+  return Boolean(item.workingDir && item.branch);
+}
 
 /**
  * Verify that an engineering item carries the metadata required to run inside
  * an isolated worktree. The add command enforces this on enqueue; this guard
  * is a belt-and-suspenders check in the worker.
  */
-export function resolveEngineeringPreconditions(item: {
-  workingDir?: string;
-  branch?: string;
-}): { ok: true; workingDir: string; branch: string } | { ok: false; reason: string } {
-  if (!item.workingDir || !item.branch) {
+export function resolveEngineeringPreconditions(
+  item: ClaimedItem,
+): { ok: true; item: EngineeringItem } | { ok: false; reason: string } {
+  if (!hasEngineeringMetadata(item)) {
     return {
       ok: false,
       reason: "Engineering items require --dir and --branch; cannot run.",
     };
   }
-  return { ok: true, workingDir: item.workingDir, branch: item.branch };
+  return { ok: true, item };
 }
 
 /**

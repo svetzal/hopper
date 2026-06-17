@@ -120,6 +120,8 @@ export type ClaimedItem = Item & {
   claimToken: string;
 };
 
+export type EngineeringItem = ClaimedItem & { workingDir: string; branch: string };
+
 const DEFAULT_STORE_DIR = join(homedir(), ".hopper");
 const ITEMS_FILE = "items.json";
 

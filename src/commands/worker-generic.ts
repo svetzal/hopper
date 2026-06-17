@@ -261,7 +261,7 @@ export async function processItem(
 
     const mergeAction = resolveMergeAction(exitCode, workBranch, item);
     const mergeNote = mergeAction.shouldMerge
-      ? await mergeAndPush(git, item, mergeAction.workBranch, log)
+      ? await mergeAndPush(git, mergeAction.repoDir, mergeAction.targetBranch, mergeAction.workBranch, log)
       : "";
 
     await handleCompletion({

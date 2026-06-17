@@ -5,7 +5,7 @@ import {
   resolveWorktreeSetupFailureReason,
 } from "../engineering-workflow.ts";
 import { buildEngineeringBranchName } from "../git-workflow.ts";
-import type { ClaimedItem } from "../store.ts";
+import type { ClaimedItem, EngineeringItem } from "../store.ts";
 import { setItemEngineeringBranchSlug } from "../store.ts";
 import {
   buildPlanOptions,
@@ -47,7 +47,7 @@ export type { ExecuteValidateContext };
 export { resolveValidateOutcomeWithFallback, runExecuteValidateLoop };
 
 export interface EngineeringContext {
-  item: ClaimedItem;
+  item: EngineeringItem;
   agentName: string;
   worktreePath: string;
   hopperHome: string;
@@ -115,7 +115,7 @@ export async function commitEngineeringChanges(
 }
 
 export interface TeardownContext {
-  item: ClaimedItem;
+  item: EngineeringItem;
   agentName: string;
   worktreePath: string;
   workBranch: string;
@@ -143,11 +143,11 @@ export async function teardownMergeAndComplete(ctx: TeardownContext): Promise<vo
     log,
   } = ctx;
   const { git, fs } = deps;
-  await teardownWorktree(git, item.workingDir as string, worktreePath, log);
+  await teardownWorktree(git, item.workingDir, worktreePath, log);
 
   let mergeNote = "";
   if (dirty) {
-    mergeNote = await mergeAndPush(git, item, workBranch, log);
+    mergeNote = await mergeAndPush(git, item.workingDir, item.branch, workBranch, log);
   }
 
   const combined = buildEngineeringTranscript(planText, executeResults, validateResults);
@@ -163,9 +163,12 @@ export async function teardownMergeAndComplete(ctx: TeardownContext): Promise<vo
 }
 
 export async function runEngineeringPreconditions(
-  ctx: EngineeringContext,
-): Promise<{ ok: true; workingDir: string; branch: string } | { ok: false }> {
-  const { item, agentName, hopperHome, deps, log } = ctx;
+  item: ClaimedItem,
+  agentName: string,
+  hopperHome: string,
+  deps: Pick<WorkerRunnerDeps, "fs">,
+  log: LogFn,
+): Promise<{ ok: true; item: EngineeringItem } | { ok: false }> {
   const { fs } = deps;
   const preconditions = resolveEngineeringPreconditions(item);
   if (!preconditions.ok) {
@@ -180,7 +183,7 @@ export async function runEngineeringPreconditions(
     await safeRequeue(item.id, preconditions.reason, agentName, log);
     return { ok: false };
   }
-  return { ok: true, workingDir: preconditions.workingDir, branch: preconditions.branch };
+  return { ok: true, item: preconditions.item };
 }
 
 export async function resolveWorkBranch(ctx: EngineeringContext): Promise<string> {
@@ -242,21 +245,32 @@ export async function processEngineeringItem(
   const log = createLogger(item.id, concurrency);
   const paths = resolveEngineeringAuditPaths(item.id, hopperHome);
   const worktreePath = join(hopperHome, "worktrees", item.id);
-  const ctx: EngineeringContext = { item, agentName, worktreePath, hopperHome, paths, deps, log };
 
-  const preconditions = await runEngineeringPreconditions(ctx);
+  const preconditions = await runEngineeringPreconditions(item, agentName, hopperHome, deps, log);
   if (!preconditions.ok) return;
-  const { workingDir, branch } = preconditions;
+  const ctx: EngineeringContext = {
+    item: preconditions.item,
+    agentName,
+    worktreePath,
+    hopperHome,
+    paths,
+    deps,
+    log,
+  };
 
-  logClaimBanner(item, log, [
-    `Dir:     ${workingDir}`,
-    `Branch:  ${branch}`,
-    `Type:    engineering${item.agent ? ` (agent: ${item.agent})` : ""}`,
+  logClaimBanner(ctx.item, log, [
+    `Dir:     ${ctx.item.workingDir}`,
+    `Branch:  ${ctx.item.branch}`,
+    `Type:    engineering${ctx.item.agent ? ` (agent: ${ctx.item.agent})` : ""}`,
   ]);
 
   const workBranch = await resolveWorkBranch(ctx);
 
-  const worktreeSetup = await setupEngineeringWorktree(ctx, { workingDir, branch, workBranch });
+  const worktreeSetup = await setupEngineeringWorktree(ctx, {
+    workingDir: ctx.item.workingDir,
+    branch: ctx.item.branch,
+    workBranch,
+  });
   if (!worktreeSetup.ok) return;
 
   const planResult = await runPlanPhase(ctx);
@@ -264,7 +278,7 @@ export async function processEngineeringItem(
   const { planText } = planResult;
 
   const loopResult = await runExecuteValidateLoop({
-    item,
+    item: ctx.item,
     worktreePath,
     planText,
     paths,
@@ -277,7 +291,7 @@ export async function processEngineeringItem(
   const { dirty } = await commitEngineeringChanges(ctx);
 
   await teardownMergeAndComplete({
-    item,
+    item: ctx.item,
     agentName,
     worktreePath,
     workBranch,
