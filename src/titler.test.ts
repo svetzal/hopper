@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { LlmGateway } from "./gateways/llm-gateway.ts";
-import { createTitleGenerator } from "./titler.ts";
 import type { TitleGenerator } from "./titler.ts";
+import { createTitleGenerator } from "./titler.ts";
 
 // Unit test the title generator contract without hitting the real LLM.
 // We test the interface and fallback behavior by creating test doubles.
@@ -50,7 +50,8 @@ describe("titler", () => {
     };
 
     const titler = createTitleGenerator(emptyGateway);
-    const description = "This is a description that is longer than sixty characters and should be truncated";
+    const description =
+      "This is a description that is longer than sixty characters and should be truncated";
     const title = await titler.generateTitle(description);
     expect(title).toBe(description.slice(0, 60).trim());
   });
