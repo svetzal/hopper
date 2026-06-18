@@ -7,6 +7,10 @@ export type MergeOutcome =
  *
  * Compiled Bun binaries may fail to locate bare command names via posix_spawn,
  * so we resolve the path explicitly using Bun.which() before every spawn call.
+ *
+ * Throws if git is not found — this is intentional. GitGateway is a mutating
+ * gateway; failures propagate as thrown exceptions so the worker layer can
+ * catch them and requeue the item (see AGENTS.md error-handling layer 1/3).
  */
 function resolveGit(): string {
   const resolved = Bun.which("git");
@@ -34,6 +38,13 @@ async function spawnGit(
   return { exitCode, stdout, stderr };
 }
 
+/**
+ * Gateway for git subprocess operations. Unlike read/query gateways, GitGateway
+ * propagates failures via thrown exceptions — a failed mutation (branch create,
+ * commit, merge, push) has no meaningful neutral default. The worker layer
+ * (AGENTS.md error-handling layer 3) catches these via safeRequeue /
+ * requeueIfStillClaimed.
+ */
 export interface GitGateway {
   branchExists(repoDir: string, branch: string): Promise<boolean>;
   remoteBranchExists(repoDir: string, branch: string): Promise<boolean>;

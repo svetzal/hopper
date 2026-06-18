@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import type { LlmGateway } from "./gateways/llm-gateway.ts";
+import { createTitleGenerator } from "./titler.ts";
 import type { TitleGenerator } from "./titler.ts";
 
 // Unit test the title generator contract without hitting the real LLM.
@@ -38,5 +40,18 @@ describe("titler", () => {
     const longDesc = "x".repeat(100);
     const title = await titler.generateTitle(longDesc);
     expect(title.length).toBe(60);
+  });
+
+  test("createTitleGenerator falls back to truncation when LlmGateway returns empty choices", async () => {
+    const emptyGateway: LlmGateway = {
+      async chatCompletion() {
+        return { choices: [] };
+      },
+    };
+
+    const titler = createTitleGenerator(emptyGateway);
+    const description = "This is a description that is longer than sixty characters and should be truncated";
+    const title = await titler.generateTitle(description);
+    expect(title).toBe(description.slice(0, 60).trim());
   });
 });

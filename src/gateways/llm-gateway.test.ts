@@ -50,13 +50,13 @@ describe("LlmGateway", () => {
     expect(capturedBody).toEqual(request);
   });
 
-  test("throws with status code when fetch returns a non-ok response", async () => {
+  test("returns empty choices when fetch returns a non-ok response", async () => {
     globalThis.fetch = (async () =>
       new Response("Unauthorized", { status: 401 })) as unknown as typeof fetch;
 
     const gateway = createLlmGateway("bad-key");
-    await expect(gateway.chatCompletion({ model: "gpt-4.1-nano", messages: [] })).rejects.toThrow(
-      "OpenAI API error: 401",
-    );
+    expect(await gateway.chatCompletion({ model: "gpt-4.1-nano", messages: [] })).toEqual({
+      choices: [],
+    });
   });
 });

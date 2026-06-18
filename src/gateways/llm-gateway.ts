@@ -25,7 +25,7 @@ export function createLlmGateway(apiKey: string): LlmGateway {
       });
 
       if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.status}`);
+        return { choices: [] };
       }
 
       return (await response.json()) as LlmCompletionResponse;
