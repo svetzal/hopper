@@ -2,15 +2,14 @@ import { join } from "node:path";
 import {
   buildEngineeringFailureResult,
   buildEngineeringTranscript,
+  resolveEngineeringCommitFallback,
   resolveEngineeringPreconditions,
   resolveWorktreeSetupFailureReason,
 } from "../engineering-workflow.ts";
-import { resolveEngineeringCommitFallback } from "../engineering-workflow.ts";
 import { toErrorMessage } from "../error-utils.ts";
 import type { AgentRunner, SessionOptions } from "../gateways/agent-runner.ts";
-import type { FsGateway } from "../gateways/fs-gateway.ts";
-import type { Profile } from "../profile.ts";
 import { buildEngineeringBranchName } from "../git-workflow.ts";
+import type { Profile } from "../profile.ts";
 import type { ClaimedItem, EngineeringItem, PhaseRecord } from "../store.ts";
 import { recordItemPhase, setItemEngineeringBranchSlug } from "../store.ts";
 import {
@@ -42,11 +41,9 @@ import {
   finalizeWorktreeAndComplete,
   type LogFn,
   logClaimBanner,
-  mergeAndPush,
   orchestrateWorktreeSetup,
   safeRequeue,
   safeVoid,
-  teardownWorktree,
   type WorkerRunnerDeps,
 } from "./worker-orchestration.ts";
 
@@ -119,7 +116,11 @@ export async function resolveEngineeringCommitMessage(
   const prompt = buildCommitMessagePrompt(item.title, item.description, diffSummary);
   const result = await safeGenerateText(claude, prompt, profile, "Commit message generation", log);
   if (!result.ok) return item.title;
-  return resolveEngineeringCommitFallback(item as Parameters<typeof resolveEngineeringCommitFallback>[0], result.text, 0);
+  return resolveEngineeringCommitFallback(
+    item as Parameters<typeof resolveEngineeringCommitFallback>[0],
+    result.text,
+    0,
+  );
 }
 
 const FALLBACK_UNCLASSIFIED_REASON = "fallback assessor could not classify (defaulting to FAIL)";
@@ -200,7 +201,17 @@ export async function runPhase(ctx: {
   ) => PhaseRecord | Promise<PhaseRecord>;
   log: LogFn;
 }): Promise<{ result: string; exitCode: number }> {
-  const { claude, profile, itemId, prompt, worktreePath, auditFile, sessionOptions, phaseRecord, log } = ctx;
+  const {
+    claude,
+    profile,
+    itemId,
+    prompt,
+    worktreePath,
+    auditFile,
+    sessionOptions,
+    phaseRecord,
+    log,
+  } = ctx;
   const startedAt = new Date().toISOString();
   const run = await claude.runSession(prompt, worktreePath, auditFile, {
     ...sessionOptions,

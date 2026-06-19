@@ -25,10 +25,8 @@ import {
   finalizeWorktreeAndComplete,
   type LogFn,
   logClaimBanner,
-  mergeAndPush,
   orchestrateWorktreeSetup,
   safeRequeue,
-  teardownWorktree,
 } from "./worker-orchestration.ts";
 
 export interface WorkerDeps {
@@ -271,12 +269,32 @@ export async function processItem(
         shouldMerge: mergeAction.shouldMerge,
         log,
         finalize: async (mergeNote) => {
-          await handleCompletion({ item, agentName, exitCode, result, mergeNote, workBranch, fs, resultFile, log });
+          await handleCompletion({
+            item,
+            agentName,
+            exitCode,
+            result,
+            mergeNote,
+            workBranch,
+            fs,
+            resultFile,
+            log,
+          });
         },
       });
       worktreePath = undefined;
     } else {
-      await handleCompletion({ item, agentName, exitCode, result, mergeNote: "", workBranch, fs, resultFile, log });
+      await handleCompletion({
+        item,
+        agentName,
+        exitCode,
+        result,
+        mergeNote: "",
+        workBranch,
+        fs,
+        resultFile,
+        log,
+      });
     }
   } finally {
     // Belt-and-suspenders: clean up worktree if something threw mid-flight
