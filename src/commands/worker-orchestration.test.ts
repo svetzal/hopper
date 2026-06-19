@@ -7,6 +7,7 @@ import { makeMockGit } from "../test-helpers.ts";
 import {
   createLogger,
   finalizeCompletion,
+  finalizeWorktreeAndComplete,
   mergeAndPush,
   orchestrateMerge,
   orchestrateWorktreeSetup,
@@ -435,7 +436,7 @@ describe("mergeAndPush", () => {
       pushTags: mock(async () => ({ success: true, message: "Tags pushed." })),
     });
 
-    const note = await mergeAndPush(git, REPO_DIR, TARGET_BRANCH, WORK_BRANCH, noop);
+    const note = await mergeAndPush({ git, repoDir: REPO_DIR, targetBranch: TARGET_BRANCH, workBranch: WORK_BRANCH, log: noop });
 
     expect(git.push).toHaveBeenCalledWith(REPO_DIR, TARGET_BRANCH);
     expect(git.pushTags).toHaveBeenCalledWith(REPO_DIR);
@@ -450,7 +451,7 @@ describe("mergeAndPush", () => {
       pushTags: mock(async () => ({ success: true, message: "Tags pushed." })),
     });
 
-    const note = await mergeAndPush(git, REPO_DIR, TARGET_BRANCH, WORK_BRANCH, noop);
+    const note = await mergeAndPush({ git, repoDir: REPO_DIR, targetBranch: TARGET_BRANCH, workBranch: WORK_BRANCH, log: noop });
 
     expect(note).toContain("Push failed: remote rejected.");
   });
@@ -463,7 +464,7 @@ describe("mergeAndPush", () => {
       pushTags: mock(async () => ({ success: false, message: "Tag push failed: no tags." })),
     });
 
-    const note = await mergeAndPush(git, REPO_DIR, TARGET_BRANCH, WORK_BRANCH, noop);
+    const note = await mergeAndPush({ git, repoDir: REPO_DIR, targetBranch: TARGET_BRANCH, workBranch: WORK_BRANCH, log: noop });
 
     expect(note).toContain("Tag push failed: no tags.");
   });
@@ -475,7 +476,7 @@ describe("mergeAndPush", () => {
       mergeCommit: mock(async () => 1),
     });
 
-    const note = await mergeAndPush(git, REPO_DIR, TARGET_BRANCH, WORK_BRANCH, noop);
+    const note = await mergeAndPush({ git, repoDir: REPO_DIR, targetBranch: TARGET_BRANCH, workBranch: WORK_BRANCH, log: noop });
 
     expect(git.push).not.toHaveBeenCalled();
     expect(note).toContain("conflict");
@@ -554,7 +555,7 @@ describe("teardownWorktree", () => {
     const git = makeMockGit();
     const logs: string[] = [];
 
-    await teardownWorktree(git, REPO_DIR, WORKTREE_PATH, (msg) => logs.push(msg));
+    await teardownWorktree({ git, repoDir: REPO_DIR, worktreePath: WORKTREE_PATH, log: (msg) => logs.push(msg) });
 
     expect(git.worktreeRemove).toHaveBeenCalledWith(REPO_DIR, WORKTREE_PATH);
   });
@@ -563,7 +564,7 @@ describe("teardownWorktree", () => {
     const git = makeMockGit();
     const logs: string[] = [];
 
-    await teardownWorktree(git, REPO_DIR, WORKTREE_PATH, (msg) => logs.push(msg));
+    await teardownWorktree({ git, repoDir: REPO_DIR, worktreePath: WORKTREE_PATH, log: (msg) => logs.push(msg) });
 
     expect(logs).toContain("Removing worktree...");
   });

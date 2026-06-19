@@ -1,35 +1,45 @@
 import { join } from "node:path";
 import {
+  buildEngineeringFailureResult,
   buildEngineeringTranscript,
   resolveEngineeringPreconditions,
   resolveWorktreeSetupFailureReason,
 } from "../engineering-workflow.ts";
+import { resolveEngineeringCommitFallback } from "../engineering-workflow.ts";
+import { toErrorMessage } from "../error-utils.ts";
+import type { AgentRunner, SessionOptions } from "../gateways/agent-runner.ts";
+import type { FsGateway } from "../gateways/fs-gateway.ts";
+import type { Profile } from "../profile.ts";
 import { buildEngineeringBranchName } from "../git-workflow.ts";
-import type { ClaimedItem, EngineeringItem } from "../store.ts";
-import { setItemEngineeringBranchSlug } from "../store.ts";
+import type { ClaimedItem, EngineeringItem, PhaseRecord } from "../store.ts";
+import { recordItemPhase, setItemEngineeringBranchSlug } from "../store.ts";
 import {
+  buildBranchSlugPrompt,
+  buildCommitMessagePrompt,
+  buildExecuteOptions,
+  buildExecutePrompt,
+  buildExecuteRemediationPrompt,
   buildPlanOptions,
   buildPlanPrompt,
+  buildValidateFallbackPrompt,
+  buildValidateOptions,
+  buildValidatePrompt,
+  MISSING_MARKER_REASON,
+  normaliseBranchSlug,
+  normaliseValidateFallback,
   resolveBranchSlugSource,
+  resolveValidateOutcome,
 } from "../task-type-workflow.ts";
 import {
   type EngineeringAuditPaths,
+  resolveAttemptAuditPath,
   resolveAuditPaths,
   resolveEngineeringAuditPaths,
 } from "../worker-workflow.ts";
 import {
-  type ExecuteValidateContext,
-  runExecuteValidateLoop,
-  runPhase,
-} from "./worker-engineering-execute.ts";
-import {
-  resolveEngineeringBranchSlug,
-  resolveEngineeringCommitMessage,
-  resolveValidateOutcomeWithFallback,
-} from "./worker-engineering-generate.ts";
-import {
   createLogger,
   finalizeCompletion,
+  finalizeWorktreeAndComplete,
   type LogFn,
   logClaimBanner,
   mergeAndPush,
@@ -40,11 +50,9 @@ import {
   type WorkerRunnerDeps,
 } from "./worker-orchestration.ts";
 
-// Orchestration and phase-step functions take a single typed context object;
-// thin leaf helpers (e.g. commitWorktreeChanges, executeWork) take positional args.
-
-export type { ExecuteValidateContext };
-export { resolveValidateOutcomeWithFallback, runExecuteValidateLoop };
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 export interface EngineeringContext {
   item: EngineeringItem;
@@ -56,6 +64,333 @@ export interface EngineeringContext {
   log: LogFn;
 }
 
+export type ExecuteValidateContext = Pick<
+  EngineeringContext,
+  "worktreePath" | "paths" | "hopperHome" | "log"
+> & {
+  item: ClaimedItem;
+  planText: string;
+  deps: Pick<WorkerRunnerDeps, "claude" | "fs" | "profile">;
+};
+
+// ---------------------------------------------------------------------------
+// LLM one-shot helpers (from worker-engineering-generate)
+// ---------------------------------------------------------------------------
+
+export async function safeGenerateText(
+  claude: AgentRunner,
+  prompt: string,
+  profile: Profile,
+  label: string,
+  log: LogFn,
+): Promise<{ ok: true; text: string } | { ok: false }> {
+  try {
+    const { exitCode, text } = await claude.generateText(prompt, "fast", { profile });
+    if (exitCode !== 0) {
+      log(`${label} failed (exit ${exitCode})`);
+      return { ok: false };
+    }
+    return { ok: true, text };
+  } catch (e) {
+    log(`${label} failed: ${toErrorMessage(e)}`);
+    return { ok: false };
+  }
+}
+
+export async function resolveEngineeringBranchSlug(
+  claude: AgentRunner,
+  profile: Profile,
+  item: { title: string; description: string },
+  log: LogFn,
+): Promise<string | null> {
+  const prompt = buildBranchSlugPrompt(item.title, item.description);
+  const result = await safeGenerateText(claude, prompt, profile, "Branch slug generation", log);
+  if (!result.ok) return null;
+  return normaliseBranchSlug(result.text);
+}
+
+export async function resolveEngineeringCommitMessage(
+  claude: AgentRunner,
+  profile: Profile,
+  item: { title: string; description: string },
+  diffSummary: string,
+  log: LogFn,
+): Promise<string> {
+  const prompt = buildCommitMessagePrompt(item.title, item.description, diffSummary);
+  const result = await safeGenerateText(claude, prompt, profile, "Commit message generation", log);
+  if (!result.ok) return item.title;
+  return resolveEngineeringCommitFallback(item as Parameters<typeof resolveEngineeringCommitFallback>[0], result.text, 0);
+}
+
+const FALLBACK_UNCLASSIFIED_REASON = "fallback assessor could not classify (defaulting to FAIL)";
+
+const fallbackFailOutcome = (): { passed: false; reason: string; fallbackUsed: true } => ({
+  passed: false,
+  reason: FALLBACK_UNCLASSIFIED_REASON,
+  fallbackUsed: true,
+});
+
+export async function resolveValidateOutcomeWithFallback(
+  exitCode: number,
+  resultText: string,
+  claude: Pick<AgentRunner, "generateText">,
+  profile: Profile,
+  log: LogFn = () => {},
+): Promise<{ passed: boolean; reason: string; fallbackUsed?: boolean }> {
+  const primary = resolveValidateOutcome(exitCode, resultText);
+
+  if (primary.reason !== MISSING_MARKER_REASON) {
+    return primary;
+  }
+
+  log("Validate marker missing — invoking fast fallback assessor...");
+
+  try {
+    const { exitCode: fallbackExitCode, text } = await claude.generateText(
+      buildValidateFallbackPrompt(resultText),
+      "fast",
+      { profile },
+    );
+
+    if (fallbackExitCode !== 0) {
+      log("Fallback assessor exited non-zero — defaulting to FAIL.");
+      return fallbackFailOutcome();
+    }
+
+    const verdict = normaliseValidateFallback(text);
+
+    if (verdict === "PASS") {
+      log("Fallback assessor reported PASS.");
+      return { passed: true, reason: "fallback assessor reported PASS", fallbackUsed: true };
+    }
+
+    if (verdict === "FAIL") {
+      log("Fallback assessor reported FAIL.");
+      return { passed: false, reason: "fallback assessor reported FAIL", fallbackUsed: true };
+    }
+
+    log("Fallback assessor was UNCLEAR — defaulting to FAIL.");
+    return fallbackFailOutcome();
+  } catch {
+    log("Fallback assessor threw — defaulting to FAIL.");
+    return fallbackFailOutcome();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase runner (from worker-engineering-execute)
+// ---------------------------------------------------------------------------
+
+async function safeRecordPhase(itemId: string, record: PhaseRecord, log: LogFn): Promise<void> {
+  return safeVoid(() => recordItemPhase(itemId, record), "Phase recording failed", log);
+}
+
+export async function runPhase(ctx: {
+  claude: AgentRunner;
+  profile: Profile;
+  itemId: string;
+  prompt: string;
+  worktreePath: string;
+  auditFile: string;
+  sessionOptions: SessionOptions;
+  phaseRecord: (
+    run: { exitCode: number; result: string },
+    startedAt: string,
+    endedAt: string,
+  ) => PhaseRecord | Promise<PhaseRecord>;
+  log: LogFn;
+}): Promise<{ result: string; exitCode: number }> {
+  const { claude, profile, itemId, prompt, worktreePath, auditFile, sessionOptions, phaseRecord, log } = ctx;
+  const startedAt = new Date().toISOString();
+  const run = await claude.runSession(prompt, worktreePath, auditFile, {
+    ...sessionOptions,
+    profile,
+  });
+  const endedAt = new Date().toISOString();
+  const record = await phaseRecord(run, startedAt, endedAt);
+  await safeRecordPhase(itemId, record, log);
+  return { result: run.result, exitCode: run.exitCode };
+}
+
+// ---------------------------------------------------------------------------
+// Execute → Validate retry loop (from worker-engineering-execute)
+// ---------------------------------------------------------------------------
+
+interface ExecuteValidateResult {
+  passed: boolean;
+  reason: string;
+  executeResults: readonly string[];
+  validateResults: readonly string[];
+}
+
+async function runExecuteAttempt(
+  ctx: ExecuteValidateContext,
+  attempt: number,
+  maxAttempts: number,
+  previousExecuteResult: string,
+  previousValidateResult: string,
+): Promise<{ result: string; exitCode: number }> {
+  const { item, worktreePath, planText, hopperHome, deps, log } = ctx;
+  const { claude, profile } = deps;
+  const executeAuditPath = resolveAttemptAuditPath(item.id, hopperHome, "execute", attempt);
+  const isRemediation = attempt > 1;
+  log(
+    `Execute phase attempt ${attempt}/${maxAttempts} (balanced${
+      item.agent ? `, agent: ${item.agent}` : ""
+    }${isRemediation ? ", remediation" : ""})...\nAudit log: ${executeAuditPath}`,
+  );
+  const executePrompt = isRemediation
+    ? buildExecuteRemediationPrompt(
+        item,
+        planText,
+        previousExecuteResult,
+        previousValidateResult,
+        attempt,
+      )
+    : buildExecutePrompt(item, planText);
+  return runPhase({
+    claude,
+    profile,
+    itemId: item.id,
+    prompt: executePrompt,
+    worktreePath,
+    auditFile: executeAuditPath,
+    sessionOptions: buildExecuteOptions(item.agent),
+    phaseRecord: (run, startedAt, endedAt) => ({
+      name: "execute",
+      startedAt,
+      endedAt,
+      exitCode: run.exitCode,
+      attempt,
+    }),
+    log,
+  });
+}
+
+async function runValidateAttempt(
+  ctx: ExecuteValidateContext,
+  attempt: number,
+  maxAttempts: number,
+): Promise<{
+  outcome: { passed: boolean; reason: string; fallbackUsed?: boolean };
+  result: string;
+}> {
+  const { item, worktreePath, planText, hopperHome, deps, log } = ctx;
+  const { claude, profile } = deps;
+  const validateAuditPath = resolveAttemptAuditPath(item.id, hopperHome, "validate", attempt);
+  log(
+    `Validate phase attempt ${attempt}/${maxAttempts} (deep, read-only git)...\nAudit log: ${validateAuditPath}`,
+  );
+  let outcome: { passed: boolean; reason: string; fallbackUsed?: boolean } = {
+    passed: false,
+    reason: "not resolved",
+  };
+  const { result } = await runPhase({
+    claude,
+    profile,
+    itemId: item.id,
+    prompt: buildValidatePrompt(item, planText),
+    worktreePath,
+    auditFile: validateAuditPath,
+    sessionOptions: buildValidateOptions(),
+    phaseRecord: async (run, startedAt, endedAt) => {
+      outcome = await resolveValidateOutcomeWithFallback(
+        run.exitCode,
+        run.result,
+        claude,
+        profile,
+        log,
+      );
+      return {
+        name: "validate",
+        startedAt,
+        endedAt,
+        exitCode: run.exitCode,
+        passed: outcome.passed,
+        attempt,
+        ...(outcome.fallbackUsed ? { fallbackUsed: true } : {}),
+      };
+    },
+    log,
+  });
+  return { outcome, result };
+}
+
+export async function runExecuteValidateLoop(
+  ctx: ExecuteValidateContext,
+): Promise<ExecuteValidateResult> {
+  const { item, planText, paths, deps, log } = ctx;
+  const { fs } = deps;
+  // One execute → validate attempt, then up to `maxRetries` remediation
+  // attempts when validate reports FAIL. Each attempt writes its own
+  // per-attempt audit file and records phase entries so `hopper show`
+  // reflects progress in real time.
+  const maxRetries = item.retries ?? 1;
+  const maxAttempts = 1 + maxRetries;
+  let attempt = 0;
+  let outcome: { passed: boolean; reason: string; fallbackUsed?: boolean } = {
+    passed: false,
+    reason: "not run",
+  };
+  const executeResults: string[] = [];
+  const validateResults: string[] = [];
+  let previousExecuteResult = "";
+  let previousValidateResult = "";
+
+  async function writeEngineeringFailure(msg: string): Promise<void> {
+    log(msg);
+    await fs.writeFile(
+      paths.resultFile,
+      buildEngineeringFailureResult(planText, executeResults, validateResults, msg),
+    );
+  }
+
+  while (attempt < maxAttempts) {
+    attempt += 1;
+
+    const executeAttempt = await runExecuteAttempt(
+      ctx,
+      attempt,
+      maxAttempts,
+      previousExecuteResult,
+      previousValidateResult,
+    );
+    executeResults.push(executeAttempt.result);
+    previousExecuteResult = executeAttempt.result;
+
+    if (executeAttempt.exitCode !== 0) {
+      const msg = `Execute phase attempt ${attempt} failed (exit ${executeAttempt.exitCode}); worktree + branch preserved.`;
+      await writeEngineeringFailure(msg);
+      return { passed: false, reason: msg, executeResults, validateResults };
+    }
+
+    const validateAttempt = await runValidateAttempt(ctx, attempt, maxAttempts);
+    validateResults.push(validateAttempt.result);
+    previousValidateResult = validateAttempt.result;
+    outcome = validateAttempt.outcome;
+
+    if (outcome.passed) break;
+
+    if (attempt < maxAttempts) {
+      log(
+        `Validate attempt ${attempt} did not pass (${outcome.reason}); remediating (attempt ${attempt + 1}/${maxAttempts})...`,
+      );
+    }
+  }
+
+  if (!outcome.passed) {
+    const msg = `Validate did not pass after ${attempt}/${maxAttempts} attempt(s) (${outcome.reason}); worktree + branch preserved.`;
+    await writeEngineeringFailure(msg);
+    return { passed: false, reason: outcome.reason, executeResults, validateResults };
+  }
+
+  return { passed: true, reason: outcome.reason, executeResults, validateResults };
+}
+
+// ---------------------------------------------------------------------------
+// Engineering pipeline (orchestration)
+// ---------------------------------------------------------------------------
+
 async function safePersistBranchSlug(itemId: string, slug: string, log: LogFn): Promise<void> {
   return safeVoid(() => setItemEngineeringBranchSlug(itemId, slug), "Slug persistence failed", log);
 }
@@ -64,7 +399,9 @@ export async function runPlanPhase(ctx: EngineeringContext): Promise<{ planText:
   const { item, worktreePath, paths, deps, log } = ctx;
   const { claude, fs, profile } = deps;
   log(`Plan phase (deep, plan mode, read-only)...\nAudit log: ${paths.planAuditFile}`);
-  const { result, exitCode } = await runPhase(claude, profile, {
+  const { result, exitCode } = await runPhase({
+    claude,
+    profile,
     itemId: item.id,
     prompt: buildPlanPrompt(item),
     worktreePath,
@@ -112,54 +449,6 @@ export async function commitEngineeringChanges(
     log("No worktree changes to commit.");
   }
   return { dirty };
-}
-
-export interface TeardownContext {
-  item: EngineeringItem;
-  agentName: string;
-  worktreePath: string;
-  workBranch: string;
-  dirty: boolean;
-  planText: string;
-  executeResults: readonly string[];
-  validateResults: readonly string[];
-  paths: EngineeringAuditPaths;
-  deps: Pick<WorkerRunnerDeps, "git" | "fs">;
-  log: LogFn;
-}
-
-export async function teardownMergeAndComplete(ctx: TeardownContext): Promise<void> {
-  const {
-    item,
-    agentName,
-    worktreePath,
-    workBranch,
-    dirty,
-    planText,
-    executeResults,
-    validateResults,
-    paths,
-    deps,
-    log,
-  } = ctx;
-  const { git, fs } = deps;
-  await teardownWorktree(git, item.workingDir, worktreePath, log);
-
-  let mergeNote = "";
-  if (dirty) {
-    mergeNote = await mergeAndPush(git, item.workingDir, item.branch, workBranch, log);
-  }
-
-  const combined = buildEngineeringTranscript(planText, executeResults, validateResults);
-  const finalResult = combined + mergeNote;
-  await finalizeCompletion({
-    fs,
-    resultFile: paths.resultFile,
-    finalResult,
-    claimToken: item.claimToken,
-    agentName,
-    log,
-  });
 }
 
 export async function runEngineeringPreconditions(
@@ -290,17 +579,28 @@ export async function processEngineeringItem(
 
   const { dirty } = await commitEngineeringChanges(ctx);
 
-  await teardownMergeAndComplete({
-    item: ctx.item,
-    agentName,
+  await finalizeWorktreeAndComplete({
+    git: deps.git,
+    repoDir: ctx.item.workingDir,
     worktreePath,
     workBranch,
-    dirty,
-    planText,
-    executeResults: loopResult.executeResults,
-    validateResults: loopResult.validateResults,
-    paths,
-    deps: { git: deps.git, fs: deps.fs },
+    targetBranch: ctx.item.branch,
+    shouldMerge: dirty,
     log,
+    finalize: async (mergeNote) => {
+      const combined = buildEngineeringTranscript(
+        planText,
+        loopResult.executeResults,
+        loopResult.validateResults,
+      );
+      await finalizeCompletion({
+        fs: deps.fs,
+        resultFile: paths.resultFile,
+        finalResult: combined + mergeNote,
+        claimToken: ctx.item.claimToken,
+        agentName,
+        log,
+      });
+    },
   });
 }

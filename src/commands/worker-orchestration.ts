@@ -1,5 +1,4 @@
-// Convention: orchestration/phase steps take a single typed context object;
-// thin leaf helpers (commitWorktreeChanges, executeWork, etc.) take positional args.
+// Shell functions with 3+ inputs accept one typed args/context object; 1–2 input helpers may stay positional.
 
 import { StaleEngineeringBranchError } from "../engineering-errors.ts";
 import { toErrorMessage } from "../error-utils.ts";
@@ -217,13 +216,14 @@ export async function orchestrateMerge(
   }
 }
 
-export async function mergeAndPush(
-  git: GitGateway,
-  repoDir: string,
-  targetBranch: string,
-  workBranch: string,
-  log: LogFn,
-): Promise<string> {
+export async function mergeAndPush(ctx: {
+  git: GitGateway;
+  repoDir: string;
+  targetBranch: string;
+  workBranch: string;
+  log: LogFn;
+}): Promise<string> {
+  const { git, repoDir, targetBranch, workBranch, log } = ctx;
   log(`Merging ${workBranch} → ${targetBranch}...`);
   const mergeResult = await orchestrateMerge(git, repoDir, targetBranch, workBranch);
   log(mergeResult.message);
@@ -247,12 +247,32 @@ export async function mergeAndPush(
   return mergeNote;
 }
 
-export async function teardownWorktree(
-  git: GitGateway,
-  repoDir: string,
-  worktreePath: string,
-  log: LogFn,
-): Promise<void> {
+export async function teardownWorktree(ctx: {
+  git: GitGateway;
+  repoDir: string;
+  worktreePath: string;
+  log: LogFn;
+}): Promise<void> {
+  const { git, repoDir, worktreePath, log } = ctx;
   log("Removing worktree...");
   await git.worktreeRemove(repoDir, worktreePath);
+}
+
+export async function finalizeWorktreeAndComplete(ctx: {
+  git: GitGateway;
+  repoDir: string;
+  worktreePath: string;
+  workBranch: string;
+  targetBranch: string;
+  shouldMerge: boolean;
+  log: LogFn;
+  finalize: (mergeNote: string) => Promise<void>;
+}): Promise<void> {
+  const { git, repoDir, worktreePath, workBranch, targetBranch, shouldMerge, log, finalize } = ctx;
+  await teardownWorktree({ git, repoDir, worktreePath, log });
+  let mergeNote = "";
+  if (shouldMerge) {
+    mergeNote = await mergeAndPush({ git, repoDir, targetBranch, workBranch, log });
+  }
+  await finalize(mergeNote);
 }

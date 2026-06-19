@@ -6,7 +6,7 @@ import type { PhaseRecord } from "../store.ts";
 import * as storeModule from "../store.ts";
 import { callArgs, makeClaimedItem, typedMock } from "../test-helpers.ts";
 import type { EngineeringAuditPaths } from "../worker-workflow.ts";
-import { runExecuteValidateLoop, runPhase } from "./worker-engineering-execute.ts";
+import { runExecuteValidateLoop, runPhase } from "./worker-engineering.ts";
 
 const TEST_PROFILE: Profile = {
   name: "test",
@@ -72,7 +72,9 @@ describe("runPhase", () => {
       generateText: mock(async () => ({ exitCode: 0, text: "" })),
     };
 
-    const { result, exitCode } = await runPhase(claude, TEST_PROFILE, {
+    const { result, exitCode } = await runPhase({
+      claude,
+      profile: TEST_PROFILE,
       itemId: ITEM_ID,
       prompt: "plan prompt",
       worktreePath: "/worktree",
@@ -99,7 +101,9 @@ describe("runPhase", () => {
       generateText: mock(async () => ({ exitCode: 0, text: "" })),
     };
 
-    await runPhase(claude, TEST_PROFILE, {
+    await runPhase({
+      claude,
+      profile: TEST_PROFILE,
       itemId: ITEM_ID,
       prompt: "prompt",
       worktreePath: "/worktree",
@@ -135,7 +139,9 @@ describe("runPhase", () => {
     });
 
     await expect(
-      runPhase(claude, TEST_PROFILE, {
+      runPhase({
+        claude,
+        profile: TEST_PROFILE,
         itemId: ITEM_ID,
         prompt: "prompt",
         worktreePath: "/worktree",

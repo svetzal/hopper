@@ -22,6 +22,7 @@ import { processEngineeringItem } from "./worker-engineering.ts";
 import {
   createLogger,
   finalizeCompletion,
+  finalizeWorktreeAndComplete,
   type LogFn,
   logClaimBanner,
   mergeAndPush,
@@ -90,13 +91,14 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
   }
 }
 
-async function commitWorktreeChanges(
-  git: GitGateway,
-  worktreePath: string,
-  item: Item,
-  result: string,
-  log: LogFn,
-): Promise<void> {
+async function commitWorktreeChanges(ctx: {
+  git: GitGateway;
+  worktreePath: string;
+  item: Item;
+  result: string;
+  log: LogFn;
+}): Promise<void> {
+  const { git, worktreePath, item, result, log } = ctx;
   const dirty = await git.isWorktreeDirty(worktreePath);
   const { shouldCommit } = resolvePostClaudeAction(true, dirty);
   if (shouldCommit) {
@@ -143,15 +145,17 @@ async function setupGenericWorktree(
   return { worktreePath, workBranch, workDir };
 }
 
-async function executeWork(
-  item: Item,
-  workDir: string | undefined,
-  auditFile: string,
-  hopperHome: string,
-  deps: { claude: AgentRunner; shell: ShellGateway; profile: Profile },
-  log: LogFn,
-): Promise<{ exitCode: number; result: string }> {
-  const { claude, shell, profile } = deps;
+async function executeWork(ctx: {
+  item: Item;
+  workDir: string | undefined;
+  auditFile: string;
+  hopperHome: string;
+  claude: AgentRunner;
+  shell: ShellGateway;
+  profile: Profile;
+  log: LogFn;
+}): Promise<{ exitCode: number; result: string }> {
+  const { item, workDir, auditFile, hopperHome, claude, shell, profile, log } = ctx;
   const plan = resolveExecutionPlan(item, hopperHome, process.env.PATH ?? "");
   if (plan.type === "command") {
     log(`Starting command...\nAudit log: ${auditFile}`);
@@ -241,46 +245,39 @@ export async function processItem(
       log,
     ));
 
-    const { exitCode, result } = await executeWork(
+    const { exitCode, result } = await executeWork({
       item,
       workDir,
       auditFile,
       hopperHome,
-      { claude, shell, profile },
+      claude,
+      shell,
+      profile,
       log,
-    );
+    });
 
     if (worktreePath) {
-      await commitWorktreeChanges(git, worktreePath, item, result, log);
+      await commitWorktreeChanges({ git, worktreePath, item, result, log });
     }
 
     if (worktreePath && item.workingDir) {
-      await teardownWorktree(git, item.workingDir, worktreePath, log);
+      const mergeAction = resolveMergeAction(exitCode, workBranch, item);
+      await finalizeWorktreeAndComplete({
+        git,
+        repoDir: item.workingDir,
+        worktreePath,
+        workBranch: mergeAction.shouldMerge ? mergeAction.workBranch : (workBranch ?? ""),
+        targetBranch: mergeAction.shouldMerge ? mergeAction.targetBranch : (item.branch ?? ""),
+        shouldMerge: mergeAction.shouldMerge,
+        log,
+        finalize: async (mergeNote) => {
+          await handleCompletion({ item, agentName, exitCode, result, mergeNote, workBranch, fs, resultFile, log });
+        },
+      });
       worktreePath = undefined;
+    } else {
+      await handleCompletion({ item, agentName, exitCode, result, mergeNote: "", workBranch, fs, resultFile, log });
     }
-
-    const mergeAction = resolveMergeAction(exitCode, workBranch, item);
-    const mergeNote = mergeAction.shouldMerge
-      ? await mergeAndPush(
-          git,
-          mergeAction.repoDir,
-          mergeAction.targetBranch,
-          mergeAction.workBranch,
-          log,
-        )
-      : "";
-
-    await handleCompletion({
-      item,
-      agentName,
-      exitCode,
-      result,
-      mergeNote,
-      workBranch,
-      fs,
-      resultFile,
-      log,
-    });
   } finally {
     // Belt-and-suspenders: clean up worktree if something threw mid-flight
     if (worktreePath && item.workingDir) {

@@ -64,17 +64,15 @@ A pre-push hook runs `bun run lint` and `bun test` automatically.
 | `src/gateways/llm-gateway.ts` | `LlmGateway` interface + real implementation (thin wrapper around OpenAI `fetch` for chat completions) |
 | `src/gateways/init-gateway.ts` | `InitGateway` interface + real implementation (thin wrapper around `Bun.file`, `Bun.write`, `mkdir`, and `rm` for skill file installation) |
 | `src/commands/worker-generic.ts` | Generic-item flow (`handleCompletion`, `commitWorktreeChanges`, `executeWork`) + `processItem` dispatcher that delegates engineering items to `worker-engineering.ts` |
-| `src/commands/worker-engineering.ts` | Engineering pipeline imperative shell: `runPlanPhase`, `runExecuteValidateLoop`, `commitEngineeringChanges`, `teardownMergeAndComplete`, `processEngineeringItem` |
-| `src/commands/worker-engineering-execute.ts` | Inner execute→validate retry loop: `runPhase`, `runExecuteValidateLoop` — the per-attempt cycle within an engineering item |
-| `src/commands/worker-engineering-generate.ts` | LLM one-shot helpers for engineering: `safeGenerateText`, `resolveEngineeringBranchSlug`, `resolveEngineeringCommitMessage`, `resolveValidateOutcomeWithFallback` |
+| `src/commands/worker-engineering.ts` | Engineering pipeline imperative shell — contains the full one-run trace in one file: LLM one-shots (`safeGenerateText`, `resolveEngineeringBranchSlug`, `resolveEngineeringCommitMessage`, `resolveValidateOutcomeWithFallback`), phase runner (`runPhase`), execute→validate retry loop (`runExecuteValidateLoop`), orchestration phases (`runPlanPhase`, `commitEngineeringChanges`, `setupEngineeringWorktree`), and top-level dispatcher (`processEngineeringItem`) |
 | `src/commands/worker-loop.ts` | Outer poll/claim/dispatch loop entry point: `WorkerLoopDeps`, `runWorkerLoop`, `workerCommand` — the CLI entry and claim cycle |
-| `src/commands/worker-orchestration.ts` | Shared worktree/merge/teardown orchestration used by both worker flows: `createLogger`, `finalizeCompletion`, `orchestrateWorktreeSetup`, `orchestrateMerge`, `mergeAndPush`, `teardownWorktree` |
+| `src/commands/worker-orchestration.ts` | Shared worktree/merge/teardown orchestration used by both worker flows: `createLogger`, `finalizeCompletion`, `orchestrateWorktreeSetup`, `orchestrateMerge`, `mergeAndPush`, `teardownWorktree`, `finalizeWorktreeAndComplete` |
 | `src/commands/*.ts` | One file per CLI command, each returns `CommandResult` |
 | `src/text-imports.d.ts` | Type declaration for Bun's `*.md` text imports |
 
 ### Key patterns
 
-- **Worker naming convention**: Pure decision functions live in `<domain>-workflow.ts` (e.g. `worker-workflow.ts`, `engineering-workflow.ts`). Imperative shells live in `src/commands/worker-<flow>.ts`, where `<flow>` is `generic` (generic-item path), `engineering` (engineering pipeline), `engineering-execute` (inner execute→validate retry loop), `engineering-generate` (LLM one-shot helpers), `loop` (outer poll/claim/dispatch cycle), or `orchestration` (shared worktree/merge/teardown helpers).
+- **Worker naming convention**: Pure decision functions live in `<domain>-workflow.ts` (e.g. `worker-workflow.ts`, `engineering-workflow.ts`). Imperative shells live in `src/commands/worker-<flow>.ts`, where `<flow>` is `generic` (generic-item path), `engineering` (full engineering pipeline — one file for the complete run trace), `loop` (outer poll/claim/dispatch cycle), or `orchestration` (shared worktree/merge/teardown helpers). Shell functions with 3+ inputs accept one typed args/context object; 1–2 input helpers may stay positional.
 - **Claim tokens**: `claim` generates a `claimToken` (UUID) that must be passed to `complete`. This prevents completing items you didn't claim
 - **ID prefix matching**: `findItem`, `requeueItem`, and `cancelItem` accept UUID prefixes (e.g. first 8 chars)
 - **`--json` flag**: All commands support `--json` for machine-readable output. Human-friendly output is the default
