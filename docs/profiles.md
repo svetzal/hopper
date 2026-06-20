@@ -302,18 +302,36 @@ without fear of being clobbered.
 
 ### Why `openai` is the default
 
-The shipped `defaultProfile` is `openai`, not `anthropic`. The reason is
-operational, not preferential:
+The shipped `defaultProfile` is `openai`, not `anthropic`. This is a
+bootstrap convenience: a fresh `hopper add` on a clean machine runs on an
+OpenAI-backed runner without any extra wiring.
 
-Anthropic blocks third-party tools from subscription plans starting
-**2026-06-15**. After that date, the only way to drive the `claude`
-runner is with a direct API key — which most installations don't have.
-Defaulting to `openai` means a fresh `hopper add` on a clean machine
-works without setting anything up beyond an OpenAI key.
+The `anthropic` profile (the `claude` runner) is fully supported. Switch
+to it explicitly per-item with `--profile anthropic`, or make it your
+default once and for all by setting `defaultProfile` in
+`~/.hopper/config.json`.
 
-Users with direct Anthropic API access opt back in explicitly with
-`--profile anthropic`, or by changing `defaultProfile` in
-`~/.hopper/config.json` once and for all.
+### Auth tokens expire — a 401 means re-login, not an outage
+
+The `claude` and `codex` runners authenticate with OAuth tokens that
+expire periodically. When a token lapses, items fail at the plan or exec
+phase with:
+
+```
+401 Invalid authentication credentials
+```
+
+This is a **local login expiry**, not a service outage or a policy
+change. Re-authenticate (`claude` / `codex` login) and `hopper requeue
+<id>` the affected item. To confirm it's just auth, run the runner
+directly — e.g. for the `claude` runner:
+
+```
+echo "reply with OK" | claude -p
+```
+
+A `401` there means the token has expired; an `OK` means the runner is
+fine and the failure was something else.
 
 ## Authoring your own profile
 

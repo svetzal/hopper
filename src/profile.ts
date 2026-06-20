@@ -23,9 +23,10 @@
  * ```
  *
  * Profile name `anthropic` is a documentation convention for the
- * claude-runner profile; the default profile (`config.json` →
- * `defaultProfile`) is `openai` per the 2026-06-15 Anthropic third-party
- * cutoff.
+ * claude-runner profile; the bootstrap default profile (`config.json` →
+ * `defaultProfile`) is `openai` so a clean install runs on an OpenAI-backed
+ * runner without extra setup. Switch to `anthropic` any time via
+ * `config.json` or `--profile anthropic`.
  */
 
 import { toErrorMessage } from "./error-utils.ts";

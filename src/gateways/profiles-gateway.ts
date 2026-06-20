@@ -17,10 +17,17 @@ import { type Profile, type ProfileParseResult, parseProfile } from "../profile.
  *     ollama.json          opencode runner — local qwen3.6
  * ```
  *
- * The bootstrap defaults reflect the 2026-06-15 Anthropic third-party cutoff:
- * `defaultProfile` is `openai` so a fresh `hopper add` works without an
- * Anthropic subscription. The `anthropic` profile is still shipped for
- * direct-API-key users.
+ * `defaultProfile` bootstraps to `openai` so a fresh `hopper add` works on
+ * an OpenAI-backed runner out of the box. The `anthropic` profile (claude
+ * runner) is fully supported and shipped — switch to it once and for all by
+ * setting `defaultProfile` in `config.json`, or per-item with
+ * `--profile anthropic`.
+ *
+ * Auth note: the `claude` and `codex` runners use OAuth tokens that expire
+ * periodically. When a token lapses, runs fail with a `401 Invalid
+ * authentication credentials` error at the plan/exec phase — this is a local
+ * login expiry, NOT a service or policy change. Re-authenticate (re-run the
+ * `claude` / `codex` login) and requeue the affected item.
  *
  * On first use, {@link bootstrap} writes the shipped templates and a minimal
  * `config.json`. Later releases may add new templates; bootstrap fills in

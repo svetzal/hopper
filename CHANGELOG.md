@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Docs/comments: dropped the "2026-06-15 Anthropic cutoff" framing.** A
+  predicted cutoff of third-party tools on Anthropic subscription plans did
+  not materialize. The `claude` runner works on a subscription as before. The
+  `openai` bootstrap default is retained purely as a clean-install
+  convenience, not because the `anthropic` profile is unavailable. Profile
+  docs and source comments now describe `openai` as a default you can freely
+  switch away from, rather than a forced choice.
+- **Documented OAuth-token expiry.** Added an auth note to `docs/profiles.md`
+  and the profiles gateway: the `claude` and `codex` runners use OAuth tokens
+  that expire, and a `401 Invalid authentication credentials` at the plan/exec
+  phase means a local re-login is needed (then `hopper requeue <id>`) — it is
+  not a service or policy change.
+
 ## [3.3.0] - 2026-05-31
 
 ### Added
