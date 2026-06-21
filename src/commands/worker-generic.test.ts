@@ -102,13 +102,13 @@ describe("processItem", () => {
     const claude = makeMockClaude(0, "All done.");
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(claude.runSession).toHaveBeenCalledTimes(1);
     expect(completeItemMock).toHaveBeenCalledWith("tok-1234", "test-agent", "All done.");
@@ -123,13 +123,13 @@ describe("processItem", () => {
     const fs = makeMockFs();
     const git = makeMockGit();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(completeItemMock).not.toHaveBeenCalled();
   });
@@ -143,13 +143,13 @@ describe("processItem", () => {
     const fs = makeMockFs();
     const git = makeMockGit();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(completeItemMock).not.toHaveBeenCalled();
     expect(requeueItemMock).toHaveBeenCalledTimes(1);
@@ -170,13 +170,13 @@ describe("processItem", () => {
     const fs = makeMockFs();
     const git = makeMockGit();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(completeItemMock).not.toHaveBeenCalled();
     expect(requeueItemMock).not.toHaveBeenCalled();
@@ -188,13 +188,13 @@ describe("processItem", () => {
     const fs = makeMockFs();
     const git = makeMockGit();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(completeItemMock).toHaveBeenCalledTimes(1);
     expect(requeueItemMock).not.toHaveBeenCalled();
@@ -206,13 +206,13 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(git.createWorktree).toHaveBeenCalledTimes(1);
     expect(git.worktreeRemove).toHaveBeenCalledTimes(1);
@@ -226,13 +226,13 @@ describe("processItem", () => {
     const claude = makeMockClaude(0, "Fixed the bug.");
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     // Only one Claude session — no auto-commit session
     expect(claude.runSession).toHaveBeenCalledTimes(1);
@@ -278,20 +278,20 @@ describe("processItem", () => {
 
     // Run both concurrently
     await Promise.all([
-      processItem(
-        item1,
-        "agent",
-        HOPPER_HOME,
-        { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() },
-        2,
-      ),
-      processItem(
-        item2,
-        "agent",
-        HOPPER_HOME,
-        { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() },
-        2,
-      ),
+      processItem({
+          item: item1,
+          agentName: "agent",
+          hopperHome: HOPPER_HOME,
+          deps: { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() },
+          concurrency: 2,
+        }),
+      processItem({
+          item: item2,
+          agentName: "agent",
+          hopperHome: HOPPER_HOME,
+          deps: { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() },
+          concurrency: 2,
+        }),
     ]);
 
     // Both should have completed
@@ -311,13 +311,13 @@ describe("processItem", () => {
     console.log = (...args: unknown[]) => logs.push(args.join(" "));
 
     try {
-      await processItem(
-        item,
-        "test-agent",
-        HOPPER_HOME,
-        { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() },
-        2,
-      );
+      await processItem({
+          item,
+          agentName: "test-agent",
+          hopperHome: HOPPER_HOME,
+          deps: { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() },
+          concurrency: 2,
+        });
     } finally {
       console.log = origLog;
     }
@@ -341,13 +341,13 @@ describe("processItem", () => {
     console.log = (...args: unknown[]) => logs.push(args.join(" "));
 
     try {
-      await processItem(
-        item,
-        "test-agent",
-        HOPPER_HOME,
-        { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() },
-        1,
-      );
+      await processItem({
+          item,
+          agentName: "test-agent",
+          hopperHome: HOPPER_HOME,
+          deps: { git, claude, fs, shell: makeMockShell(), profiles: makeStubProfilesGateway() },
+          concurrency: 1,
+        });
     } finally {
       console.log = origLog;
     }
@@ -363,13 +363,13 @@ describe("processItem", () => {
     const shell = makeMockShell(0, "hello");
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell,
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(shell.runCommand).toHaveBeenCalledTimes(1);
     expect(claude.runSession).not.toHaveBeenCalled();
@@ -383,13 +383,13 @@ describe("processItem", () => {
     const shell = makeMockShell(1, "error output");
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell,
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(shell.runCommand).toHaveBeenCalledTimes(1);
     expect(claude.runSession).not.toHaveBeenCalled();
@@ -403,13 +403,13 @@ describe("processItem", () => {
     const shell = makeMockShell(0, "build complete");
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell,
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(git.createWorktree).toHaveBeenCalledTimes(1);
     expect(git.worktreeRemove).toHaveBeenCalledTimes(1);
@@ -425,13 +425,13 @@ describe("processItem", () => {
     const shell = makeMockShell(0, "file1 file2");
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell,
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(git.createWorktree).not.toHaveBeenCalled();
     expect(shell.runCommand).toHaveBeenCalledTimes(1);
@@ -449,13 +449,13 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(git.createTrackingBranch).toHaveBeenCalledTimes(1);
     expect(git.createBranch).not.toHaveBeenCalled();
@@ -470,13 +470,13 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(git.createBranch).toHaveBeenCalledTimes(1);
     expect(git.createTrackingBranch).not.toHaveBeenCalled();
@@ -490,13 +490,13 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(git.createTrackingBranch).not.toHaveBeenCalled();
     expect(git.createBranch).not.toHaveBeenCalled();
@@ -514,13 +514,13 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(git.mergeFastForward).toHaveBeenCalledTimes(1);
     expect(checkoutCalls).toEqual(["main", "develop"]);
@@ -532,13 +532,13 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(git.pushTags).toHaveBeenCalledTimes(1);
     expect(git.pushTags).toHaveBeenCalledWith("/repo");
@@ -552,13 +552,13 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     // Item should still complete despite tag push failure
     expect(completeItemMock).toHaveBeenCalled();
@@ -574,13 +574,13 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(git.pushTags).not.toHaveBeenCalled();
   });
@@ -591,13 +591,13 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(git.pushTags).not.toHaveBeenCalled();
   });
@@ -611,13 +611,13 @@ describe("processItem", () => {
     const claude = makeMockClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(git.mergeAbort).toHaveBeenCalledTimes(1);
     expect(git.deleteBranch).not.toHaveBeenCalled();
@@ -689,13 +689,13 @@ describe("processItem", () => {
     const claude = makeEngineeringClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     // All three phases ran
     expect(claude.runSession).toHaveBeenCalledTimes(3);
@@ -722,13 +722,13 @@ describe("processItem", () => {
     const claude = makeEngineeringClaude({ slug: "refactor-parser" });
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     const [, , workBranchArg] = callArgs(typedMock(git.createWorktree), 0);
     expect(workBranchArg.startsWith("hopper-eng/refactor-parser-")).toBe(true);
@@ -751,13 +751,13 @@ describe("processItem", () => {
     };
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     const [, , fallbackBranchArg] = callArgs(typedMock(git.createWorktree), 0);
     // hopper-eng/<id-prefix> with no slug segment
@@ -774,13 +774,13 @@ describe("processItem", () => {
     const claude = makeEngineeringClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     const writeMock = typedMock(fs.writeFile);
     const planWrite = writeMock.mock.calls.find((c) => c[0].endsWith("-plan.md"));
@@ -801,13 +801,13 @@ describe("processItem", () => {
     const claude = makeEngineeringClaude({ planExit: 1, planResult: "Plan crashed." });
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     // Only the plan phase ran
     expect(claude.runSession).toHaveBeenCalledTimes(1);
@@ -828,13 +828,13 @@ describe("processItem", () => {
     const claude = makeEngineeringClaude({ executeExit: 2, executeResult: "broke" });
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     // Plan + execute ran; validate did not
     expect(claude.runSession).toHaveBeenCalledTimes(2);
@@ -856,13 +856,13 @@ describe("processItem", () => {
     });
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(claude.runSession).toHaveBeenCalledTimes(3);
     expect(git.commitAll).not.toHaveBeenCalled();
@@ -881,13 +881,13 @@ describe("processItem", () => {
     const claude = makeEngineeringClaude({ validateResult: "Seems OK to me." });
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(git.commitAll).not.toHaveBeenCalled();
     expect(git.mergeFastForward).not.toHaveBeenCalled();
@@ -903,13 +903,13 @@ describe("processItem", () => {
     const claude = makeEngineeringClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(git.commitAll).not.toHaveBeenCalled();
     // No commit → no merge
@@ -936,13 +936,13 @@ describe("processItem", () => {
     const claude = makeEngineeringClaude({ planResult: planText });
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     const sessionCalls = typedMock(claude.runSession).mock.calls;
     const executeCall = sessionCalls.find((c) => c[0].includes("EXECUTE phase"));
@@ -961,13 +961,13 @@ describe("processItem", () => {
     const claude = makeEngineeringClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     const agentSessionCalls = typedMock(claude.runSession).mock.calls;
     const executeCall = agentSessionCalls.find((c) => c[0].includes("EXECUTE phase"));
@@ -984,13 +984,13 @@ describe("processItem", () => {
     const claude = makeEngineeringClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     expect(recordItemPhaseMock).toHaveBeenCalledTimes(3);
     const recorded = recordItemPhaseMock.mock.calls.map((c) => c[1]);
@@ -1011,13 +1011,13 @@ describe("processItem", () => {
     });
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     const validateCall = recordItemPhaseMock.mock.calls.find((c) => c[1].name === "validate");
     expect(validateCall?.[1].passed).toBe(false);
@@ -1033,13 +1033,13 @@ describe("processItem", () => {
     const claude = makeEngineeringClaude({ planExit: 1, planResult: "crashed" });
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     const recorded = recordItemPhaseMock.mock.calls.map((c) => c[1].name);
     expect(recorded).toEqual(["plan"]);
@@ -1070,13 +1070,13 @@ describe("processItem", () => {
     };
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     // plan + execute(1) + validate(1) + execute(2) + validate(2) = 5
     expect(claude.runSession).toHaveBeenCalledTimes(5);
@@ -1111,13 +1111,13 @@ describe("processItem", () => {
     };
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     const remediationCalls = typedMock(claude.runSession).mock.calls;
     const remediationCall = remediationCalls.find(
@@ -1142,13 +1142,13 @@ describe("processItem", () => {
     });
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     // plan + 3 * (execute + validate) = 7
     expect(claude.runSession).toHaveBeenCalledTimes(7);
@@ -1172,13 +1172,13 @@ describe("processItem", () => {
     });
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     // plan + execute + validate = 3; no retry
     expect(claude.runSession).toHaveBeenCalledTimes(3);
@@ -1211,13 +1211,13 @@ describe("processItem", () => {
     };
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     const retryAuditCalls = typedMock(claude.runSession).mock.calls;
     const auditPaths = retryAuditCalls.map((c) => c[2]);
@@ -1252,13 +1252,13 @@ describe("processItem", () => {
     };
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     const recorded = recordItemPhaseMock.mock.calls.map((c) => c[1]);
     expect(recorded.map((r) => `${r.name}@${r.attempt ?? 1}`)).toEqual([
@@ -1283,13 +1283,13 @@ describe("processItem", () => {
     const claude = makeEngineeringClaude();
     const fs = makeMockFs();
 
-    await processItem(item, "test-agent", HOPPER_HOME, {
+    await processItem({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: {
       git,
       claude,
       fs,
       shell: makeMockShell(),
       profiles: makeStubProfilesGateway(),
-    });
+    }});
 
     const perPhaseAuditCalls = typedMock(claude.runSession).mock.calls;
     const auditPaths = perPhaseAuditCalls.map((c) => c[2]);

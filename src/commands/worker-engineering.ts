@@ -70,17 +70,61 @@ export type ExecuteValidateContext = Pick<
   deps: Pick<WorkerRunnerDeps, "claude" | "fs" | "profile">;
 };
 
+export interface SafeGenerateTextArgs {
+  claude: AgentRunner;
+  prompt: string;
+  profile: Profile;
+  label: string;
+  log: LogFn;
+}
+
+export interface EngineeringBranchSlugArgs {
+  claude: AgentRunner;
+  profile: Profile;
+  item: { title: string; description: string };
+  log: LogFn;
+}
+
+export interface EngineeringCommitMessageArgs {
+  claude: AgentRunner;
+  profile: Profile;
+  item: { title: string; description: string };
+  diffSummary: string;
+  log: LogFn;
+}
+
+export interface ValidateOutcomeWithFallbackArgs {
+  exitCode: number;
+  resultText: string;
+  claude: Pick<AgentRunner, "generateText">;
+  profile: Profile;
+  log?: LogFn;
+}
+
+export interface EngineeringPreconditionsArgs {
+  item: ClaimedItem;
+  agentName: string;
+  hopperHome: string;
+  deps: Pick<WorkerRunnerDeps, "fs">;
+  log: LogFn;
+}
+
+export interface ProcessEngineeringItemArgs {
+  item: ClaimedItem;
+  agentName: string;
+  hopperHome: string;
+  deps: WorkerRunnerDeps;
+  concurrency?: number;
+}
+
 // ---------------------------------------------------------------------------
 // LLM one-shot helpers (from worker-engineering-generate)
 // ---------------------------------------------------------------------------
 
 export async function safeGenerateText(
-  claude: AgentRunner,
-  prompt: string,
-  profile: Profile,
-  label: string,
-  log: LogFn,
+  args: SafeGenerateTextArgs,
 ): Promise<{ ok: true; text: string } | { ok: false }> {
+  const { claude, prompt, profile, label, log } = args;
   try {
     const { exitCode, text } = await claude.generateText(prompt, "fast", { profile });
     if (exitCode !== 0) {
@@ -95,26 +139,21 @@ export async function safeGenerateText(
 }
 
 export async function resolveEngineeringBranchSlug(
-  claude: AgentRunner,
-  profile: Profile,
-  item: { title: string; description: string },
-  log: LogFn,
+  args: EngineeringBranchSlugArgs,
 ): Promise<string | null> {
+  const { claude, profile, item, log } = args;
   const prompt = buildBranchSlugPrompt(item.title, item.description);
-  const result = await safeGenerateText(claude, prompt, profile, "Branch slug generation", log);
+  const result = await safeGenerateText({ claude, prompt, profile, label: "Branch slug generation", log });
   if (!result.ok) return null;
   return normaliseBranchSlug(result.text);
 }
 
 export async function resolveEngineeringCommitMessage(
-  claude: AgentRunner,
-  profile: Profile,
-  item: { title: string; description: string },
-  diffSummary: string,
-  log: LogFn,
+  args: EngineeringCommitMessageArgs,
 ): Promise<string> {
+  const { claude, profile, item, diffSummary, log } = args;
   const prompt = buildCommitMessagePrompt(item.title, item.description, diffSummary);
-  const result = await safeGenerateText(claude, prompt, profile, "Commit message generation", log);
+  const result = await safeGenerateText({ claude, prompt, profile, label: "Commit message generation", log });
   if (!result.ok) return item.title;
   return resolveEngineeringCommitFallback(
     item as Parameters<typeof resolveEngineeringCommitFallback>[0],
@@ -132,12 +171,9 @@ const fallbackFailOutcome = (): { passed: false; reason: string; fallbackUsed: t
 });
 
 export async function resolveValidateOutcomeWithFallback(
-  exitCode: number,
-  resultText: string,
-  claude: Pick<AgentRunner, "generateText">,
-  profile: Profile,
-  log: LogFn = () => {},
+  args: ValidateOutcomeWithFallbackArgs,
 ): Promise<{ passed: boolean; reason: string; fallbackUsed?: boolean }> {
+  const { exitCode, resultText, claude, profile, log = () => {} } = args;
   const primary = resolveValidateOutcome(exitCode, resultText);
 
   if (primary.reason !== MISSING_MARKER_REASON) {
@@ -305,13 +341,13 @@ async function runValidateAttempt(
     auditFile: validateAuditPath,
     sessionOptions: buildValidateOptions(),
     phaseRecord: async (run, startedAt, endedAt) => {
-      outcome = await resolveValidateOutcomeWithFallback(
-        run.exitCode,
-        run.result,
+      outcome = await resolveValidateOutcomeWithFallback({
+        exitCode: run.exitCode,
+        resultText: run.result,
         claude,
         profile,
         log,
-      );
+      });
       return {
         name: "validate",
         startedAt,
@@ -452,7 +488,7 @@ export async function commitEngineeringChanges(
     await git.stageAll(worktreePath);
     log("Generating commit message...");
     const diff = await git.diffSummary(worktreePath);
-    const commitMsg = await resolveEngineeringCommitMessage(claude, profile, item, diff, log);
+    const commitMsg = await resolveEngineeringCommitMessage({ claude, profile, item, diffSummary: diff, log });
     log("Committing changes...");
     await git.commitAll(worktreePath, commitMsg);
     log("Committed.");
@@ -463,12 +499,9 @@ export async function commitEngineeringChanges(
 }
 
 export async function runEngineeringPreconditions(
-  item: ClaimedItem,
-  agentName: string,
-  hopperHome: string,
-  deps: Pick<WorkerRunnerDeps, "fs">,
-  log: LogFn,
+  args: EngineeringPreconditionsArgs,
 ): Promise<{ ok: true; item: EngineeringItem } | { ok: false }> {
+  const { item, agentName, hopperHome, deps, log } = args;
   const { fs } = deps;
   const preconditions = resolveEngineeringPreconditions(item);
   if (!preconditions.ok) {
@@ -496,7 +529,7 @@ export async function resolveWorkBranch(ctx: EngineeringContext): Promise<string
     log(`Using cached branch slug: ${slug}`);
   } else {
     log("Generating branch slug...");
-    slug = await resolveEngineeringBranchSlug(claude, profile, item, log);
+    slug = await resolveEngineeringBranchSlug({ claude, profile, item, log });
     if (slug) {
       await safePersistBranchSlug(item.id, slug, log);
     }
@@ -536,17 +569,14 @@ export async function setupEngineeringWorktree(
 }
 
 export async function processEngineeringItem(
-  item: ClaimedItem,
-  agentName: string,
-  hopperHome: string,
-  deps: WorkerRunnerDeps,
-  concurrency: number = 1,
+  args: ProcessEngineeringItemArgs,
 ): Promise<void> {
+  const { item, agentName, hopperHome, deps, concurrency = 1 } = args;
   const log = createLogger(item.id, concurrency);
   const paths = resolveEngineeringAuditPaths(item.id, hopperHome);
   const worktreePath = join(hopperHome, "worktrees", item.id);
 
-  const preconditions = await runEngineeringPreconditions(item, agentName, hopperHome, deps, log);
+  const preconditions = await runEngineeringPreconditions({ item, agentName, hopperHome, deps, log });
   if (!preconditions.ok) return;
   const ctx: EngineeringContext = {
     item: preconditions.item,

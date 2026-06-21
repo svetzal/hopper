@@ -26,24 +26,12 @@ import {
   resolveWorkerConfig,
   type WorkerConfig,
 } from "../worker-workflow.ts";
-import { processItem, type WorkerDeps } from "./worker-generic.ts";
+import { processItem, type ProcessItemArgs, type WorkerDeps } from "./worker-generic.ts";
 import { safeRequeue } from "./worker-orchestration.ts";
 
 export interface WorkerLoopDeps {
   claimNext: (agentName: string) => Promise<ClaimedItem | null | undefined>;
-  processItem: (
-    item: ClaimedItem,
-    agentName: string,
-    hopperHome: string,
-    deps: {
-      git: GitGateway;
-      claude: AgentRunner;
-      fs: FsGateway;
-      shell: ShellGateway;
-      profiles: ProfilesGateway;
-    },
-    concurrency: number,
-  ) => Promise<void>;
+  processItem: (args: ProcessItemArgs) => Promise<void>;
   sleep: (ms: number) => Promise<{ cancelled: boolean }>;
   log: (message: string) => void;
   onSignal: (signal: "SIGINT" | "SIGTERM", handler: () => void) => void;
@@ -132,7 +120,7 @@ export async function runWorkerLoop(
         const item = await claimNext(agentName);
         if (!item) break;
         claimedAny = true;
-        const task = doProcessItem(item, agentName, hopperHome, gatewayDeps, concurrency)
+        const task = doProcessItem({ item, agentName, hopperHome, deps: gatewayDeps, concurrency })
           .catch(async (e) => {
             log(`Error processing item ${shortId(item.id)}: ${toErrorMessage(e)}`);
             await loopDeps.requeueIfStillClaimed(

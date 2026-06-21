@@ -294,7 +294,7 @@ describe("runEngineeringPreconditions", () => {
     await store.saveItems([item]);
     const fs = makeMockFs();
 
-    const result = await runEngineeringPreconditions(item, "test-agent", HOPPER_HOME, { fs }, noop);
+    const result = await runEngineeringPreconditions({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: { fs }, log: noop });
 
     expect(result.ok).toBe(false);
     expect(requeueItemMock).toHaveBeenCalledTimes(1);
@@ -307,7 +307,7 @@ describe("runEngineeringPreconditions", () => {
     const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
     const fs = makeMockFs();
 
-    const result = await runEngineeringPreconditions(item, "test-agent", HOPPER_HOME, { fs }, noop);
+    const result = await runEngineeringPreconditions({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: { fs }, log: noop });
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -481,7 +481,7 @@ describe("processEngineeringItem", () => {
       }),
     });
 
-    await processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps);
+    await processEngineeringItem({ item, agentName: AGENT_NAME, hopperHome: HOPPER_HOME, deps });
 
     expect(requeueItemMock).toHaveBeenCalledTimes(1);
     const [calledId, reason] = callArgs(requeueItemMock, 0);
@@ -506,7 +506,7 @@ describe("processEngineeringItem", () => {
       branchIsAncestorOf: mock(async () => false),
     });
 
-    await processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps);
+    await processEngineeringItem({ item, agentName: AGENT_NAME, hopperHome: HOPPER_HOME, deps });
 
     expect(requeueItemMock).toHaveBeenCalledTimes(1);
     const [, staleReason] = callArgs(requeueItemMock, 0);
@@ -528,7 +528,7 @@ describe("processEngineeringItem", () => {
     });
     const deps = makeFullDeps();
 
-    await processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps);
+    await processEngineeringItem({ item, agentName: AGENT_NAME, hopperHome: HOPPER_HOME, deps });
 
     expect(deps.claude.generateText).not.toHaveBeenCalled();
     // Slug should NOT be re-persisted when already cached
@@ -547,7 +547,7 @@ describe("processEngineeringItem", () => {
       text: "fresh-slug",
     }));
 
-    await processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps);
+    await processEngineeringItem({ item, agentName: AGENT_NAME, hopperHome: HOPPER_HOME, deps });
 
     expect(deps.claude.generateText).toHaveBeenCalledTimes(1);
     expect(mockSetItemEngineeringBranchSlug).toHaveBeenCalledTimes(1);
@@ -568,7 +568,7 @@ describe("processEngineeringItem", () => {
       throw new Error("unexpected crash in plan phase");
     });
 
-    await expect(processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps)).rejects.toThrow(
+    await expect(processEngineeringItem({ item, agentName: AGENT_NAME, hopperHome: HOPPER_HOME, deps })).rejects.toThrow(
       "unexpected crash in plan phase",
     );
     // Pre-spawn succeeded, so no requeue should have been attempted
@@ -592,7 +592,7 @@ describe("processEngineeringItem", () => {
 
     // Neither worktree setup nor requeue succeeded, but the function must not rethrow
     await expect(
-      processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps),
+      processEngineeringItem({ item, agentName: AGENT_NAME, hopperHome: HOPPER_HOME, deps }),
     ).resolves.toBeUndefined();
     // safeRequeue was still attempted despite the failure
     expect(requeueItemMock).toHaveBeenCalledTimes(1);
@@ -623,7 +623,7 @@ describe("processEngineeringItem", () => {
       branchIsAncestorOf: mock(async () => true),
     });
 
-    await processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps);
+    await processEngineeringItem({ item, agentName: AGENT_NAME, hopperHome: HOPPER_HOME, deps });
 
     // The preserved worktree should be reused — no new worktree created
     expect(deps.git.createWorktree).not.toHaveBeenCalled();
@@ -645,7 +645,7 @@ describe("processEngineeringItem", () => {
     });
 
     await expect(
-      processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps),
+      processEngineeringItem({ item, agentName: AGENT_NAME, hopperHome: HOPPER_HOME, deps }),
     ).resolves.toBeUndefined();
 
     // Fallback branch name is hopper-eng/<8-char-id-prefix>
@@ -688,7 +688,7 @@ describe("processEngineeringItem", () => {
     await store.saveItems([item]);
     const deps = makeFullDeps();
 
-    await processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps);
+    await processEngineeringItem({ item, agentName: AGENT_NAME, hopperHome: HOPPER_HOME, deps });
 
     expect(requeueItemMock).toHaveBeenCalledTimes(1);
     const [calledId, reason] = callArgs(requeueItemMock, 0);
@@ -710,7 +710,7 @@ describe("processEngineeringItem", () => {
       throw new Error("ENOSPC: no space left on device");
     });
 
-    await processEngineeringItem(item, AGENT_NAME, HOPPER_HOME, deps);
+    await processEngineeringItem({ item, agentName: AGENT_NAME, hopperHome: HOPPER_HOME, deps });
 
     expect(requeueItemMock).toHaveBeenCalledTimes(1);
     const [calledId, reason] = callArgs(requeueItemMock, 0);

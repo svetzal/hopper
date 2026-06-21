@@ -161,7 +161,7 @@ describe("runWorkerLoop", () => {
     const loopDeps: WorkerLoopDeps = {
       claimNext: mock(async () => makeClaimedItem()),
       processItem: mock(
-        async (_item: ClaimedItem) =>
+        async () =>
           new Promise<void>((resolve) => {
             resolveProcessItem = resolve;
           }),

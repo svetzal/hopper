@@ -107,17 +107,18 @@ async function commitWorktreeChanges(ctx: {
   }
 }
 
-async function setupGenericWorktree(
-  workSetup: WorkSetup,
-  hopperHome: string,
-  itemId: string,
-  deps: { git: GitGateway; fs: FsGateway },
-  log: LogFn,
-): Promise<{
+async function setupGenericWorktree(args: {
+  workSetup: WorkSetup;
+  hopperHome: string;
+  itemId: string;
+  deps: { git: GitGateway; fs: FsGateway };
+  log: LogFn;
+}): Promise<{
   worktreePath: string | undefined;
   workBranch: string | undefined;
   workDir: string | undefined;
 }> {
+  const { workSetup, hopperHome, itemId, deps, log } = args;
   const { git, fs } = deps;
   let worktreePath: string | undefined;
   let workBranch: string | undefined;
@@ -173,19 +174,22 @@ async function executeWork(ctx: {
   });
 }
 
-export async function processItem(
-  item: ClaimedItem,
-  agentName: string,
-  hopperHome: string,
+export interface ProcessItemArgs {
+  item: ClaimedItem;
+  agentName: string;
+  hopperHome: string;
   deps: {
     git: GitGateway;
     claude: AgentRunner;
     fs: FsGateway;
     shell: ShellGateway;
     profiles: ProfilesGateway;
-  },
-  concurrency: number = 1,
-): Promise<void> {
+  };
+  concurrency?: number;
+}
+
+export async function processItem(args: ProcessItemArgs): Promise<void> {
+  const { item, agentName, hopperHome, deps, concurrency = 1 } = args;
   const { git, claude, fs, shell, profiles } = deps;
   const log = createLogger(item.id, concurrency);
 
@@ -210,13 +214,13 @@ export async function processItem(
   const profile = profileResult.profile;
 
   if (item.type === "engineering" && !item.command) {
-    return processEngineeringItem(
+    return processEngineeringItem({
       item,
       agentName,
       hopperHome,
-      { git, claude, fs, profile },
+      deps: { git, claude, fs, profile },
       concurrency,
-    );
+    });
   }
 
   const extras: string[] = [];
@@ -235,13 +239,13 @@ export async function processItem(
   let workDir: string | undefined;
 
   try {
-    ({ worktreePath, workBranch, workDir } = await setupGenericWorktree(
+    ({ worktreePath, workBranch, workDir } = await setupGenericWorktree({
       workSetup,
       hopperHome,
-      item.id,
-      { git, fs },
+      itemId: item.id,
+      deps: { git, fs },
       log,
-    ));
+    }));
 
     const { exitCode, result } = await executeWork({
       item,
