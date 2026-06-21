@@ -28,7 +28,13 @@ describe("safeGenerateText", () => {
       generateText: mock(async () => ({ exitCode: 0, text: "hello" })),
     };
 
-    const result = await safeGenerateText({ claude, prompt: "prompt", profile: TEST_PROFILE, label: "Test", log: noop });
+    const result = await safeGenerateText({
+      claude,
+      prompt: "prompt",
+      profile: TEST_PROFILE,
+      label: "Test",
+      log: noop,
+    });
 
     expect(result).toEqual({ ok: true, text: "hello" });
   });
@@ -40,7 +46,13 @@ describe("safeGenerateText", () => {
     };
     const logs: string[] = [];
 
-    const result = await safeGenerateText({ claude, prompt: "prompt", profile: TEST_PROFILE, label: "My label", log: (msg) => logs.push(msg) });
+    const result = await safeGenerateText({
+      claude,
+      prompt: "prompt",
+      profile: TEST_PROFILE,
+      label: "My label",
+      log: (msg) => logs.push(msg),
+    });
 
     expect(result).toEqual({ ok: false });
     expect(logs.some((l) => l.includes("My label") && l.includes("exit 2"))).toBe(true);
@@ -55,7 +67,13 @@ describe("safeGenerateText", () => {
     };
     const logs: string[] = [];
 
-    const result = await safeGenerateText({ claude, prompt: "prompt", profile: TEST_PROFILE, label: "My label", log: (msg) => logs.push(msg) });
+    const result = await safeGenerateText({
+      claude,
+      prompt: "prompt",
+      profile: TEST_PROFILE,
+      label: "My label",
+      log: (msg) => logs.push(msg),
+    });
 
     expect(result).toEqual({ ok: false });
     expect(logs.some((l) => l.includes("My label") && l.includes("network down"))).toBe(true);
@@ -74,7 +92,12 @@ describe("resolveEngineeringBranchSlug", () => {
     };
     const item = makeClaimedItem();
 
-    const slug = await resolveEngineeringBranchSlug({ claude, profile: TEST_PROFILE, item, log: noop });
+    const slug = await resolveEngineeringBranchSlug({
+      claude,
+      profile: TEST_PROFILE,
+      item,
+      log: noop,
+    });
 
     expect(slug).toBe("my-feature-slug");
   });
@@ -86,7 +109,12 @@ describe("resolveEngineeringBranchSlug", () => {
     };
     const item = makeClaimedItem();
 
-    const slug = await resolveEngineeringBranchSlug({ claude, profile: TEST_PROFILE, item, log: noop });
+    const slug = await resolveEngineeringBranchSlug({
+      claude,
+      profile: TEST_PROFILE,
+      item,
+      log: noop,
+    });
 
     expect(slug).toBeNull();
   });
@@ -104,7 +132,13 @@ describe("resolveEngineeringCommitMessage", () => {
     };
     const item = makeClaimedItem({ title: "fallback title" });
 
-    const msg = await resolveEngineeringCommitMessage({ claude, profile: TEST_PROFILE, item, diffSummary: "diff", log: noop });
+    const msg = await resolveEngineeringCommitMessage({
+      claude,
+      profile: TEST_PROFILE,
+      item,
+      diffSummary: "diff",
+      log: noop,
+    });
 
     expect(msg).toBe("feat: implement feature");
   });
@@ -116,7 +150,13 @@ describe("resolveEngineeringCommitMessage", () => {
     };
     const item = makeClaimedItem({ title: "fallback title" });
 
-    const msg = await resolveEngineeringCommitMessage({ claude, profile: TEST_PROFILE, item, diffSummary: "diff", log: noop });
+    const msg = await resolveEngineeringCommitMessage({
+      claude,
+      profile: TEST_PROFILE,
+      item,
+      diffSummary: "diff",
+      log: noop,
+    });
 
     expect(msg).toBe("fallback title");
   });
@@ -215,7 +255,12 @@ describe("resolveValidateOutcomeWithFallback", () => {
 
   test("no marker + Haiku returns whitespace-padded 'pass' → normalised to PASS → passed: true", async () => {
     const claude = makeClaudeMock("  pass  ");
-    const outcome = await resolveValidateOutcomeWithFallback({ exitCode: 0, resultText: "All clear.", claude, profile: TEST_PROFILE });
+    const outcome = await resolveValidateOutcomeWithFallback({
+      exitCode: 0,
+      resultText: "All clear.",
+      claude,
+      profile: TEST_PROFILE,
+    });
     expect(outcome.passed).toBe(true);
     expect(outcome.fallbackUsed).toBe(true);
   });

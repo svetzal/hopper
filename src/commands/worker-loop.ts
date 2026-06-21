@@ -26,7 +26,7 @@ import {
   resolveWorkerConfig,
   type WorkerConfig,
 } from "../worker-workflow.ts";
-import { processItem, type ProcessItemArgs, type WorkerDeps } from "./worker-generic.ts";
+import { type ProcessItemArgs, processItem, type WorkerDeps } from "./worker-generic.ts";
 import { safeRequeue } from "./worker-orchestration.ts";
 
 export interface WorkerLoopDeps {

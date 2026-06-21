@@ -143,7 +143,13 @@ export async function resolveEngineeringBranchSlug(
 ): Promise<string | null> {
   const { claude, profile, item, log } = args;
   const prompt = buildBranchSlugPrompt(item.title, item.description);
-  const result = await safeGenerateText({ claude, prompt, profile, label: "Branch slug generation", log });
+  const result = await safeGenerateText({
+    claude,
+    prompt,
+    profile,
+    label: "Branch slug generation",
+    log,
+  });
   if (!result.ok) return null;
   return normaliseBranchSlug(result.text);
 }
@@ -153,7 +159,13 @@ export async function resolveEngineeringCommitMessage(
 ): Promise<string> {
   const { claude, profile, item, diffSummary, log } = args;
   const prompt = buildCommitMessagePrompt(item.title, item.description, diffSummary);
-  const result = await safeGenerateText({ claude, prompt, profile, label: "Commit message generation", log });
+  const result = await safeGenerateText({
+    claude,
+    prompt,
+    profile,
+    label: "Commit message generation",
+    log,
+  });
   if (!result.ok) return item.title;
   return resolveEngineeringCommitFallback(
     item as Parameters<typeof resolveEngineeringCommitFallback>[0],
@@ -488,7 +500,13 @@ export async function commitEngineeringChanges(
     await git.stageAll(worktreePath);
     log("Generating commit message...");
     const diff = await git.diffSummary(worktreePath);
-    const commitMsg = await resolveEngineeringCommitMessage({ claude, profile, item, diffSummary: diff, log });
+    const commitMsg = await resolveEngineeringCommitMessage({
+      claude,
+      profile,
+      item,
+      diffSummary: diff,
+      log,
+    });
     log("Committing changes...");
     await git.commitAll(worktreePath, commitMsg);
     log("Committed.");
@@ -568,15 +586,19 @@ export async function setupEngineeringWorktree(
   }
 }
 
-export async function processEngineeringItem(
-  args: ProcessEngineeringItemArgs,
-): Promise<void> {
+export async function processEngineeringItem(args: ProcessEngineeringItemArgs): Promise<void> {
   const { item, agentName, hopperHome, deps, concurrency = 1 } = args;
   const log = createLogger(item.id, concurrency);
   const paths = resolveEngineeringAuditPaths(item.id, hopperHome);
   const worktreePath = join(hopperHome, "worktrees", item.id);
 
-  const preconditions = await runEngineeringPreconditions({ item, agentName, hopperHome, deps, log });
+  const preconditions = await runEngineeringPreconditions({
+    item,
+    agentName,
+    hopperHome,
+    deps,
+    log,
+  });
   if (!preconditions.ok) return;
   const ctx: EngineeringContext = {
     item: preconditions.item,

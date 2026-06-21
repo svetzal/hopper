@@ -294,7 +294,13 @@ describe("runEngineeringPreconditions", () => {
     await store.saveItems([item]);
     const fs = makeMockFs();
 
-    const result = await runEngineeringPreconditions({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: { fs }, log: noop });
+    const result = await runEngineeringPreconditions({
+      item,
+      agentName: "test-agent",
+      hopperHome: HOPPER_HOME,
+      deps: { fs },
+      log: noop,
+    });
 
     expect(result.ok).toBe(false);
     expect(requeueItemMock).toHaveBeenCalledTimes(1);
@@ -307,7 +313,13 @@ describe("runEngineeringPreconditions", () => {
     const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });
     const fs = makeMockFs();
 
-    const result = await runEngineeringPreconditions({ item, agentName: "test-agent", hopperHome: HOPPER_HOME, deps: { fs }, log: noop });
+    const result = await runEngineeringPreconditions({
+      item,
+      agentName: "test-agent",
+      hopperHome: HOPPER_HOME,
+      deps: { fs },
+      log: noop,
+    });
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -568,9 +580,9 @@ describe("processEngineeringItem", () => {
       throw new Error("unexpected crash in plan phase");
     });
 
-    await expect(processEngineeringItem({ item, agentName: AGENT_NAME, hopperHome: HOPPER_HOME, deps })).rejects.toThrow(
-      "unexpected crash in plan phase",
-    );
+    await expect(
+      processEngineeringItem({ item, agentName: AGENT_NAME, hopperHome: HOPPER_HOME, deps }),
+    ).rejects.toThrow("unexpected crash in plan phase");
     // Pre-spawn succeeded, so no requeue should have been attempted
     expect(requeueItemMock).not.toHaveBeenCalled();
   });
