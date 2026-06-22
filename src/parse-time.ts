@@ -29,7 +29,7 @@ export function parseDuration(input: string): Result<number> {
   return ok(totalMs);
 }
 
-function parseRelativeDuration(input: string): Date | null {
+function parseRelativeDuration(input: string, now: Date): Date | null {
   const lower = input.toLowerCase();
   const pattern = /^(\d+(?:\.\d+)?[smhdw])+$/;
   if (!pattern.test(lower)) return null;
@@ -43,14 +43,14 @@ function parseRelativeDuration(input: string): Date | null {
   }
 
   if (totalMs === 0) return null;
-  return new Date(Date.now() + totalMs);
+  return new Date(now.getTime() + totalMs);
 }
 
-function parseAbsoluteTime(input: string): Date | null {
+function parseAbsoluteTime(input: string, now: Date): Date | null {
   // "tomorrow" with optional time
   const tomorrowMatch = input.match(/^tomorrow(?:\s+(\d{1,2}(?::\d{2})?(?:am|pm)?))?$/i);
   if (tomorrowMatch) {
-    const d = new Date();
+    const d = new Date(now.getTime());
     d.setDate(d.getDate() + 1);
     if (tomorrowMatch[1]) {
       applyTimeOfDay(d, tomorrowMatch[1]);
@@ -63,9 +63,9 @@ function parseAbsoluteTime(input: string): Date | null {
   // Time only: "14:00" or "2:00pm"
   const timeOnly = input.match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/i);
   if (timeOnly) {
-    const d = new Date();
+    const d = new Date(now.getTime());
     applyTimeOfDay(d, input);
-    if (d.getTime() <= Date.now()) {
+    if (d.getTime() <= now.getTime()) {
       d.setDate(d.getDate() + 1);
     }
     return d;
@@ -74,9 +74,9 @@ function parseAbsoluteTime(input: string): Date | null {
   // Hour with am/pm but no colon: "2pm", "9am"
   const hourAmPm = input.match(/^(\d{1,2})(am|pm)$/i);
   if (hourAmPm) {
-    const d = new Date();
+    const d = new Date(now.getTime());
     applyTimeOfDay(d, input);
-    if (d.getTime() <= Date.now()) {
+    if (d.getTime() <= now.getTime()) {
       d.setDate(d.getDate() + 1);
     }
     return d;
@@ -116,18 +116,18 @@ function applyTimeOfDay(d: Date, timeStr: string): void {
   d.setHours(hours, minutes, 0, 0);
 }
 
-export function parseTimeSpec(input: string): Result<Date> {
+export function parseTimeSpec(input: string, now: Date): Result<Date> {
   const trimmed = input.trim();
   if (!trimmed) {
     return err("Empty time specification");
   }
 
-  const relative = parseRelativeDuration(trimmed);
+  const relative = parseRelativeDuration(trimmed, now);
   if (relative) return ok(relative);
 
-  const absolute = parseAbsoluteTime(trimmed);
+  const absolute = parseAbsoluteTime(trimmed, now);
   if (absolute) {
-    if (absolute.getTime() <= Date.now()) {
+    if (absolute.getTime() <= now.getTime()) {
       return err(`Time is in the past: ${trimmed}`);
     }
     return ok(absolute);

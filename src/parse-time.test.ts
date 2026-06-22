@@ -1,110 +1,85 @@
 import { describe, expect, test } from "bun:test";
 import { parseDuration, parseTimeSpec } from "./parse-time.ts";
 
+const NOW = new Date("2026-06-22T12:00:00Z");
+
 describe("parseTimeSpec", () => {
   // Relative durations
   test("parses seconds: 30s", () => {
-    const before = Date.now();
-    const result = parseTimeSpec("30s");
+    const result = parseTimeSpec("30s", NOW);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const expected = before + 30_000;
-      expect(result.value.getTime()).toBeGreaterThanOrEqual(expected - 50);
-      expect(result.value.getTime()).toBeLessThanOrEqual(expected + 200);
+      expect(result.value.getTime()).toBe(NOW.getTime() + 30_000);
     }
   });
 
   test("parses minutes: 5m", () => {
-    const before = Date.now();
-    const result = parseTimeSpec("5m");
+    const result = parseTimeSpec("5m", NOW);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const expected = before + 5 * 60_000;
-      expect(result.value.getTime()).toBeGreaterThanOrEqual(expected - 50);
-      expect(result.value.getTime()).toBeLessThanOrEqual(expected + 200);
+      expect(result.value.getTime()).toBe(NOW.getTime() + 5 * 60_000);
     }
   });
 
   test("parses hours: 2h", () => {
-    const before = Date.now();
-    const result = parseTimeSpec("2h");
+    const result = parseTimeSpec("2h", NOW);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const expected = before + 2 * 3_600_000;
-      expect(result.value.getTime()).toBeGreaterThanOrEqual(expected - 50);
-      expect(result.value.getTime()).toBeLessThanOrEqual(expected + 200);
+      expect(result.value.getTime()).toBe(NOW.getTime() + 2 * 3_600_000);
     }
   });
 
   test("parses days: 1d", () => {
-    const before = Date.now();
-    const result = parseTimeSpec("1d");
+    const result = parseTimeSpec("1d", NOW);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const expected = before + 86_400_000;
-      expect(result.value.getTime()).toBeGreaterThanOrEqual(expected - 50);
-      expect(result.value.getTime()).toBeLessThanOrEqual(expected + 200);
+      expect(result.value.getTime()).toBe(NOW.getTime() + 86_400_000);
     }
   });
 
   test("parses weeks: 1w", () => {
-    const before = Date.now();
-    const result = parseTimeSpec("1w");
+    const result = parseTimeSpec("1w", NOW);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const expected = before + 604_800_000;
-      expect(result.value.getTime()).toBeGreaterThanOrEqual(expected - 50);
-      expect(result.value.getTime()).toBeLessThanOrEqual(expected + 200);
+      expect(result.value.getTime()).toBe(NOW.getTime() + 604_800_000);
     }
   });
 
   test("parses compound duration: 1h30m", () => {
-    const before = Date.now();
-    const result = parseTimeSpec("1h30m");
+    const result = parseTimeSpec("1h30m", NOW);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const expected = before + 3_600_000 + 30 * 60_000;
-      expect(result.value.getTime()).toBeGreaterThanOrEqual(expected - 50);
-      expect(result.value.getTime()).toBeLessThanOrEqual(expected + 200);
+      expect(result.value.getTime()).toBe(NOW.getTime() + 3_600_000 + 30 * 60_000);
     }
   });
 
   test("parses compound duration: 2d12h", () => {
-    const before = Date.now();
-    const result = parseTimeSpec("2d12h");
+    const result = parseTimeSpec("2d12h", NOW);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const expected = before + 2 * 86_400_000 + 12 * 3_600_000;
-      expect(result.value.getTime()).toBeGreaterThanOrEqual(expected - 50);
-      expect(result.value.getTime()).toBeLessThanOrEqual(expected + 200);
+      expect(result.value.getTime()).toBe(NOW.getTime() + 2 * 86_400_000 + 12 * 3_600_000);
     }
   });
 
   test("parses decimal duration: 1.5h", () => {
-    const before = Date.now();
-    const result = parseTimeSpec("1.5h");
+    const result = parseTimeSpec("1.5h", NOW);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const expected = before + 1.5 * 3_600_000;
-      expect(result.value.getTime()).toBeGreaterThanOrEqual(expected - 50);
-      expect(result.value.getTime()).toBeLessThanOrEqual(expected + 200);
+      expect(result.value.getTime()).toBe(NOW.getTime() + 1.5 * 3_600_000);
     }
   });
 
   test("is case-insensitive for durations", () => {
-    const before = Date.now();
-    const result = parseTimeSpec("2H");
+    const result = parseTimeSpec("2H", NOW);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const expected = before + 2 * 3_600_000;
-      expect(result.value.getTime()).toBeGreaterThanOrEqual(expected - 50);
-      expect(result.value.getTime()).toBeLessThanOrEqual(expected + 200);
+      expect(result.value.getTime()).toBe(NOW.getTime() + 2 * 3_600_000);
     }
   });
 
   // Absolute times
   test("parses ISO date (date only → midnight local)", () => {
-    const result = parseTimeSpec("2099-12-31");
+    const result = parseTimeSpec("2099-12-31", NOW);
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.getFullYear()).toBe(2099);
@@ -115,7 +90,7 @@ describe("parseTimeSpec", () => {
   });
 
   test("parses ISO datetime without timezone (local)", () => {
-    const result = parseTimeSpec("2099-06-15T14:00");
+    const result = parseTimeSpec("2099-06-15T14:00", NOW);
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.getFullYear()).toBe(2099);
@@ -125,7 +100,7 @@ describe("parseTimeSpec", () => {
   });
 
   test("parses full ISO datetime with Z", () => {
-    const result = parseTimeSpec("2099-06-15T14:00:00Z");
+    const result = parseTimeSpec("2099-06-15T14:00:00Z", NOW);
     expect(result.ok).toBe(true);
     if (result.ok) {
       const expected = new Date("2099-06-15T14:00:00Z");
@@ -134,10 +109,10 @@ describe("parseTimeSpec", () => {
   });
 
   test("parses tomorrow", () => {
-    const result = parseTimeSpec("tomorrow");
+    const result = parseTimeSpec("tomorrow", NOW);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const expected = new Date();
+      const expected = new Date(NOW.getTime());
       expected.setDate(expected.getDate() + 1);
       expected.setHours(0, 0, 0, 0);
       expect(result.value.getTime()).toBe(expected.getTime());
@@ -145,23 +120,22 @@ describe("parseTimeSpec", () => {
   });
 
   test("parses tomorrow 9am", () => {
-    const result = parseTimeSpec("tomorrow 9am");
+    const result = parseTimeSpec("tomorrow 9am", NOW);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const expected = new Date();
+      const expected = new Date(NOW.getTime());
       expected.setDate(expected.getDate() + 1);
       expected.setHours(9, 0, 0, 0);
       expect(result.value.getTime()).toBe(expected.getTime());
     }
   });
 
-  test("parses time-only (14:00) — returns future time", () => {
-    const result = parseTimeSpec("23:59");
+  test("parses time-only (23:59) — returns future time relative to NOW", () => {
+    // NOW is 2026-06-22T12:00:00Z; 23:59 local time is in the future today
+    const result = parseTimeSpec("23:59", NOW);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      // Should be today or tomorrow at 23:59
-      const now = new Date();
-      expect(result.value.getTime()).toBeGreaterThan(now.getTime());
+      expect(result.value.getTime()).toBeGreaterThan(NOW.getTime());
       expect(result.value.getHours()).toBe(23);
       expect(result.value.getMinutes()).toBe(59);
     }
@@ -169,7 +143,7 @@ describe("parseTimeSpec", () => {
 
   // Validation
   test("returns error on unparseable input", () => {
-    const result = parseTimeSpec("not-a-time");
+    const result = parseTimeSpec("not-a-time", NOW);
     expect(result).toMatchObject({
       ok: false,
       error: expect.stringContaining("Cannot parse time specification"),
@@ -177,7 +151,7 @@ describe("parseTimeSpec", () => {
   });
 
   test("returns error on empty input", () => {
-    const result = parseTimeSpec("");
+    const result = parseTimeSpec("", NOW);
     expect(result).toMatchObject({
       ok: false,
       error: expect.stringContaining("Empty time specification"),
@@ -185,20 +159,21 @@ describe("parseTimeSpec", () => {
   });
 
   test("returns error on past absolute date", () => {
-    const result = parseTimeSpec("2020-01-01");
+    const result = parseTimeSpec("2020-01-01", NOW);
     expect(result).toMatchObject({
       ok: false,
       error: expect.stringContaining("Time is in the past"),
     });
   });
 
-  test("parses 2:00pm time-only format", () => {
-    const result = parseTimeSpec("2:00pm");
+  test("parses 2:00pm time-only format — returns future time relative to NOW", () => {
+    // NOW is 2026-06-22T12:00:00Z; 2pm local is in the future
+    const result = parseTimeSpec("2:00pm", NOW);
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.getHours()).toBe(14);
       expect(result.value.getMinutes()).toBe(0);
-      expect(result.value.getTime()).toBeGreaterThan(Date.now());
+      expect(result.value.getTime()).toBeGreaterThan(NOW.getTime());
     }
   });
 });

@@ -165,7 +165,7 @@ export function resolveScheduling(
 
     let scheduledAt: string;
     if (afterSpec) {
-      const afterResult = parseTimeSpec(afterSpec);
+      const afterResult = parseTimeSpec(afterSpec, now);
       if (!afterResult.ok) return err({ code: "EVERY_INVALID", value: afterSpec });
       scheduledAt = afterResult.value.toISOString();
     } else {
@@ -179,7 +179,7 @@ export function resolveScheduling(
     }
 
     if (untilSpec) {
-      const untilResult = parseTimeSpec(untilSpec);
+      const untilResult = parseTimeSpec(untilSpec, now);
       if (!untilResult.ok) return err({ code: "EVERY_INVALID", value: untilSpec });
       const untilDate = untilResult.value;
       if (untilDate.getTime() <= new Date(scheduledAt).getTime()) {
@@ -192,7 +192,7 @@ export function resolveScheduling(
   }
 
   if (afterSpec) {
-    const afterOnlyResult = parseTimeSpec(afterSpec);
+    const afterOnlyResult = parseTimeSpec(afterSpec, now);
     if (!afterOnlyResult.ok) return err({ code: "EVERY_INVALID", value: afterSpec });
     const scheduledAt = afterOnlyResult.value.toISOString();
     return ok({ status: Status.SCHEDULED, scheduledAt });
