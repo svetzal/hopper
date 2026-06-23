@@ -372,10 +372,7 @@ export interface ValidateOutcomeWithFallback extends ValidateOutcome {
   fallbackUsed?: boolean;
 }
 
-export function resolveValidateOutcome(
-  exitCode: number,
-  resultText: string,
-): ValidateOutcome {
+export function resolveValidateOutcome(exitCode: number, resultText: string): ValidateOutcome {
   if (exitCode !== 0) {
     return { passed: false, reason: `Validate phase exited ${exitCode}` };
   }
