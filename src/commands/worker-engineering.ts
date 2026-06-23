@@ -28,6 +28,7 @@ import {
   normaliseValidateFallback,
   resolveBranchSlugSource,
   resolveValidateOutcome,
+  type ValidateOutcomeWithFallback,
 } from "../task-type-workflow.ts";
 import {
   type EngineeringAuditPaths,
@@ -184,7 +185,7 @@ const fallbackFailOutcome = (): { passed: false; reason: string; fallbackUsed: t
 
 export async function resolveValidateOutcomeWithFallback(
   args: ValidateOutcomeWithFallbackArgs,
-): Promise<{ passed: boolean; reason: string; fallbackUsed?: boolean }> {
+): Promise<ValidateOutcomeWithFallback> {
   const { exitCode, resultText, claude, profile, log = () => {} } = args;
   const primary = resolveValidateOutcome(exitCode, resultText);
 
@@ -331,7 +332,7 @@ async function runValidateAttempt(
   attempt: number,
   maxAttempts: number,
 ): Promise<{
-  outcome: { passed: boolean; reason: string; fallbackUsed?: boolean };
+  outcome: ValidateOutcomeWithFallback;
   result: string;
 }> {
   const { item, worktreePath, planText, hopperHome, deps, log } = ctx;
@@ -340,7 +341,7 @@ async function runValidateAttempt(
   log(
     `Validate phase attempt ${attempt}/${maxAttempts} (deep, read-only git)...\nAudit log: ${validateAuditPath}`,
   );
-  let outcome: { passed: boolean; reason: string; fallbackUsed?: boolean } = {
+  let outcome: ValidateOutcomeWithFallback = {
     passed: false,
     reason: "not resolved",
   };
@@ -387,7 +388,7 @@ export async function runExecuteValidateLoop(
   const maxRetries = item.retries ?? 1;
   const maxAttempts = 1 + maxRetries;
   let attempt = 0;
-  let outcome: { passed: boolean; reason: string; fallbackUsed?: boolean } = {
+  let outcome: ValidateOutcomeWithFallback = {
     passed: false,
     reason: "not run",
   };

@@ -363,10 +363,19 @@ export function buildValidateOptions(): SessionOptions {
  * missing output is treated as a failure — we'd rather requeue than merge
  * something unverified.
  */
+export interface ValidateOutcome {
+  passed: boolean;
+  reason: string;
+}
+
+export interface ValidateOutcomeWithFallback extends ValidateOutcome {
+  fallbackUsed?: boolean;
+}
+
 export function resolveValidateOutcome(
   exitCode: number,
   resultText: string,
-): { passed: boolean; reason: string } {
+): ValidateOutcome {
   if (exitCode !== 0) {
     return { passed: false, reason: `Validate phase exited ${exitCode}` };
   }
