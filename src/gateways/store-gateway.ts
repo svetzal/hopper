@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { Item } from "../store.ts";
 import { isRecord } from "../is-record.ts";
+import type { Item } from "../store.ts";
 import { ensureDefaults } from "../store-workflow.ts";
 import { loadJsonFile, saveJsonFile } from "./json-file.ts";
 

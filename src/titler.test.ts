@@ -64,7 +64,8 @@ describe("titler", () => {
     };
 
     const titler = createTitleGenerator(badGateway);
-    const description = "A task that is longer than sixty characters so we can check truncation here";
+    const description =
+      "A task that is longer than sixty characters so we can check truncation here";
     const title = await titler.generateTitle(description);
     expect(title).toBe(description.slice(0, 60).trim());
   });
@@ -77,7 +78,8 @@ describe("titler", () => {
     };
 
     const titler = createTitleGenerator(badGateway);
-    const description = "A task that is longer than sixty characters so we can check truncation here";
+    const description =
+      "A task that is longer than sixty characters so we can check truncation here";
     const title = await titler.generateTitle(description);
     expect(title).toBe(description.slice(0, 60).trim());
   });

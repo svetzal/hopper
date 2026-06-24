@@ -78,10 +78,7 @@ describe("StoreGateway", () => {
       status: "queued",
     };
     const malformedItem = { description: "missing id and title" };
-    await Bun.write(
-      join(tempDir, "items.json"),
-      JSON.stringify([validItem, malformedItem]),
-    );
+    await Bun.write(join(tempDir, "items.json"), JSON.stringify([validItem, malformedItem]));
     const loaded = await gateway.load();
     expect(loaded).toHaveLength(1);
     expect(loaded[0]?.id).toBe("valid-id");
