@@ -59,4 +59,26 @@ describe("LlmGateway", () => {
       choices: [],
     });
   });
+
+  test("returns empty choices when response body is not a JSON object with choices array", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ error: { message: "overloaded" } }), {
+        status: 200,
+      })) as unknown as typeof fetch;
+
+    const gateway = createLlmGateway("key");
+    expect(await gateway.chatCompletion({ model: "gpt-4.1-nano", messages: [] })).toEqual({
+      choices: [],
+    });
+  });
+
+  test("returns empty choices when response body is not valid JSON", async () => {
+    globalThis.fetch = (async () =>
+      new Response("not json at all", { status: 200 })) as unknown as typeof fetch;
+
+    const gateway = createLlmGateway("key");
+    expect(await gateway.chatCompletion({ model: "gpt-4.1-nano", messages: [] })).toEqual({
+      choices: [],
+    });
+  });
 });

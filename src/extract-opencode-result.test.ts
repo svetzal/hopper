@@ -87,6 +87,27 @@ describe("scanOpencodeStream", () => {
     expect(scan.sessionID).toBe("ses_real");
     expect(scan.errors).toEqual([]);
   });
+
+  test("skips objects that lack a string type field without contributing session or errors", () => {
+    const stream = [
+      JSON.stringify({ sessionID: "should-be-ignored" }),
+      JSON.stringify({ foo: 1 }),
+      JSON.stringify({ type: "step_start", sessionID: "ses_real" }),
+    ].join("\n");
+    const scan = scanOpencodeStream(stream);
+    expect(scan.sessionID).toBe("ses_real");
+    expect(scan.errors).toEqual([]);
+  });
+
+  test("still captures well-formed error event after skipping typeless objects", () => {
+    const stream = [
+      JSON.stringify({ foo: "bar" }),
+      JSON.stringify({ type: "error", error: { name: "E", data: { message: "oops" } } }),
+    ].join("\n");
+    const scan = scanOpencodeStream(stream);
+    expect(scan.errors).toHaveLength(1);
+    expect(scan.errors[0]).toEqual({ name: "E", message: "oops" });
+  });
 });
 
 describe("resolveEffectiveExitCode", () => {
@@ -132,6 +153,24 @@ describe("parseOpencodeExport", () => {
 
   test("returns null when top-level parsed value is a JSON string", () => {
     expect(parseOpencodeExport(JSON.stringify("just a string"))).toBeNull();
+  });
+
+  test("returns null when messages field is present but not an array", () => {
+    expect(parseOpencodeExport(JSON.stringify({ messages: "oops" }))).toBeNull();
+    expect(parseOpencodeExport(JSON.stringify({ messages: 42 }))).toBeNull();
+    expect(parseOpencodeExport(JSON.stringify({ messages: { nested: true } }))).toBeNull();
+  });
+
+  test("returns parsed object when messages is absent (no messages key)", () => {
+    const doc = parseOpencodeExport(JSON.stringify({ info: { id: "ses_y" } }));
+    expect(doc).not.toBeNull();
+    expect(doc?.info?.id).toBe("ses_y");
+  });
+
+  test("returns parsed object when messages is a valid array", () => {
+    const doc = parseOpencodeExport(JSON.stringify({ messages: [] }));
+    expect(doc).not.toBeNull();
+    expect(doc?.messages).toEqual([]);
   });
 });
 

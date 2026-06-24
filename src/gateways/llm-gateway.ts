@@ -1,3 +1,5 @@
+import { isRecord } from "../is-record.ts";
+
 export interface LlmCompletionRequest {
   model: string;
   messages: Array<{ role: string; content: string }>;
@@ -6,6 +8,10 @@ export interface LlmCompletionRequest {
 
 export interface LlmCompletionResponse {
   choices: Array<{ message: { content: string } }>;
+}
+
+function isLlmCompletionResponse(v: unknown): v is LlmCompletionResponse {
+  return isRecord(v) && Array.isArray(v.choices);
 }
 
 export interface LlmGateway {
@@ -28,7 +34,13 @@ export function createLlmGateway(apiKey: string): LlmGateway {
         return { choices: [] };
       }
 
-      return (await response.json()) as LlmCompletionResponse;
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        return { choices: [] };
+      }
+      return isLlmCompletionResponse(body) ? body : { choices: [] };
     },
   };
 }

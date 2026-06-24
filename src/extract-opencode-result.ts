@@ -71,6 +71,7 @@ export function scanOpencodeStream(raw: string): OpencodeStreamScan {
       continue;
     }
     if (!isRecord(parsed)) continue;
+    if (typeof parsed.type !== "string") continue;
     const event = parsed as OpencodeStreamEvent;
     if (!scan.sessionID && typeof event.sessionID === "string") {
       scan.sessionID = event.sessionID;
@@ -168,6 +169,7 @@ export function parseOpencodeExport(raw: string): OpencodeExport | null {
   try {
     const parsed: unknown = JSON.parse(jsonStart);
     if (!isRecord(parsed)) return null;
+    if (parsed.messages !== undefined && !Array.isArray(parsed.messages)) return null;
     return parsed as OpencodeExport;
   } catch {
     return null;
