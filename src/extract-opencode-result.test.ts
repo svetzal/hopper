@@ -75,6 +75,18 @@ describe("scanOpencodeStream", () => {
       message: "(no message)",
     });
   });
+
+  test("skips JSONL lines that are valid JSON but not objects (array, number, string)", () => {
+    const stream = [
+      JSON.stringify([1, 2, 3]),
+      "42",
+      '"just a string"',
+      JSON.stringify({ type: "step_start", sessionID: "ses_real" }),
+    ].join("\n");
+    const scan = scanOpencodeStream(stream);
+    expect(scan.sessionID).toBe("ses_real");
+    expect(scan.errors).toEqual([]);
+  });
 });
 
 describe("resolveEffectiveExitCode", () => {
@@ -112,6 +124,14 @@ describe("parseOpencodeExport", () => {
     expect(parseOpencodeExport("")).toBeNull();
     expect(parseOpencodeExport("not json at all")).toBeNull();
     expect(parseOpencodeExport("Exporting session: ses_x\nnot-json")).toBeNull();
+  });
+
+  test("returns null when top-level parsed value is a JSON array", () => {
+    expect(parseOpencodeExport(JSON.stringify([1, 2, 3]))).toBeNull();
+  });
+
+  test("returns null when top-level parsed value is a JSON string", () => {
+    expect(parseOpencodeExport(JSON.stringify("just a string"))).toBeNull();
   });
 });
 

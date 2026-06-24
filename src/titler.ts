@@ -1,4 +1,5 @@
 import type { LlmGateway } from "./gateways/llm-gateway.ts";
+import { isRecord } from "./is-record.ts";
 
 const SYSTEM_PROMPT =
   "Generate a concise, action-oriented title (max 8 words) for this work item. Respond with only the title.";
@@ -40,8 +41,8 @@ export function createTitleGenerator(llm?: LlmGateway): TitleGenerator {
 
         const content = data.choices[0]?.message?.content;
         if (content) {
-          const parsed = JSON.parse(content) as { title: string };
-          if (parsed.title) {
+          const parsed: unknown = JSON.parse(content);
+          if (isRecord(parsed) && typeof parsed.title === "string" && parsed.title) {
             return parsed.title;
           }
         }

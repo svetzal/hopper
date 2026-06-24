@@ -55,4 +55,30 @@ describe("titler", () => {
     const title = await titler.generateTitle(description);
     expect(title).toBe(description.slice(0, 60).trim());
   });
+
+  test("createTitleGenerator falls back to truncation when LLM returns a non-object JSON value", async () => {
+    const badGateway: LlmGateway = {
+      async chatCompletion() {
+        return { choices: [{ message: { content: JSON.stringify(["array", "not", "object"]) } }] };
+      },
+    };
+
+    const titler = createTitleGenerator(badGateway);
+    const description = "A task that is longer than sixty characters so we can check truncation here";
+    const title = await titler.generateTitle(description);
+    expect(title).toBe(description.slice(0, 60).trim());
+  });
+
+  test("createTitleGenerator falls back to truncation when LLM returns object without title field", async () => {
+    const badGateway: LlmGateway = {
+      async chatCompletion() {
+        return { choices: [{ message: { content: JSON.stringify({ wrong_field: "value" }) } }] };
+      },
+    };
+
+    const titler = createTitleGenerator(badGateway);
+    const description = "A task that is longer than sixty characters so we can check truncation here";
+    const title = await titler.generateTitle(description);
+    expect(title).toBe(description.slice(0, 60).trim());
+  });
 });

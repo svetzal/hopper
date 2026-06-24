@@ -450,14 +450,34 @@ export function setEngineeringBranchSlug(
 // ensureDefaults
 // ---------------------------------------------------------------------------
 
+const VALID_STATUSES: ReadonlySet<string> = new Set(Object.values(Status));
+
 /**
- * Apply default field values to a raw JSON record loaded from storage.
+ * Validate that a raw record has the required shape to be treated as an Item.
+ * Checks that the required string fields are present and non-empty, and that
+ * the status value (after defaulting) is one of the known Status values.
+ */
+export function isValidItemShape(raw: Record<string, unknown>): boolean {
+  if (typeof raw.id !== "string" || !raw.id) return false;
+  if (typeof raw.title !== "string" || !raw.title) return false;
+  if (typeof raw.description !== "string" || !raw.description) return false;
+  if (typeof raw.createdAt !== "string" || !raw.createdAt) return false;
+  if (typeof raw.status !== "string" || !VALID_STATUSES.has(raw.status)) return false;
+  return true;
+}
+
+/**
+ * Apply default field values to a raw JSON record loaded from storage and
+ * validate the resulting shape. Returns `null` when the record is malformed
+ * (missing required fields or an unrecognised status).
+ *
  * Handles legacy items that were saved without a status field.
  */
-export function ensureDefaults(raw: Record<string, unknown>): Item {
+export function ensureDefaults(raw: Record<string, unknown>): Item | null {
   if (!raw.status) {
     raw.status = Status.QUEUED;
   }
+  if (!isValidItemShape(raw)) return null;
   return raw as unknown as Item;
 }
 

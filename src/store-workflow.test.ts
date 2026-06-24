@@ -8,6 +8,7 @@ import {
   complete,
   dirsOverlap,
   ensureDefaults,
+  isValidItemShape,
   normalizeDir,
   prependItem,
   removeTags,
@@ -1167,7 +1168,7 @@ describe("ensureDefaults", () => {
       createdAt: "2025-01-01T00:00:00Z",
     };
     const result = ensureDefaults(raw);
-    expect(result.status).toBe("completed");
+    expect(result?.status).toBe("completed");
   });
 
   test("item missing status gets Status.QUEUED", () => {
@@ -1178,7 +1179,88 @@ describe("ensureDefaults", () => {
       createdAt: "2025-01-01T00:00:00Z",
     };
     const result = ensureDefaults(raw as Record<string, unknown>);
-    expect(result.status).toBe("queued");
+    expect(result?.status).toBe("queued");
+  });
+
+  test("returns null for record missing required id field", () => {
+    const raw = {
+      title: "Test",
+      description: "desc",
+      createdAt: "2025-01-01T00:00:00Z",
+    };
+    const result = ensureDefaults(raw as Record<string, unknown>);
+    expect(result).toBeNull();
+  });
+
+  test("returns null for record missing required title field", () => {
+    const raw = {
+      id: "test-id",
+      description: "desc",
+      createdAt: "2025-01-01T00:00:00Z",
+    };
+    const result = ensureDefaults(raw as Record<string, unknown>);
+    expect(result).toBeNull();
+  });
+
+  test("returns null for record missing description", () => {
+    const raw = { id: "test-id", title: "Test", createdAt: "2025-01-01T00:00:00Z" };
+    const result = ensureDefaults(raw as Record<string, unknown>);
+    expect(result).toBeNull();
+  });
+});
+
+describe("isValidItemShape", () => {
+  test("returns true for a well-formed record", () => {
+    const raw = {
+      id: "test-id",
+      title: "Test",
+      description: "desc",
+      status: "queued",
+      createdAt: "2025-01-01T00:00:00Z",
+    };
+    expect(isValidItemShape(raw)).toBe(true);
+  });
+
+  test("returns false when id is missing", () => {
+    const raw = {
+      title: "Test",
+      description: "desc",
+      status: "queued",
+      createdAt: "2025-01-01T00:00:00Z",
+    };
+    expect(isValidItemShape(raw)).toBe(false);
+  });
+
+  test("returns false when title is an empty string", () => {
+    const raw = {
+      id: "test-id",
+      title: "",
+      description: "desc",
+      status: "queued",
+      createdAt: "2025-01-01T00:00:00Z",
+    };
+    expect(isValidItemShape(raw)).toBe(false);
+  });
+
+  test("returns false when status is not a known value", () => {
+    const raw = {
+      id: "test-id",
+      title: "Test",
+      description: "desc",
+      status: "unknown_status",
+      createdAt: "2025-01-01T00:00:00Z",
+    };
+    expect(isValidItemShape(raw)).toBe(false);
+  });
+
+  test("returns false when createdAt is missing", () => {
+    const raw = {
+      id: "test-id",
+      title: "Test",
+      description: "desc",
+      status: "queued",
+    };
+    expect(isValidItemShape(raw)).toBe(false);
   });
 });
 

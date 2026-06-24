@@ -67,4 +67,35 @@ describe("StoreGateway", () => {
     const loaded = await gateway.load();
     expect(loaded[0]?.status).toBe("queued");
   });
+
+  test("load skips malformed records and keeps valid ones", async () => {
+    const gateway = await setup();
+    const validItem = {
+      id: "valid-id",
+      title: "Valid",
+      description: "a valid item",
+      createdAt: "2024-01-01T00:00:00Z",
+      status: "queued",
+    };
+    const malformedItem = { description: "missing id and title" };
+    await Bun.write(
+      join(tempDir, "items.json"),
+      JSON.stringify([validItem, malformedItem]),
+    );
+    const loaded = await gateway.load();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0]?.id).toBe("valid-id");
+  });
+
+  test("load skips non-object array entries", async () => {
+    const gateway = await setup();
+    const validItem = makeItem({ id: "good-id", title: "Good" });
+    await Bun.write(
+      join(tempDir, "items.json"),
+      JSON.stringify([validItem, "just a string", 42, null]),
+    );
+    const loaded = await gateway.load();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0]?.id).toBe("good-id");
+  });
 });

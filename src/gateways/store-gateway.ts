@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Item } from "../store.ts";
+import { isRecord } from "../is-record.ts";
 import { ensureDefaults } from "../store-workflow.ts";
 import { loadJsonFile, saveJsonFile } from "./json-file.ts";
 
@@ -16,7 +17,10 @@ export function createStoreGateway(storeDir?: string): StoreGateway {
   return {
     async load(): Promise<Item[]> {
       return loadJsonFile<Item>(filePath, (raw) =>
-        raw.map((entry) => ensureDefaults(entry as Record<string, unknown>)),
+        raw
+          .filter(isRecord)
+          .map((entry) => ensureDefaults(entry))
+          .filter((i): i is Item => i !== null),
       );
     },
     async save(items: Item[]): Promise<void> {

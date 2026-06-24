@@ -1,3 +1,5 @@
+import { isRecord } from "./is-record.ts";
+
 /**
  * Parse the JSONL event stream produced by `opencode run --format json` and
  * extract the canonical session result via `opencode export`.
@@ -62,12 +64,14 @@ export function scanOpencodeStream(raw: string): OpencodeStreamScan {
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    let event: OpencodeStreamEvent;
+    let parsed: unknown;
     try {
-      event = JSON.parse(trimmed) as OpencodeStreamEvent;
+      parsed = JSON.parse(trimmed);
     } catch {
       continue;
     }
+    if (!isRecord(parsed)) continue;
+    const event = parsed as OpencodeStreamEvent;
     if (!scan.sessionID && typeof event.sessionID === "string") {
       scan.sessionID = event.sessionID;
     }
@@ -162,7 +166,9 @@ export function parseOpencodeExport(raw: string): OpencodeExport | null {
   // Strip a leading "Exporting session: ..." status line if present.
   const jsonStart = trimmed.startsWith("{") ? trimmed : trimmed.replace(/^[^{]*\n/, "");
   try {
-    return JSON.parse(jsonStart) as OpencodeExport;
+    const parsed: unknown = JSON.parse(jsonStart);
+    if (!isRecord(parsed)) return null;
+    return parsed as OpencodeExport;
   } catch {
     return null;
   }
