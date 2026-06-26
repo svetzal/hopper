@@ -322,8 +322,8 @@ phase with:
 ```
 
 This is a **local login expiry**, not a service outage or a policy
-change. Re-authenticate (`claude` / `codex` login) and `hopper requeue
-<id>` the affected item. To confirm it's just auth, run the runner
+change. Re-authenticate (`claude` / `codex` login) and
+`hopper requeue <id>` the affected item. To confirm it's just auth, run the runner
 directly — e.g. for the `claude` runner:
 
 ```
@@ -350,8 +350,8 @@ Profiles are plain JSON files. To create one, drop a file at
 }
 ```
 
-After saving, the profile is immediately available via `hopper add
---profile <name>`. No `hopper reload`, no daemon restart.
+After saving, the profile is immediately available via
+`hopper add --profile <name>`. No `hopper reload`, no daemon restart.
 
 ### Validation rules
 
