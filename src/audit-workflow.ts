@@ -1,4 +1,8 @@
 import { isRecord } from "./is-record.ts";
+import {
+  classifyTerminalRunnerFailureRecord,
+  type TerminalRunnerFailure,
+} from "./runner-terminal-failure.ts";
 import type { Item } from "./store.ts";
 
 /** One phase's worth of input lines and metadata. */
@@ -34,6 +38,8 @@ export type DecodedEvent = {
   input?: unknown;
   /** First ~120 chars of text / thinking content. */
   textPreview?: string;
+  /** Present when the underlying runner emitted a classified terminal failure. */
+  terminalFailure?: TerminalRunnerFailure;
 };
 
 export interface AuditSummary {
@@ -49,6 +55,8 @@ export interface AuditSummary {
   lastCommands: string[];
   /** Last unmatched (no tool_result) tool_use block across all inputs, or null. */
   lastIncompleteToolUse: { phase: string; name: string; input: unknown } | null;
+  /** Classified terminal runner failures seen in result events. */
+  terminalFailures: Array<{ phase: string } & TerminalRunnerFailure>;
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -107,6 +115,7 @@ export function summarizeEvents(inputs: PhaseInput[], nowMs: number): AuditSumma
   const perPhaseEvents: Record<string, number> = {};
   const toolCounts: Map<string, number> = new Map();
   const bashCommands: string[] = [];
+  const terminalFailures: Array<{ phase: string } & TerminalRunnerFailure> = [];
 
   // tool_use id → { phase, name, input } — cleared when a matching tool_result appears
   const openToolUses: Map<string, { phase: string; name: string; input: unknown }> = new Map();
@@ -126,6 +135,11 @@ export function summarizeEvents(inputs: PhaseInput[], nowMs: number): AuditSumma
       phaseCount++;
 
       const topType = obj.type as string | undefined;
+
+      const terminalFailure = classifyTerminalRunnerFailureRecord(obj);
+      if (terminalFailure) {
+        terminalFailures.push({ phase: input.phase, ...terminalFailure });
+      }
 
       if (topType === "assistant" || topType === "user") {
         const msg = isRecord(obj.message) ? obj.message : {};
@@ -204,6 +218,7 @@ export function summarizeEvents(inputs: PhaseInput[], nowMs: number): AuditSumma
     toolHistogram,
     lastCommands,
     lastIncompleteToolUse,
+    terminalFailures,
   };
 }
 
@@ -221,7 +236,11 @@ export function decodeEvents(inputs: PhaseInput[], n: number): DecodedEvent[] {
       const topType = obj.type as string | undefined;
 
       if (topType === "result" || topType === "opencode-export") {
-        all.push({ phase: input.phase, kind: "result" });
+        all.push({
+          phase: input.phase,
+          kind: "result",
+          terminalFailure: classifyTerminalRunnerFailureRecord(obj) ?? undefined,
+        });
         continue;
       }
       if (topType === "stderr") {
@@ -400,6 +419,15 @@ export function formatAuditSummary(item: Item, summary: AuditSummary): string {
     }
   }
 
+  if (summary.terminalFailures.length > 0) {
+    lines.push("Terminal failures:");
+    for (const failure of summary.terminalFailures) {
+      lines.push(
+        `  [${failure.phase}] ${failure.provider} ${failure.failureKind} HTTP ${failure.apiErrorStatus}: ${failure.message.slice(0, 120)}`,
+      );
+    }
+  }
+
   return lines.join("\n");
 }
 
@@ -415,12 +443,19 @@ export function formatDecodedEvents(events: DecodedEvent[]): string {
 
       if (e.role) parts.push(`(${e.role})`);
       if (e.name) parts.push(e.name);
+      if (e.terminalFailure) {
+        parts.push(
+          `${e.terminalFailure.provider} ${e.terminalFailure.failureKind} HTTP ${e.terminalFailure.apiErrorStatus}`,
+        );
+      }
 
       if (e.kind === "tool_use" && isRecord(e.input)) {
         const cmd = e.input.command;
         const file = e.input.file_path ?? e.input.path;
         if (typeof cmd === "string") parts.push(`$ ${cmd.slice(0, 80)}`);
         else if (typeof file === "string") parts.push(file.slice(0, 80));
+      } else if (e.terminalFailure) {
+        parts.push(e.terminalFailure.message.slice(0, 80));
       } else if (e.textPreview) {
         parts.push(e.textPreview.slice(0, 80));
       }

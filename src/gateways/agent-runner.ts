@@ -13,6 +13,7 @@
  */
 
 import type { Profile } from "../profile.ts";
+import type { TerminalRunnerFailure } from "../runner-terminal-failure.ts";
 
 /**
  * Options that control how an agent session is invoked.
@@ -103,6 +104,12 @@ export interface SessionOptions {
   env?: Record<string, string>;
 }
 
+export interface RunSessionOutcome {
+  exitCode: number;
+  result: string;
+  terminalFailure?: TerminalRunnerFailure;
+}
+
 /**
  * The actual agent runner. Implementations exist for Claude Code
  * (`claude-gateway.ts`), opencode (`opencode-gateway.ts`), and Codex
@@ -112,14 +119,16 @@ export interface AgentRunner {
   /**
    * Run a full agentic session. Streams the runner's JSONL event output to
    * the audit file as it arrives, then returns the exit code and the
-   * extracted final-assistant-message text as `result`.
+   * extracted final-assistant-message text as `result`. Runners may also
+   * attach a classified `terminalFailure` when the provider returned a
+   * non-retryable account or quota condition.
    */
   runSession(
     prompt: string,
     cwd: string,
     auditFile: string,
     options?: SessionOptions,
-  ): Promise<{ exitCode: number; result: string }>;
+  ): Promise<RunSessionOutcome>;
   /**
    * One-shot text generation with no tools and no permissions. Intended for
    * cheap deterministic calls where hopper itself needs a string (branch

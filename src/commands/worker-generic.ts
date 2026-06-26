@@ -1,11 +1,12 @@
 import { join } from "node:path";
-import type { AgentRunner } from "../gateways/agent-runner.ts";
+import type { AgentRunner, RunSessionOutcome } from "../gateways/agent-runner.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import type { ProfilesGateway } from "../gateways/profiles-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import type { WorkerShimGateway } from "../gateways/worker-shim-gateway.ts";
 import type { Profile } from "../profile.ts";
+import type { TerminalRunnerFailure } from "../runner-terminal-failure.ts";
 import type { ClaimedItem, Item } from "../store.ts";
 import {
   buildCommitMessage,
@@ -46,6 +47,7 @@ interface CompletionContext {
   exitCode: number;
   result: string;
   mergeNote: string;
+  terminalFailure?: TerminalRunnerFailure;
   workBranch: string | undefined;
   fs: FsGateway;
   resultFile: string;
@@ -53,8 +55,19 @@ interface CompletionContext {
 }
 
 async function handleCompletion(ctx: CompletionContext): Promise<void> {
-  const { item, agentName, exitCode, result, mergeNote, workBranch, fs, resultFile, log } = ctx;
-  const plan = resolveCompletionPlan(exitCode, result, mergeNote);
+  const {
+    item,
+    agentName,
+    exitCode,
+    result,
+    mergeNote,
+    terminalFailure,
+    workBranch,
+    fs,
+    resultFile,
+    log,
+  } = ctx;
+  const plan = resolveCompletionPlan(exitCode, result, mergeNote, terminalFailure);
 
   const { outputLabel, sessionLabel } = resolveCompletionLabels(item);
   log(`--- ${outputLabel} Output ---`);
@@ -153,12 +166,12 @@ async function executeWork(ctx: {
   shell: ShellGateway;
   profile: Profile;
   log: LogFn;
-}): Promise<{ exitCode: number; result: string }> {
+}): Promise<RunSessionOutcome> {
   const { item, workDir, auditFile, hopperHome, claude, shell, profile, log } = ctx;
   const plan = resolveExecutionPlan(item, hopperHome, process.env.PATH ?? "");
   if (plan.type === "command") {
     log(`Starting command...\nAudit log: ${auditFile}`);
-    return shell.runCommand(plan.command, workDir ?? process.cwd(), auditFile);
+    return { ...(await shell.runCommand(plan.command, workDir ?? process.cwd(), auditFile)) };
   }
   if (plan.type === "investigation") {
     log(`Starting investigation session (deep, read-only)...\nAudit log: ${auditFile}`);
@@ -247,7 +260,7 @@ export async function processItem(args: ProcessItemArgs): Promise<void> {
       log,
     }));
 
-    const { exitCode, result } = await executeWork({
+    const { exitCode, result, terminalFailure } = await executeWork({
       item,
       workDir,
       auditFile,
@@ -279,6 +292,7 @@ export async function processItem(args: ProcessItemArgs): Promise<void> {
             exitCode,
             result,
             mergeNote,
+            terminalFailure,
             workBranch,
             fs,
             resultFile,
@@ -294,6 +308,7 @@ export async function processItem(args: ProcessItemArgs): Promise<void> {
         exitCode,
         result,
         mergeNote: "",
+        terminalFailure,
         workBranch,
         fs,
         resultFile,

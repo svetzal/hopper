@@ -7,9 +7,13 @@ import {
   resolveWorktreeSetupFailureReason,
 } from "../engineering-workflow.ts";
 import { toErrorMessage } from "../error-utils.ts";
-import type { AgentRunner, SessionOptions } from "../gateways/agent-runner.ts";
+import type { AgentRunner, RunSessionOutcome, SessionOptions } from "../gateways/agent-runner.ts";
 import { buildEngineeringBranchName } from "../git-workflow.ts";
 import type { Profile } from "../profile.ts";
+import {
+  formatTerminalRunnerFailureSummary,
+  type TerminalRunnerFailure,
+} from "../runner-terminal-failure.ts";
 import type { ClaimedItem, EngineeringItem, PhaseRecord } from "../store.ts";
 import { recordItemPhase, setItemEngineeringBranchSlug } from "../store.ts";
 import {
@@ -116,6 +120,11 @@ export interface ProcessEngineeringItemArgs {
   hopperHome: string;
   deps: WorkerRunnerDeps;
   concurrency?: number;
+}
+
+interface TerminalFailureResult {
+  terminalFailure: TerminalRunnerFailure;
+  finalResult: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -235,6 +244,13 @@ async function safeRecordPhase(itemId: string, record: PhaseRecord, log: LogFn):
   return safeVoid(() => recordItemPhase(itemId, record), "Phase recording failed", log);
 }
 
+function resolveTerminalFailureResult(failure: TerminalRunnerFailure): TerminalFailureResult {
+  return {
+    terminalFailure: failure,
+    finalResult: formatTerminalRunnerFailureSummary(failure),
+  };
+}
+
 export async function runPhase(ctx: {
   claude: AgentRunner;
   profile: Profile;
@@ -244,12 +260,12 @@ export async function runPhase(ctx: {
   auditFile: string;
   sessionOptions: SessionOptions;
   phaseRecord: (
-    run: { exitCode: number; result: string },
+    run: RunSessionOutcome,
     startedAt: string,
     endedAt: string,
   ) => PhaseRecord | Promise<PhaseRecord>;
   log: LogFn;
-}): Promise<{ result: string; exitCode: number }> {
+}): Promise<RunSessionOutcome> {
   const {
     claude,
     profile,
@@ -269,7 +285,7 @@ export async function runPhase(ctx: {
   const endedAt = new Date().toISOString();
   const record = await phaseRecord(run, startedAt, endedAt);
   await safeRecordPhase(itemId, record, log);
-  return { result: run.result, exitCode: run.exitCode };
+  return run;
 }
 
 // ---------------------------------------------------------------------------
@@ -281,6 +297,8 @@ interface ExecuteValidateResult {
   reason: string;
   executeResults: readonly string[];
   validateResults: readonly string[];
+  terminalFailure?: TerminalRunnerFailure;
+  finalResult?: string;
 }
 
 async function runExecuteAttempt(
@@ -289,7 +307,7 @@ async function runExecuteAttempt(
   maxAttempts: number,
   previousExecuteResult: string,
   previousValidateResult: string,
-): Promise<{ result: string; exitCode: number }> {
+): Promise<RunSessionOutcome> {
   const { item, worktreePath, planText, hopperHome, deps, log } = ctx;
   const { claude, profile } = deps;
   const executeAuditPath = resolveAttemptAuditPath(item.id, hopperHome, "execute", attempt);
@@ -334,6 +352,7 @@ async function runValidateAttempt(
 ): Promise<{
   outcome: ValidateOutcomeWithFallback;
   result: string;
+  terminalFailure?: TerminalRunnerFailure;
 }> {
   const { item, worktreePath, planText, hopperHome, deps, log } = ctx;
   const { claude, profile } = deps;
@@ -345,7 +364,7 @@ async function runValidateAttempt(
     passed: false,
     reason: "not resolved",
   };
-  const { result } = await runPhase({
+  const run = await runPhase({
     claude,
     profile,
     itemId: item.id,
@@ -354,6 +373,20 @@ async function runValidateAttempt(
     auditFile: validateAuditPath,
     sessionOptions: buildValidateOptions(),
     phaseRecord: async (run, startedAt, endedAt) => {
+      if (run.terminalFailure?.terminal) {
+        outcome = {
+          passed: false,
+          reason: `terminal runner failure: ${run.terminalFailure.provider} ${run.terminalFailure.failureKind}`,
+        };
+        return {
+          name: "validate",
+          startedAt,
+          endedAt,
+          exitCode: run.exitCode,
+          passed: false,
+          attempt,
+        };
+      }
       outcome = await resolveValidateOutcomeWithFallback({
         exitCode: run.exitCode,
         resultText: run.result,
@@ -373,7 +406,7 @@ async function runValidateAttempt(
     },
     log,
   });
-  return { outcome, result };
+  return { outcome, result: run.result, terminalFailure: run.terminalFailure };
 }
 
 export async function runExecuteValidateLoop(
@@ -405,6 +438,15 @@ export async function runExecuteValidateLoop(
     );
   }
 
+  async function writeTerminalFailure(
+    failure: TerminalRunnerFailure,
+  ): Promise<TerminalFailureResult> {
+    const terminalResult = resolveTerminalFailureResult(failure);
+    log(terminalResult.finalResult);
+    await fs.writeFile(paths.resultFile, terminalResult.finalResult);
+    return terminalResult;
+  }
+
   while (attempt < maxAttempts) {
     attempt += 1;
 
@@ -418,6 +460,17 @@ export async function runExecuteValidateLoop(
     executeResults.push(executeAttempt.result);
     previousExecuteResult = executeAttempt.result;
 
+    if (executeAttempt.terminalFailure?.terminal) {
+      const terminalResult = await writeTerminalFailure(executeAttempt.terminalFailure);
+      return {
+        passed: false,
+        reason: terminalResult.finalResult,
+        executeResults,
+        validateResults,
+        ...terminalResult,
+      };
+    }
+
     if (executeAttempt.exitCode !== 0) {
       const msg = `Execute phase attempt ${attempt} failed (exit ${executeAttempt.exitCode}); worktree + branch preserved.`;
       await writeEngineeringFailure(msg);
@@ -427,6 +480,18 @@ export async function runExecuteValidateLoop(
     const validateAttempt = await runValidateAttempt(ctx, attempt, maxAttempts);
     validateResults.push(validateAttempt.result);
     previousValidateResult = validateAttempt.result;
+
+    if (validateAttempt.terminalFailure?.terminal) {
+      const terminalResult = await writeTerminalFailure(validateAttempt.terminalFailure);
+      return {
+        passed: false,
+        reason: terminalResult.finalResult,
+        executeResults,
+        validateResults,
+        ...terminalResult,
+      };
+    }
+
     outcome = validateAttempt.outcome;
 
     if (outcome.passed) break;
@@ -455,11 +520,13 @@ async function safePersistBranchSlug(itemId: string, slug: string, log: LogFn): 
   return safeVoid(() => setItemEngineeringBranchSlug(itemId, slug), "Slug persistence failed", log);
 }
 
-export async function runPlanPhase(ctx: EngineeringContext): Promise<{ planText: string } | null> {
+export async function runPlanPhase(
+  ctx: EngineeringContext,
+): Promise<{ planText: string } | TerminalFailureResult | null> {
   const { item, worktreePath, paths, deps, log } = ctx;
   const { claude, fs, profile } = deps;
   log(`Plan phase (deep, plan mode, read-only)...\nAudit log: ${paths.planAuditFile}`);
-  const { result, exitCode } = await runPhase({
+  const run = await runPhase({
     claude,
     profile,
     itemId: item.id,
@@ -475,6 +542,13 @@ export async function runPlanPhase(ctx: EngineeringContext): Promise<{ planText:
     }),
     log,
   });
+  if (run.terminalFailure?.terminal) {
+    const terminalResult = resolveTerminalFailureResult(run.terminalFailure);
+    log(terminalResult.finalResult);
+    await fs.writeFile(paths.resultFile, terminalResult.finalResult);
+    return terminalResult;
+  }
+  const { result, exitCode } = run;
   const planText = result.trim();
   if (exitCode !== 0 || !planText) {
     const msg = `Plan phase failed (exit ${exitCode}); worktree + branch preserved for inspection.`;
@@ -628,6 +702,17 @@ export async function processEngineeringItem(args: ProcessEngineeringItemArgs): 
 
   const planResult = await runPlanPhase(ctx);
   if (!planResult) return;
+  if ("terminalFailure" in planResult) {
+    await finalizeCompletion({
+      fs: deps.fs,
+      resultFile: paths.resultFile,
+      finalResult: planResult.finalResult,
+      claimToken: ctx.item.claimToken,
+      agentName,
+      log,
+    });
+    return;
+  }
   const { planText } = planResult;
 
   const loopResult = await runExecuteValidateLoop({
@@ -639,7 +724,19 @@ export async function processEngineeringItem(args: ProcessEngineeringItemArgs): 
     deps: { claude: deps.claude, fs: deps.fs, profile: deps.profile },
     log,
   });
-  if (!loopResult.passed) return;
+  if (!loopResult.passed) {
+    if (loopResult.terminalFailure?.terminal && loopResult.finalResult) {
+      await finalizeCompletion({
+        fs: deps.fs,
+        resultFile: paths.resultFile,
+        finalResult: loopResult.finalResult,
+        claimToken: ctx.item.claimToken,
+        agentName,
+        log,
+      });
+    }
+    return;
+  }
 
   const { dirty } = await commitEngineeringChanges(ctx);
 

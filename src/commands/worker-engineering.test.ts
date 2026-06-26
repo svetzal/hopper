@@ -71,6 +71,13 @@ const requeueItemMock = requeueItemSpy;
 
 const HOPPER_HOME = "/tmp/test-hopper-eng";
 const ITEM_ID = "aaaaaaaa-0000-0000-0000-000000000000";
+const TERMINAL_FAILURE = {
+  provider: "anthropic",
+  failureKind: "account_limit",
+  terminal: true,
+  apiErrorStatus: 429,
+  message: "You've hit your monthly spend limit - raise it at claude.ai/settings/usage",
+} as const;
 
 function makePaths(): EngineeringAuditPaths {
   return {
@@ -146,7 +153,10 @@ describe("runPlanPhase", () => {
     const result = await runPlanPhase(makeEngineeringCtx({ item, claude }));
 
     expect(result).not.toBeNull();
-    expect(result?.planText).toBe("## Approach\nDo the thing.");
+    if (!result || "terminalFailure" in result) {
+      throw new Error("Expected successful plan result");
+    }
+    expect(result.planText).toBe("## Approach\nDo the thing.");
   });
 
   test("returns null when plan exit code is non-zero", async () => {
@@ -205,6 +215,29 @@ describe("runPlanPhase", () => {
     const resultWrite = planFailWriteMock.mock.calls.find((c) => c[0] === paths.resultFile);
     expect(resultWrite).toBeDefined();
     expect(resultWrite?.[1]).toContain("Plan phase failed");
+  });
+
+  test("returns terminal failure metadata and writes the terminal summary", async () => {
+    const item = makeEngineeringItem({ id: ITEM_ID });
+    const paths = makePaths();
+    const claude: AgentRunner = {
+      runSession: mock(async () => ({
+        exitCode: 1,
+        result: TERMINAL_FAILURE.message,
+        terminalFailure: TERMINAL_FAILURE,
+      })),
+      generateText: mock(async () => ({ exitCode: 0, text: "" })),
+    };
+    const fs = makeMockFs();
+
+    const result = await runPlanPhase(makeEngineeringCtx({ item, claude, fs, paths }));
+
+    expect(result).toEqual({
+      terminalFailure: TERMINAL_FAILURE,
+      finalResult:
+        "Terminal runner failure: anthropic account_limit (HTTP 429 monthly spend limit)\n\nProvider message: You've hit your monthly spend limit - raise it at claude.ai/settings/usage",
+    });
+    expect(typedMock(fs.writeFile).mock.calls[0]?.[1]).toContain("Terminal runner failure");
   });
 });
 

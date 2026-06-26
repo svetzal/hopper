@@ -22,6 +22,13 @@ import {
 } from "./worker-workflow.ts";
 
 const HOPPER_HOME = "/home/user/.hopper";
+const TERMINAL_FAILURE = {
+  provider: "anthropic",
+  failureKind: "account_limit",
+  terminal: true,
+  apiErrorStatus: 429,
+  message: "You've hit your monthly spend limit - raise it at claude.ai/settings/usage",
+} as const;
 
 describe("worker-workflow", () => {
   describe("resolveWorkSetup", () => {
@@ -595,6 +602,18 @@ describe("worker-workflow", () => {
   });
 
   describe("resolveCompletionPlan", () => {
+    test("terminal runner failure completes with an explicit provider summary", () => {
+      const plan = resolveCompletionPlan(1, TERMINAL_FAILURE.message, "", TERMINAL_FAILURE);
+      expect(plan.kind).toBe("complete");
+      if (plan.kind === "complete") {
+        expect(plan.finalResult).toContain("Terminal runner failure");
+        expect(plan.finalResult).toContain("anthropic");
+        expect(plan.finalResult).toContain("account_limit");
+        expect(plan.finalResult).toContain("HTTP 429");
+        expect(plan.finalResult).toContain("monthly spend limit");
+      }
+    });
+
     test("exit 0 → complete with combined finalResult", () => {
       const plan = resolveCompletionPlan(0, "Task done.", "");
       expect(plan.kind).toBe("complete");

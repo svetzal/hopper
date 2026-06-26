@@ -36,6 +36,13 @@ const recordItemPhaseMock = recordItemPhaseSpy;
 
 const HOPPER_HOME = "/tmp/test-hopper-loop";
 const ITEM_ID = "aaaaaaaa-0000-0000-0000-000000000000";
+const TERMINAL_FAILURE = {
+  provider: "anthropic",
+  failureKind: "account_limit",
+  terminal: true,
+  apiErrorStatus: 429,
+  message: "You've hit your monthly spend limit - raise it at claude.ai/settings/usage",
+} as const;
 
 function makePaths(): EngineeringAuditPaths {
   return {
@@ -156,6 +163,40 @@ describe("runPhase", () => {
         log: noop,
       }),
     ).resolves.toEqual({ result: "ok", exitCode: 0 });
+  });
+
+  test("preserves terminalFailure on the returned run outcome", async () => {
+    const claude: AgentRunner = {
+      runSession: mock(async () => ({
+        exitCode: 1,
+        result: TERMINAL_FAILURE.message,
+        terminalFailure: TERMINAL_FAILURE,
+      })),
+      generateText: mock(async () => ({ exitCode: 0, text: "" })),
+    };
+
+    await expect(
+      runPhase({
+        claude,
+        profile: TEST_PROFILE,
+        itemId: ITEM_ID,
+        prompt: "prompt",
+        worktreePath: "/worktree",
+        auditFile: "/audit.jsonl",
+        sessionOptions: {} as SessionOptions,
+        phaseRecord: (_run, startedAt, endedAt) => ({
+          name: "execute",
+          startedAt,
+          endedAt,
+          exitCode: _run.exitCode,
+        }),
+        log: noop,
+      }),
+    ).resolves.toEqual({
+      exitCode: 1,
+      result: TERMINAL_FAILURE.message,
+      terminalFailure: TERMINAL_FAILURE,
+    });
   });
 });
 
@@ -331,6 +372,40 @@ describe("runExecuteValidateLoop", () => {
     const resultWrite = execFailWriteMock.mock.calls.find((c) => c[0] === paths.resultFile);
     expect(resultWrite).toBeDefined();
     expect(resultWrite?.[1]).toContain("Execute phase attempt 1 failed");
+  });
+
+  test("returns terminal failure immediately and does not validate or retry", async () => {
+    const item = makeClaimedItem({ id: ITEM_ID, retries: 2 });
+    const claude: AgentRunner = {
+      runSession: mock(async (prompt: string) => {
+        if (prompt.includes("EXECUTE phase")) {
+          return {
+            exitCode: 1,
+            result: TERMINAL_FAILURE.message,
+            terminalFailure: TERMINAL_FAILURE,
+          };
+        }
+        return { exitCode: 0, result: "VALIDATE: PASS" };
+      }),
+      generateText: mock(async () => ({ exitCode: 0, text: "" })),
+    };
+    const fs = makeMockFs();
+
+    const result = await runExecuteValidateLoop({
+      item,
+      worktreePath: "/worktree",
+      planText: "plan",
+      paths: makePaths(),
+      hopperHome: HOPPER_HOME,
+      deps: { claude, fs, profile: TEST_PROFILE },
+      log: noop,
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.terminalFailure).toEqual(TERMINAL_FAILURE);
+    expect(result.finalResult).toContain("Terminal runner failure");
+    expect(claude.runSession).toHaveBeenCalledTimes(1);
+    expect(typedMock(fs.writeFile).mock.calls[0]?.[1]).toContain("Terminal runner failure");
   });
 
   test("validate without PASS/FAIL marker → generateText fallback assessor called, outcome reflects fallback", async () => {

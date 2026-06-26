@@ -1,5 +1,7 @@
 import { join } from "node:path";
 import type { SessionOptions } from "./gateways/agent-runner.ts";
+import type { TerminalRunnerFailure } from "./runner-terminal-failure.ts";
+import { formatTerminalRunnerFailureSummary } from "./runner-terminal-failure.ts";
 import type { Item } from "./store.ts";
 import { buildInvestigationOptions, buildInvestigationPrompt } from "./task-type-workflow.ts";
 
@@ -195,7 +197,14 @@ export function resolveCompletionPlan(
   exitCode: number,
   result: string,
   mergeNote: string,
+  terminalFailure?: TerminalRunnerFailure,
 ): CompletionPlan {
+  if (terminalFailure?.terminal) {
+    return {
+      kind: "complete",
+      finalResult: formatTerminalRunnerFailureSummary(terminalFailure) + mergeNote,
+    };
+  }
   const { action, result: finalResult } = resolveCompletionAction(exitCode, result, mergeNote);
   if (action === "complete") {
     return { kind: "complete", finalResult };

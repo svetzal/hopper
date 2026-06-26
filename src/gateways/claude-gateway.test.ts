@@ -44,14 +44,38 @@ describe("claude-gateway", () => {
   test("stdout JSONL is captured in audit file and result matches extractResult", async () => {
     const auditFile = join(tempDir, "audit.jsonl");
     const runner = createClaudeRunner();
-    const { result } = await runner.runSession("test prompt", tempDir, auditFile, {
+    const { result, terminalFailure } = await runner.runSession("test prompt", tempDir, auditFile, {
       env: { FAKE_CLAUDE_STDOUT: '{"type":"result","result":"hello from claude"}\n' },
     });
 
     expect(result).toBe("hello from claude");
+    expect(terminalFailure).toBeUndefined();
     const content = await readFile(auditFile, "utf8");
     expect(content).toContain('"type":"result"');
     expect(content).toContain('"hello from claude"');
+  });
+
+  test("extracts classified terminal failures from Claude result JSONL", async () => {
+    const auditFile = join(tempDir, "audit.jsonl");
+    const runner = createClaudeRunner();
+    const outcome = await runner.runSession("test prompt", tempDir, auditFile, {
+      env: {
+        FAKE_CLAUDE_STDOUT:
+          '{"type":"result","is_error":true,"api_error_status":429,"result":"You\'ve hit your monthly spend limit - raise it at claude.ai/settings/usage"}\n',
+        FAKE_CLAUDE_EXIT: "1",
+      },
+    });
+
+    expect(outcome.result).toBe(
+      "You've hit your monthly spend limit - raise it at claude.ai/settings/usage",
+    );
+    expect(outcome.terminalFailure).toEqual({
+      provider: "anthropic",
+      failureKind: "account_limit",
+      terminal: true,
+      apiErrorStatus: 429,
+      message: "You've hit your monthly spend limit - raise it at claude.ai/settings/usage",
+    });
   });
 
   test("stderr is appended as a JSONL stderr event", async () => {

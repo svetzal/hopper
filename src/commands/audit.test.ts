@@ -88,6 +88,15 @@ function toolResultLine(toolUseId: string): string {
   });
 }
 
+function terminalResultLine(): string {
+  return JSON.stringify({
+    type: "result",
+    is_error: true,
+    api_error_status: 429,
+    result: "You've hit your monthly spend limit - raise it at claude.ai/settings/usage",
+  });
+}
+
 // ── Test setup ────────────────────────────────────────────────────────────────
 
 describe("auditCommand", () => {
@@ -231,7 +240,7 @@ describe("auditCommand", () => {
   test("summary --json output is JSON-serializable", async () => {
     const item = makeItem();
     await addItem(item);
-    const phaseFile = makePhaseFile(item.id, "audit", [systemLine("init")]);
+    const phaseFile = makePhaseFile(item.id, "audit", [systemLine("init"), terminalResultLine()]);
     const gateway = makeFakeGateway({ phaseFiles: [phaseFile] });
 
     const result = await auditCommand(makeParsed("audit", [item.id]), gateway);
@@ -241,6 +250,16 @@ describe("auditCommand", () => {
       const serialized = JSON.parse(JSON.stringify(result.data)) as AuditSummaryResult;
       expect(serialized).toBeDefined();
       expect(typeof serialized.totalEvents).toBe("number");
+      expect(serialized.terminalFailures).toEqual([
+        {
+          phase: "audit",
+          provider: "anthropic",
+          failureKind: "account_limit",
+          terminal: true,
+          apiErrorStatus: 429,
+          message: "You've hit your monthly spend limit - raise it at claude.ai/settings/usage",
+        },
+      ]);
     }
   });
 

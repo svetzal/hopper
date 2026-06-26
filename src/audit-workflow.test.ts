@@ -59,6 +59,15 @@ function systemEvent(subtype: string): string {
   return JSON.stringify({ type: "system", subtype });
 }
 
+function claudeAccountLimitResultEvent(): string {
+  return JSON.stringify({
+    type: "result",
+    is_error: true,
+    api_error_status: 429,
+    result: "You've hit your monthly spend limit - raise it at claude.ai/settings/usage",
+  });
+}
+
 function makePhaseInput(phase: string, lines: string[], mtimeMs = NOW_MS - 5_000): PhaseInput {
   return { phase, lines, mtimeMs };
 }
@@ -116,6 +125,7 @@ describe("summarizeEvents", () => {
     expect(summary.toolHistogram).toEqual([]);
     expect(summary.lastCommands).toEqual([]);
     expect(summary.lastIncompleteToolUse).toBeNull();
+    expect(summary.terminalFailures).toEqual([]);
   });
 
   test("counts events per phase", () => {
@@ -276,6 +286,24 @@ describe("summarizeEvents", () => {
     const summary = summarizeEvents([makePhaseInput("audit", lines)], NOW_MS);
     expect(summary.totalEvents).toBe(1);
   });
+
+  test("collects classified terminal failures from result records", () => {
+    const summary = summarizeEvents(
+      [makePhaseInput("audit", [systemEvent("init"), claudeAccountLimitResultEvent()])],
+      NOW_MS,
+    );
+
+    expect(summary.terminalFailures).toEqual([
+      {
+        phase: "audit",
+        provider: "anthropic",
+        failureKind: "account_limit",
+        terminal: true,
+        apiErrorStatus: 429,
+        message: "You've hit your monthly spend limit - raise it at claude.ai/settings/usage",
+      },
+    ]);
+  });
 });
 
 // ── decodeEvents ──────────────────────────────────────────────────────────────
@@ -332,6 +360,19 @@ describe("decodeEvents", () => {
     const events = decodeEvents([makePhaseInput("audit", [line])], 5);
 
     expect(events[0]?.kind).toBe("result");
+  });
+
+  test("decodes terminal failure metadata on result events", () => {
+    const events = decodeEvents([makePhaseInput("audit", [claudeAccountLimitResultEvent()])], 5);
+
+    expect(events[0]?.kind).toBe("result");
+    expect(events[0]?.terminalFailure).toEqual({
+      provider: "anthropic",
+      failureKind: "account_limit",
+      terminal: true,
+      apiErrorStatus: 429,
+      message: "You've hit your monthly spend limit - raise it at claude.ai/settings/usage",
+    });
   });
 
   test("decodes stderr event with textPreview", () => {
@@ -543,6 +584,19 @@ describe("formatAuditSummary", () => {
     expect(output).toContain("Last incomplete tool_use");
     expect(output).toContain("Bash");
   });
+
+  test("shows terminal failure summaries when present", () => {
+    const summary = summarizeEvents(
+      [makePhaseInput("audit", [claudeAccountLimitResultEvent()])],
+      NOW_MS,
+    );
+    const output = formatAuditSummary(makeAuditItem(), summary);
+
+    expect(output).toContain("Terminal failures");
+    expect(output).toContain("anthropic");
+    expect(output).toContain("account_limit");
+    expect(output).toContain("HTTP 429");
+  });
 });
 
 // ── formatDecodedEvents ───────────────────────────────────────────────────────
@@ -571,5 +625,15 @@ describe("formatDecodedEvents", () => {
     const events = decodeEvents([makePhaseInput("execute", [bashEvent("t1", "bun test")])], 5);
     const output = formatDecodedEvents(events);
     expect(output).toContain("bun test");
+  });
+
+  test("includes terminal failure details in result event output", () => {
+    const events = decodeEvents([makePhaseInput("audit", [claudeAccountLimitResultEvent()])], 5);
+    const output = formatDecodedEvents(events);
+
+    expect(output).toContain("anthropic");
+    expect(output).toContain("account_limit");
+    expect(output).toContain("HTTP 429");
+    expect(output).toContain("monthly spend limit");
   });
 });

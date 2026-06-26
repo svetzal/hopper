@@ -1,5 +1,6 @@
 import { unlink } from "node:fs/promises";
 import type { Profile } from "../profile.ts";
+import type { RunSessionOutcome } from "./agent-runner.ts";
 import { generateTempFilename } from "./audit-stream.ts";
 
 type RunSession = (
@@ -7,7 +8,7 @@ type RunSession = (
   cwd: string,
   auditFile: string,
   options: { model: string; profile: Profile; appendSystemPrompt?: string },
-) => Promise<{ exitCode: number; result: string }>;
+) => Promise<RunSessionOutcome>;
 
 export function buildGenerateText(runSession: RunSession, tmpPrefix: string) {
   return async function generateText(

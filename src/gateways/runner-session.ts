@@ -1,4 +1,4 @@
-import type { SessionOptions } from "./agent-runner.ts";
+import type { RunSessionOutcome, SessionOptions } from "./agent-runner.ts";
 import { spawnStreamedSession } from "./audit-stream.ts";
 import { resolveCraftspersonBody } from "./craftsperson-loader.ts";
 import { resolveBinOnPath } from "./resolve-bin.ts";
@@ -40,7 +40,7 @@ export interface RunnerSessionSpec {
     cwd: string,
     auditFile: string,
     callCtx: unknown,
-  ): Promise<{ exitCode: number; result: string }>;
+  ): Promise<RunSessionOutcome>;
 }
 
 /**
@@ -55,7 +55,7 @@ export function buildRunnerRunSession(spec: RunnerSessionSpec) {
     cwd: string,
     auditFile: string,
     options: SessionOptions = {},
-  ): Promise<{ exitCode: number; result: string }> {
+  ): Promise<RunSessionOutcome> {
     const bin = resolveBinOnPath(spec.bin, spec.hint);
     const craftspersonBody = await resolveCraftspersonBody(spec.loadCraftsperson, options.agent);
     const effectivePrompt = spec.resolvePrompt(prompt, options, craftspersonBody);

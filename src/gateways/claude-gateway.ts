@@ -1,4 +1,5 @@
 import { buildSessionPreamble, extractResult } from "../extract-result.ts";
+import { extractClaudeTerminalFailure } from "../runner-terminal-failure.ts";
 import type { AgentRunner } from "./agent-runner.ts";
 import { mergeSpawnEnv } from "./audit-stream.ts";
 import { buildClaudeArgv } from "./claude-argv.ts";
@@ -23,7 +24,11 @@ const runSession = buildRunnerRunSession({
     return buildSessionPreamble(existing, options.append ?? false);
   },
   extractOutcome: (output, exitCode, _bin, _cwd, _auditFile, _callCtx) =>
-    Promise.resolve({ exitCode, result: extractResult(output) }),
+    Promise.resolve({
+      exitCode,
+      result: extractResult(output),
+      terminalFailure: extractClaudeTerminalFailure(output) ?? undefined,
+    }),
 });
 
 export function createClaudeRunner(): AgentRunner {

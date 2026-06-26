@@ -32,6 +32,13 @@ afterAll(() => {
 const completeItemMock = completeItemSpy;
 const recordItemPhaseMock = recordItemPhaseSpy;
 const requeueItemMock = requeueItemSpy;
+const TERMINAL_FAILURE = {
+  provider: "anthropic",
+  failureKind: "account_limit",
+  terminal: true,
+  apiErrorStatus: 429,
+  message: "You've hit your monthly spend limit - raise it at claude.ai/settings/usage",
+} as const;
 
 function makeMockClaude(exitCode = 0, result = "Done."): AgentRunner {
   return {
@@ -199,6 +206,42 @@ describe("processItem", () => {
     });
 
     expect(completeItemMock).not.toHaveBeenCalled();
+    expect(requeueItemMock).not.toHaveBeenCalled();
+  });
+
+  test("completes terminal runner failures instead of requeueing", async () => {
+    const item = makeClaimedItem();
+    const claude: AgentRunner = {
+      runSession: mock(async () => ({
+        exitCode: 1,
+        result: TERMINAL_FAILURE.message,
+        terminalFailure: TERMINAL_FAILURE,
+      })),
+      generateText: mock(async () => ({ exitCode: 0, text: "stub-slug" })),
+    };
+    const fs = makeMockFs();
+    const git = makeMockGit();
+
+    await processItem({
+      item,
+      agentName: "test-agent",
+      hopperHome: HOPPER_HOME,
+      deps: {
+        git,
+        claude,
+        fs,
+        shell: makeMockShell(),
+        profiles: makeStubProfilesGateway(),
+      },
+    });
+
+    expect(completeItemMock).toHaveBeenCalledTimes(1);
+    const [, , finalResult] = callArgs(completeItemMock, 0);
+    expect(finalResult).toContain("Terminal runner failure");
+    expect(finalResult).toContain("anthropic");
+    expect(finalResult).toContain("account_limit");
+    expect(finalResult).toContain("HTTP 429");
+    expect(finalResult).toContain("monthly spend limit");
     expect(requeueItemMock).not.toHaveBeenCalled();
   });
 
@@ -971,6 +1014,60 @@ describe("processItem", () => {
     expect(git.commitAll).not.toHaveBeenCalled();
     expect(git.worktreeRemove).not.toHaveBeenCalled();
     expect(completeItemMock).not.toHaveBeenCalled();
+  });
+
+  test("engineering: completes terminal execute failures without retrying or requeueing", async () => {
+    const item = makeClaimedItem({
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+      retries: 2,
+    });
+    const git = makeMockGit({ isWorktreeDirty: mock(async () => true) });
+    const claude: AgentRunner = {
+      runSession: mock(async (prompt: string) => {
+        if (prompt.includes("PLANNING phase")) {
+          return { exitCode: 0, result: "## Approach\nDo it" };
+        }
+        if (prompt.includes("EXECUTE phase")) {
+          return {
+            exitCode: 1,
+            result: TERMINAL_FAILURE.message,
+            terminalFailure: TERMINAL_FAILURE,
+          };
+        }
+        return { exitCode: 0, result: "VALIDATE: PASS" };
+      }),
+      generateText: mock(async (prompt: string) => {
+        if (prompt.toLowerCase().includes("kebab-case")) {
+          return { exitCode: 0, text: "terminal-failure-test" };
+        }
+        return { exitCode: 0, text: "Commit message" };
+      }),
+    };
+    const fs = makeMockFs();
+
+    await processItem({
+      item,
+      agentName: "test-agent",
+      hopperHome: HOPPER_HOME,
+      deps: {
+        git,
+        claude,
+        fs,
+        shell: makeMockShell(),
+        profiles: makeStubProfilesGateway(),
+      },
+    });
+
+    expect(claude.runSession).toHaveBeenCalledTimes(2);
+    expect(git.commitAll).not.toHaveBeenCalled();
+    expect(git.worktreeRemove).not.toHaveBeenCalled();
+    expect(completeItemMock).toHaveBeenCalledTimes(1);
+    const [, , finalResult] = callArgs(completeItemMock, 0);
+    expect(finalResult).toContain("Terminal runner failure");
+    expect(finalResult).toContain("anthropic");
+    expect(requeueItemMock).not.toHaveBeenCalled();
   });
 
   test("engineering: does not commit or merge when validate reports FAIL (retries=0)", async () => {
