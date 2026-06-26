@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.1] - 2026-06-26
+
+### Fixed
+
+- **Terminal Claude account-limit failures now complete visibly instead of
+  requeueing or lingering ambiguously.** Hopper classifies Claude `result`
+  records with `api_error_status=429` and spend/quota/account-limit wording as
+  terminal `account_limit` failures. Generic and engineering workers complete
+  the item with an operator-facing summary instead of retrying the same failing
+  provider profile, and `hopper audit` exposes the provider/status/kind/message
+  signal in JSON summaries and decoded tails.
+
 ### Changed
 
 - **Docs/comments: dropped the "2026-06-15 Anthropic cutoff" framing.** A
