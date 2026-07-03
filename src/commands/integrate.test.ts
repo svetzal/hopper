@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { buildEngineeringBranchName } from "../git-workflow.ts";
 import { addItem, saveItems } from "../store.ts";
 import { makeItem, makeMockGit, makeParsed, setupTempStoreDir } from "../test-helpers.ts";
 import type { IntegrateDryRunResult, IntegrateResult } from "./integrate.ts";
@@ -87,11 +88,14 @@ describe("integrateCommand", () => {
       expect(git.checkout).toHaveBeenCalledWith(workingDir, "main");
       expect(git.mergeNoEdit).toHaveBeenCalledWith(workingDir, branch);
       expect(git.deleteBranch).toHaveBeenCalledWith(workingDir, branch);
-      expect(result.humanOutput).toBe(
-        `Integrated ${item.id.slice(0, 8)} from ${branch} into main of ${workingDir}.`,
-      );
       const data = result.data as IntegrateResult;
       expect(data.itemId).toBe(item.id);
+      // Success message names the branch, the target, and the before/after HEADs.
+      expect(result.humanOutput).toContain(`merged ${branch} into main of ${workingDir}`);
+      expect(result.humanOutput).toContain(
+        `(${data.oldHead.slice(0, 8)} → ${data.newHead.slice(0, 8)})`,
+      );
+      expect(data.oldHead).not.toBe(data.newHead);
     }
   });
 
@@ -252,6 +256,123 @@ describe("integrateCommand", () => {
     if (result.status === "error") {
       expect(result.message).toContain("Cannot integrate item with status 'cancelled'");
       expect(result.message).toContain("Only 'completed' or 'in_progress' items can be integrated");
+    }
+  });
+
+  test("surfaces git stderr and skips cleanup when merge refuses on a dirty tree", async () => {
+    const workingDir = "/repo";
+    const branch = "hopper/dirty-tree";
+    const item = makeItem({ status: "completed", workingDir, branch });
+    await addItem(item);
+
+    const stderr =
+      "error: Your local changes to the following files would be overwritten by merge:\n\tCargo.lock\nPlease commit your changes or stash them before you merge.\nAborting";
+    const git = makeMockGit({
+      mergeNoEdit: mock(async () => ({ exitCode: 1, stderr })),
+    });
+    const result = await integrateCommand(makeParsed("integrate", [item.id]), git);
+
+    expect(result.status).toBe("error");
+    if (result.status === "error") {
+      expect(result.message).toContain("would be overwritten by merge");
+      expect(result.message).toContain("Cargo.lock");
+      expect(result.message).toContain(branch);
+    }
+    // A refused merge must not delete the branch or remove the worktree.
+    expect(git.deleteBranch).not.toHaveBeenCalled();
+    expect(git.worktreeRemove).not.toHaveBeenCalled();
+  });
+
+  test("engineering item merges the surviving work branch, not target-into-target", async () => {
+    const workingDir = "/repo";
+    // Engineering items store the TARGET branch in `branch`; the real work
+    // lives on hopper-eng/<slug>-<prefix>.
+    const item = makeItem({
+      status: "completed",
+      workingDir,
+      branch: "main",
+      type: "engineering",
+      engineeringBranchSlug: "fix-integrate-noop",
+    });
+    await addItem(item);
+    const workBranch = buildEngineeringBranchName(item.id, "fix-integrate-noop");
+
+    const git = makeMockGit();
+    const result = await integrateCommand(makeParsed("integrate", [item.id]), git);
+
+    expect(result.status).toBe("success");
+    if (result.status === "success") {
+      expect(git.checkout).toHaveBeenCalledWith(workingDir, "main");
+      // Must merge the hopper-eng work branch, NOT main into main.
+      expect(git.mergeNoEdit).toHaveBeenCalledWith(workingDir, workBranch);
+      expect(git.mergeNoEdit).not.toHaveBeenCalledWith(workingDir, "main");
+      expect(git.deleteBranch).toHaveBeenCalledWith(workingDir, workBranch);
+      const data = result.data as IntegrateResult;
+      expect(data.branch).toBe(workBranch);
+      expect(data.targetBranch).toBe("main");
+      expect(result.humanOutput).toContain(`merged ${workBranch} into main`);
+    }
+  });
+
+  test("engineering item without a slug still merges the derived work branch", async () => {
+    const workingDir = "/repo";
+    const item = makeItem({
+      status: "completed",
+      workingDir,
+      branch: "main",
+      type: "engineering",
+    });
+    await addItem(item);
+    const workBranch = buildEngineeringBranchName(item.id, null);
+
+    const git = makeMockGit();
+    const result = await integrateCommand(makeParsed("integrate", [item.id]), git);
+
+    expect(result.status).toBe("success");
+    expect(git.mergeNoEdit).toHaveBeenCalledWith(workingDir, workBranch);
+  });
+
+  test("no-op merge (HEAD unchanged) reports error and performs no cleanup", async () => {
+    const workingDir = "/repo";
+    const branch = "hopper/already-merged";
+    const item = makeItem({ status: "completed", workingDir, branch });
+    await addItem(item);
+
+    // HEAD is identical before and after the merge — nothing was integrated.
+    const git = makeMockGit({
+      revParse: mock(async () => "cafebabecafebabecafebabecafebabecafebabe"),
+    });
+    const result = await integrateCommand(makeParsed("integrate", [item.id]), git);
+
+    expect(result.status).toBe("error");
+    if (result.status === "error") {
+      expect(result.message).toContain("no-op");
+      expect(result.message).toContain("cafebabe");
+    }
+    expect(git.deleteBranch).not.toHaveBeenCalled();
+    expect(git.worktreeRemove).not.toHaveBeenCalled();
+  });
+
+  test("success data records old and new HEAD SHAs", async () => {
+    const workingDir = "/repo";
+    const branch = "hopper/head-sha";
+    const item = makeItem({ status: "completed", workingDir, branch });
+    await addItem(item);
+
+    const oldHead = "1111111111111111111111111111111111111111";
+    const newHead = "2222222222222222222222222222222222222222";
+    let call = 0;
+    const git = makeMockGit({
+      revParse: mock(async (): Promise<string> => (call++ === 0 ? oldHead : newHead)),
+    });
+    const result = await integrateCommand(makeParsed("integrate", [item.id]), git);
+
+    expect(result.status).toBe("success");
+    if (result.status === "success") {
+      const data = result.data as IntegrateResult;
+      expect(data.oldHead).toBe(oldHead);
+      expect(data.newHead).toBe(newHead);
+      expect(result.humanOutput).toContain("(11111111 → 22222222)");
     }
   });
 

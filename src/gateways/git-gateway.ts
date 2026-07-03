@@ -71,6 +71,13 @@ export interface GitGateway {
   stageAll(worktreePath: string): Promise<void>;
   commitAll(worktreePath: string, message: string): Promise<void>;
   getCurrentBranch(repoDir: string): Promise<string>;
+  /**
+   * Resolve a ref to its commit SHA (`git rev-parse <ref>`). Throws on non-zero
+   * exit (unknown ref, not a repository, etc.). `integrate` uses this to capture
+   * the target branch's HEAD before and after the merge so a no-op merge can
+   * never masquerade as a successful integration.
+   */
+  revParse(repoDir: string, ref: string): Promise<string>;
   checkout(repoDir: string, branch: string): Promise<void>;
   mergeFastForward(repoDir: string, branch: string): Promise<number>;
   mergeCommit(repoDir: string, branch: string): Promise<number>;
@@ -184,6 +191,17 @@ async function getCurrentBranch(repoDir: string): Promise<string> {
   const { stdout } = await spawnGit(["rev-parse", "--abbrev-ref", "HEAD"], repoDir, {
     stdout: true,
   });
+  return stdout.trim();
+}
+
+async function revParse(repoDir: string, ref: string): Promise<string> {
+  const { exitCode, stdout, stderr } = await spawnGit(["rev-parse", ref], repoDir, {
+    stdout: true,
+    stderr: true,
+  });
+  if (exitCode !== 0) {
+    throw new Error(`git rev-parse "${ref}" failed: ${stderr.trim()}`);
+  }
   return stdout.trim();
 }
 
@@ -315,6 +333,7 @@ export function createGitGateway(): GitGateway {
     stageAll,
     commitAll,
     getCurrentBranch,
+    revParse,
     checkout,
     mergeFastForward,
     mergeCommit,

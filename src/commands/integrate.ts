@@ -4,10 +4,12 @@ import { join } from "node:path";
 import type { ParsedArgs } from "../cli.ts";
 import { booleanFlag, unwrapPositional } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
+import { TaskType } from "../constants.ts";
 import { toErrorMessage } from "../error-utils.ts";
 import { shortId } from "../format.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import { createGitGateway } from "../gateways/git-gateway.ts";
+import { buildEngineeringBranchName } from "../git-workflow.ts";
 import { catchCommandError, unwrap } from "../result.ts";
 import { findItem } from "../store.ts";
 
@@ -29,7 +31,13 @@ export type IntegrateResult = {
   targetBranch: string;
   keepWorktree: boolean;
   worktreeRemoved: boolean;
+  /** Target-branch HEAD SHA before the merge. */
+  oldHead: string;
+  /** Target-branch HEAD SHA after the merge. Always differs from oldHead. */
+  newHead: string;
 };
+
+const shortSha = (sha: string): string => sha.slice(0, 8);
 
 /**
  * Tri-state result of a worktree path check:
@@ -70,6 +78,17 @@ export function integrateCommand(
         };
       }
 
+      // Engineering items store the TARGET branch in `item.branch`; the actual
+      // work lives on `hopper-eng/<slug>-<prefix>`. Merging `branch` into itself
+      // would be a silent no-op, so resolve the surviving work branch and merge
+      // that into the target. Generic/legacy items keep the original semantics:
+      // the work branch is `item.branch`, merged into `main`.
+      const isEngineering = item.type === TaskType.ENGINEERING;
+      const targetBranch = isEngineering ? branch : "main";
+      const workBranch = isEngineering
+        ? buildEngineeringBranchName(item.id, item.engineeringBranchSlug ?? null)
+        : branch;
+
       const worktreePath = join(homedir(), ".hopper", "worktrees", item.id);
 
       if (item.status !== "completed" && item.status !== "in_progress") {
@@ -92,12 +111,12 @@ export function integrateCommand(
       }
 
       const commands = [
-        `git -C ${workingDir} checkout main`,
-        `git -C ${workingDir} merge ${branch} --no-edit`,
+        `git -C ${workingDir} checkout ${targetBranch}`,
+        `git -C ${workingDir} merge ${workBranch} --no-edit`,
         ...(keepWorktree
           ? []
           : [
-              `git -C ${workingDir} branch -d ${branch}`,
+              `git -C ${workingDir} branch -d ${workBranch}`,
               `git -C ${workingDir} worktree remove --force ${worktreePath}`,
             ]),
       ];
@@ -109,8 +128,8 @@ export function integrateCommand(
             dryRun: true,
             itemId: item.id,
             workingDir,
-            branch,
-            targetBranch: "main",
+            branch: workBranch,
+            targetBranch,
             commands,
             keepWorktree,
           },
@@ -118,13 +137,30 @@ export function integrateCommand(
         };
       }
 
-      await git.checkout(workingDir, "main");
+      await git.checkout(workingDir, targetBranch);
 
-      const mergeResult = await git.mergeNoEdit(workingDir, branch);
+      // Capture HEAD before and after so we can prove the merge actually
+      // advanced the target branch. A merge that leaves HEAD unchanged
+      // ("Already up to date") integrated nothing and must never report success.
+      const oldHead = await git.revParse(workingDir, "HEAD");
+
+      const mergeResult = await git.mergeNoEdit(workingDir, workBranch);
       if (mergeResult.exitCode !== 0) {
+        const detail = mergeResult.stderr.trim();
         return {
           status: "error",
-          message: `Merge failed: ${mergeResult.stderr.trim()}`,
+          message: `Merge of ${workBranch} into ${targetBranch} failed${detail ? `: ${detail}` : "."}`,
+        };
+      }
+
+      const newHead = await git.revParse(workingDir, "HEAD");
+      if (oldHead === newHead) {
+        return {
+          status: "error",
+          message:
+            `Merge of ${workBranch} into ${targetBranch} was a no-op — HEAD stayed at ${shortSha(oldHead)}, ` +
+            `so nothing was integrated. The work branch may already be merged, missing, or empty. ` +
+            `No cleanup was performed.`,
         };
       }
 
@@ -133,9 +169,9 @@ export function integrateCommand(
 
       if (!keepWorktree) {
         try {
-          await git.deleteBranch(workingDir, branch);
+          await git.deleteBranch(workingDir, workBranch);
         } catch (e) {
-          warnings.push(`Could not delete branch ${branch}: ${toErrorMessage(e)}`);
+          warnings.push(`Could not delete branch ${workBranch}: ${toErrorMessage(e)}`);
         }
 
         try {
@@ -154,12 +190,14 @@ export function integrateCommand(
         data: {
           itemId: item.id,
           workingDir,
-          branch,
-          targetBranch: "main",
+          branch: workBranch,
+          targetBranch,
           keepWorktree,
           worktreeRemoved,
+          oldHead,
+          newHead,
         },
-        humanOutput: `Integrated ${shortId(item.id)} from ${branch} into main of ${workingDir}.`,
+        humanOutput: `Integrated ${shortId(item.id)}: merged ${workBranch} into ${targetBranch} of ${workingDir} (${shortSha(oldHead)} → ${shortSha(newHead)}).`,
         ...(warnings.length > 0 ? { warnings } : {}),
       };
     },

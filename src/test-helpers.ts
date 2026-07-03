@@ -71,6 +71,15 @@ export function makeMockGit(overrides?: Partial<GitGateway>): GitGateway {
     stageAll: mock(async () => {}),
     commitAll: mock(async () => {}),
     getCurrentBranch: mock(async () => "main"),
+    // Default returns a fresh SHA per call so a merge appears to advance HEAD
+    // (old !== new, and their short prefixes differ too). Tests that need a
+    // no-op override this with a constant.
+    revParse: mock(
+      ((): (() => Promise<string>) => {
+        let n = 0;
+        return async () => `${n++}`.padEnd(40, "0");
+      })(),
+    ),
     checkout: mock(async () => {}),
     mergeFastForward: mock(async () => 0),
     mergeCommit: mock(async () => 0),
