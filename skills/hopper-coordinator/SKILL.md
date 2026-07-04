@@ -589,51 +589,6 @@ hopper add "Run linter and auto-fix" \
   --branch chore/lint-fixes
 ```
 
-### Hone maintenance and iteration via hopper
-
-`hone maintain` and `hone iterate` are ideal candidates for `--command` items — they're
-self-contained shell commands that update dependencies or improve code quality in a
-specific project. By routing them through hopper you get scheduling, recurrence,
-dependency chaining, and audit logging for free.
-
-```bash
-# One-off maintenance run
-hopper add "Maintain hopper — update deps and verify gates" \
-  --command "hone maintain typescript-bun-cli-craftsperson /Users/svetzal/Work/Projects/Mojility/hopper" \
-  --dir ~/Work/Projects/Mojility/hopper
-
-# One-off iterate (quality improvement cycle)
-hopper add "Iterate on mojentic-py — assess, plan, execute, verify" \
-  --command "hone iterate uv-python-craftsperson /Users/svetzal/Work/Projects/Mojility/mojentic" \
-  --dir ~/Work/Projects/Mojility/mojentic
-
-# Nightly recurring maintenance with a preset
-hopper preset add maintain-hopper "Nightly dependency maintenance for hopper" \
-  --command "hone maintain typescript-bun-cli-craftsperson /Users/svetzal/Work/Projects/Mojility/hopper" \
-  --dir ~/Work/Projects/Mojility/hopper
-hopper add --preset maintain-hopper --every 1d --tag maintenance
-
-# Multiple projects run in parallel automatically (different dirs)
-hopper add "Maintain hone-cli" \
-  --command "hone maintain typescript-bun-cli-craftsperson /Users/svetzal/Work/Projects/Mojility/hone-cli" \
-  --dir ~/Work/Projects/Mojility/hone-cli \
-  --tag maintenance
-
-hopper add "Maintain hopper" \
-  --command "hone maintain typescript-bun-cli-craftsperson /Users/svetzal/Work/Projects/Mojility/hopper" \
-  --dir ~/Work/Projects/Mojility/hopper \
-  --tag maintenance
-```
-
-**Tips for hone items:**
-
-- Use `--dir` so audit logs record which project the command targeted, but `--branch` is
-  usually unnecessary — hone manages its own git operations internally
-- Items targeting different directories run in parallel automatically — no chaining needed
-- Items targeting the same directory are serialized automatically — no chaining needed
-- Tag maintenance items consistently (e.g. `--tag maintenance`) for easy filtering
-  with `hopper list --tag maintenance`
-
 ### Engineering-type work (phased, auto-picked craftsperson)
 
 ```bash
