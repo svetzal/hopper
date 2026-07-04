@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.2] - 2026-07-03
+
+### Fixed
+
+- **`hopper integrate` no longer reports success when the underlying git merge
+  was a no-op.** Engineering items now merge the real work branch
+  (`hopper-eng/<slug>-<prefix>`) into the target branch instead of
+  target-into-target. HEAD SHA is captured before and after the merge; if it
+  did not advance, the command returns an error and skips cleanup so a no-op
+  can never masquerade as a successful integration.
+
+### Changed
+
+- **Coordinator skill: removed the hone maintenance/iteration section** from
+  the skill file to keep the coordinator prompt focused.
+
 ## [3.3.1] - 2026-06-26
 
 ### Fixed
