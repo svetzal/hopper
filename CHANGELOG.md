@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Investigation sandbox now allows read-only AWS calls instead of denying
+  `aws` outright.** The `aws` PATH-shim is verb-aware (like the `git` shim):
+  it scans past leading global flags to find the service and action, then
+  allows only clearly read-only actions (`get-*`, `describe-*`, `list-*`,
+  `query`, `scan`, `batch-get-item`, plus bare `aws`/`--version`/`help`) and
+  denies everything else by default — so mutating calls (`put-item`,
+  `update-item`, `delete-item`, `batch-write-item`, `s3 cp`, ...) and any
+  unrecognised action stay blocked at the binary level for all runners
+  (claude, codex, opencode). `aws` is removed from `FULL_DENY_BINARIES` and
+  from the Claude `disallowedTools` list; the PATH-shim
+  (`buildAwsReadonlyShimScript` / `AWS_READONLY`) is the single source of
+  truth for the read/write distinction, re-injected via
+  `buildInvestigationShimMap`. Unblocks investigations that need to verify
+  live production state (e.g. `aws dynamodb get-item`,
+  `aws sts get-caller-identity`).
+
 ## [3.3.2] - 2026-07-03
 
 ### Fixed
