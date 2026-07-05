@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- **Documented that read-only `aws` is allowed in the investigation sandbox.**
+  `AGENTS.md` and the coordinator skill (`skills/hopper-coordinator/SKILL.md`)
+  previously described the sandbox as blocking all network-egress CLIs and told
+  brief authors to inline load-bearing evidence. They now record that, since
+  3.4.0, read-only `aws` (`get-*`/`describe-*`/`list-*`/`query`/`scan`/
+  `batch-get-item`) is permitted while mutations stay denied — so an
+  investigation hinging on live AWS/DynamoDB state can query it directly rather
+  than requiring that state be inlined.
+
 ## [3.5.0] - 2026-07-05
 
 ### Changed
