@@ -134,11 +134,20 @@ export const INVESTIGATION_DISALLOWED_TOOLS: readonly string[] = [
   "Bash(brew install:*)",
   "Bash(brew upgrade:*)",
 
-  // Network egress — denied by default; opt-in is a future enhancement
+  // Network egress — denied by default; opt-in is a future enhancement.
+  // `aws` is intentionally NOT listed here: Claude's `disallowedTools` is
+  // leading-token-prefix-matched against the Bash invocation and cannot
+  // express "allow reads, deny writes" — the aws read/write distinction
+  // lives in the action, which is the 2nd token (`aws dynamodb get-item` vs.
+  // `aws dynamodb put-item`), not the 1st. Pre-refusing all aws here would
+  // block legitimate read-only investigation queries (e.g. `aws dynamodb
+  // get-item`, `aws sts get-caller-identity`). The PATH-shim
+  // (`buildAwsReadonlyShimScript` / `AWS_READONLY` in worker-shim-content.ts)
+  // is the single source of truth for the aws read/write distinction and
+  // still denies all mutating aws calls at the binary level.
   "Bash(curl:*)",
   "Bash(wget:*)",
   "Bash(gh:*)",
-  "Bash(aws:*)",
   "Bash(ssh:*)",
   "Bash(scp:*)",
   "Bash(rsync:*)",

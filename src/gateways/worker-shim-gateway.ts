@@ -20,7 +20,7 @@
 
 import { chmod, mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { buildShimScript } from "./worker-shim-content.ts";
+import { buildShimScript, type ShimDenyMap } from "./worker-shim-content.ts";
 
 export type SynchronizeResult = { status: "synchronized" } | { status: "skipped-windows" };
 
@@ -37,18 +37,12 @@ export interface WorkerShimGateway {
    * On Windows returns `{ status: "skipped-windows" }` (shims are POSIX-only).
    * On all other platforms returns `{ status: "synchronized" }`.
    */
-  synchronize(
-    shimDir: string,
-    denyMap: Map<string, ReadonlyArray<string> | "all">,
-  ): Promise<SynchronizeResult>;
+  synchronize(shimDir: string, denyMap: ShimDenyMap): Promise<SynchronizeResult>;
 }
 
 export function createWorkerShimGateway(platform: string = process.platform): WorkerShimGateway {
   return {
-    async synchronize(
-      shimDir: string,
-      denyMap: Map<string, ReadonlyArray<string> | "all">,
-    ): Promise<SynchronizeResult> {
+    async synchronize(shimDir: string, denyMap: ShimDenyMap): Promise<SynchronizeResult> {
       if (platform === "win32") {
         return { status: "skipped-windows" };
       }

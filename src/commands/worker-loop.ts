@@ -14,7 +14,7 @@ import { createProfilesGateway } from "../gateways/profiles-gateway.ts";
 import { createRoutingRunner } from "../gateways/routing-runner.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import { createShellGateway } from "../gateways/shell-gateway.ts";
-import { parseDisallowedTools } from "../gateways/worker-shim-content.ts";
+import { buildInvestigationShimMap } from "../gateways/worker-shim-content.ts";
 import { createWorkerShimGateway } from "../gateways/worker-shim-gateway.ts";
 import type { ClaimedItem } from "../store.ts";
 import { claimNextItem, findItem } from "../store.ts";
@@ -196,7 +196,7 @@ export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Prom
   // up to date with the current INVESTIGATION_DISALLOWED_TOOLS list.
   const workerShim = deps?.workerShim ?? createWorkerShimGateway();
   const shimDir = join(hopperHome, "worker-shims");
-  const denyMap = parseDisallowedTools(INVESTIGATION_DISALLOWED_TOOLS);
+  const denyMap = buildInvestigationShimMap(INVESTIGATION_DISALLOWED_TOOLS);
   const shimResult = await workerShim.synchronize(shimDir, denyMap);
   if (shimResult.status === "skipped-windows") {
     log(

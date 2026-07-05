@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { AWS_READONLY } from "./worker-shim-content.ts";
 import { createWorkerShimGateway } from "./worker-shim-gateway.ts";
 
 async function makeTempDir(): Promise<string> {
@@ -213,5 +214,92 @@ describeOnPosix("WorkerShimGateway subprocess smoke tests", () => {
 
     const exitCode = await logProc.exited;
     expect(exitCode).toBe(0);
+  });
+});
+
+describeOnPosix("WorkerShimGateway aws read-only shim subprocess smoke tests", () => {
+  let shimDir: string;
+  let fakeRealDir: string;
+  const gateway = createWorkerShimGateway();
+
+  beforeEach(async () => {
+    shimDir = await makeTempDir();
+    fakeRealDir = await makeTempDir();
+
+    // Stub a fake `aws` executable so these tests don't require the real AWS
+    // CLI to be installed. It just echoes its args so we can assert both that
+    // the real binary was reached AND that the original argv survived.
+    const fakeAwsPath = join(fakeRealDir, "aws");
+    await writeFile(fakeAwsPath, '#!/bin/sh\necho "REAL_AWS $*"\n', "utf8");
+    await chmod(fakeAwsPath, 0o755);
+
+    const denyMap = new Map<string, ReadonlyArray<string> | "all" | typeof AWS_READONLY>([
+      ["aws", AWS_READONLY],
+    ]);
+    await gateway.synchronize(shimDir, denyMap);
+  });
+
+  async function runAws(
+    args: string,
+  ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+    const proc = Bun.spawn(["/bin/sh", "-c", `aws ${args}`], {
+      env: {
+        // shimDir first so it wins over any real `aws` on PATH; the rest of
+        // the real PATH stays so `env` (used by the shim's exec line) resolves.
+        PATH: `${shimDir}:${process.env.PATH ?? ""}`,
+        HOPPER_REAL_PATH: fakeRealDir,
+        HOME: process.env.HOME ?? "/tmp",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    return { stdout, stderr, exitCode };
+  }
+
+  test.each([
+    ["aws dynamodb get-item", "dynamodb get-item"],
+    ["aws dynamodb query", "dynamodb query"],
+    ["aws dynamodb scan", "dynamodb scan"],
+    ["aws sts get-caller-identity", "sts get-caller-identity"],
+    ["aws s3api list-buckets", "s3api list-buckets"],
+  ])("allows read-only call: %s", async (_label, args) => {
+    const { stdout, exitCode } = await runAws(args);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("REAL_AWS");
+    expect(stdout).toContain(args);
+  });
+
+  test("allows a read-only call with global flags preceding the service", async () => {
+    const { stdout, exitCode } = await runAws("--region us-east-1 dynamodb get-item");
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("REAL_AWS");
+    // The original argv (including the region flag) must survive to the real binary.
+    expect(stdout).toContain("--region us-east-1 dynamodb get-item");
+  });
+
+  test.each([
+    ["aws dynamodb put-item", "dynamodb put-item"],
+    ["aws dynamodb update-item", "dynamodb update-item"],
+    ["aws dynamodb delete-item", "dynamodb delete-item"],
+    ["aws dynamodb batch-write-item", "dynamodb batch-write-item"],
+    ["aws s3 cp a b", "s3 cp a b"],
+  ])("denies mutating call: %s", async (_label, args) => {
+    const { stdout, stderr, exitCode } = await runAws(args);
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toContain("hopper-worker-shim");
+    expect(stderr).toContain("denied in investigation sessions");
+    expect(stdout).not.toContain("REAL_AWS");
+  });
+
+  test("denies an unrecognised action by default", async () => {
+    const { stdout, stderr, exitCode } = await runAws("dynamodb frobnicate");
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toContain("denied in investigation sessions");
+    expect(stdout).not.toContain("REAL_AWS");
   });
 });

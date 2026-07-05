@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { INVESTIGATION_DISALLOWED_TOOLS } from "../task-type-workflow.ts";
-import { buildShimScript, parseDisallowedTools } from "./worker-shim-content.ts";
+import {
+  AWS_READONLY,
+  buildAwsReadonlyShimScript,
+  buildInvestigationShimMap,
+  buildShimScript,
+  parseDisallowedTools,
+} from "./worker-shim-content.ts";
 
 describe("parseDisallowedTools", () => {
   test("parses git verb patterns into a list of denied verbs", () => {
@@ -90,6 +96,28 @@ describe("parseDisallowedTools", () => {
     const result = parseDisallowedTools(patterns);
     expect(result.get("git")).toBe("all");
   });
+
+  test("aws is no longer treated as full-deny — a multi-token aws pattern yields a verb list", () => {
+    const result = parseDisallowedTools(["Bash(aws s3:*)"]);
+    const awsVerbs = result.get("aws");
+    expect(awsVerbs).not.toBe("all");
+    expect(Array.isArray(awsVerbs)).toBe(true);
+    expect(awsVerbs).toContain("s3");
+  });
+});
+
+describe("buildInvestigationShimMap", () => {
+  test("sets aws to AWS_READONLY regardless of the denylist contents", () => {
+    const result = buildInvestigationShimMap(INVESTIGATION_DISALLOWED_TOOLS);
+    expect(result.get("aws")).toBe(AWS_READONLY);
+    expect(result.get("aws")).not.toBe("all");
+  });
+
+  test("still full-denies other network-egress binaries", () => {
+    const result = buildInvestigationShimMap(INVESTIGATION_DISALLOWED_TOOLS);
+    expect(result.get("curl")).toBe("all");
+    expect(result.get("wget")).toBe("all");
+  });
 });
 
 describe("buildShimScript", () => {
@@ -137,5 +165,36 @@ describe("buildShimScript", () => {
     const script = buildShimScript("git", ["commit"]);
     // The exec line should delegate to the real git with all args
     expect(script).toContain('exec env PATH="$HOPPER_REAL_PATH" git "$@"');
+  });
+
+  test("dispatches to the aws read-only shim for the AWS_READONLY sentinel", () => {
+    const script = buildShimScript("aws", AWS_READONLY);
+    expect(script).toBe(buildAwsReadonlyShimScript());
+  });
+});
+
+describe("buildAwsReadonlyShimScript", () => {
+  const script = buildAwsReadonlyShimScript();
+
+  test("starts with the POSIX shebang", () => {
+    expect(script).toStartWith("#!/bin/sh");
+  });
+
+  test("allows clearly read-only action patterns", () => {
+    expect(script).toContain("get-*|describe-*|list-*|query|scan|batch-get-item");
+  });
+
+  test("delegates to the real binary via HOPPER_REAL_PATH for allowed calls", () => {
+    expect(script).toContain('exec env PATH="$HOPPER_REAL_PATH" aws "$@"');
+  });
+
+  test("includes the standard deny message format for mutating actions", () => {
+    expect(script).toContain(
+      "hopper-worker-shim: 'aws $action' is denied in investigation sessions",
+    );
+  });
+
+  test("never shifts positional args before the final exec (preserves original argv)", () => {
+    expect(script).not.toContain("shift");
   });
 });
