@@ -1,4 +1,4 @@
-export const VERSION = "3.4.0";
+export const VERSION = "3.5.0";
 
 export const Status = {
   QUEUED: "queued",
