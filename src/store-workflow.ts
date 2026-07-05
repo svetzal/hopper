@@ -1,4 +1,4 @@
-import { Status } from "./constants.ts";
+import { type ItemStatus, Status } from "./constants.ts";
 import { comparePriority } from "./priority.ts";
 import { err, ok, type Result } from "./result.ts";
 import type { ClaimedItem, Item, PhaseRecord } from "./store.ts";
@@ -260,10 +260,25 @@ export interface CancelWorkflowResult {
   items: Item[];
   cancelled: Item;
   blockedDependentCount: number;
+  /**
+   * Status the item held before cancellation. The command layer uses this to
+   * decide whether worktree teardown is warranted: an `in_progress` engineering
+   * item leaves a live worktree + branch behind that abandoning must clean up,
+   * whereas queued/scheduled/blocked items never had one.
+   */
+  previousStatus: ItemStatus;
 }
 
 /**
- * Cancel a queued, scheduled, or blocked item.
+ * Cancel a queued, scheduled, blocked, or in-progress item.
+ *
+ * In-progress is allowed because hopper deliberately parks a failed engineering
+ * run at `in_progress` (worktree preserved) "until a human requeues or cancels"
+ * — see `inferEngineeringPhase` in list-workflow.ts. Refusing to cancel such an
+ * item contradicted that documented contract and left no way to abandon a stuck
+ * run without first requeuing it. This function only moves status; the command
+ * layer performs any worktree/branch teardown (I/O) using `previousStatus`.
+ *
  * Counts how many blocked items depended on the cancelled item.
  * Returns a new items array — the input is never mutated.
  */
@@ -274,10 +289,11 @@ export function cancel(items: Item[], id: string, now: Date): Result<CancelWorkf
   if (
     item.status !== Status.QUEUED &&
     item.status !== Status.SCHEDULED &&
-    item.status !== Status.BLOCKED
+    item.status !== Status.BLOCKED &&
+    item.status !== Status.IN_PROGRESS
   ) {
     return err(
-      `Cannot cancel item — status is "${item.status}". Only queued, scheduled, or blocked items can be cancelled.`,
+      `Cannot cancel item — status is "${item.status}". Only queued, scheduled, blocked, or in-progress items can be cancelled.`,
     );
   }
 
@@ -292,7 +308,7 @@ export function cancel(items: Item[], id: string, now: Date): Result<CancelWorkf
     (i) => i.status === Status.BLOCKED && (i.dependsOn ?? []).includes(item.id),
   ).length;
 
-  return ok({ items: updatedItems, cancelled, blockedDependentCount });
+  return ok({ items: updatedItems, cancelled, blockedDependentCount, previousStatus: item.status });
 }
 
 // ---------------------------------------------------------------------------

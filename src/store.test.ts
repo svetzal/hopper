@@ -279,15 +279,16 @@ describe("store", () => {
     expect(cancelled.title).toBe("To cancel");
   });
 
-  test("cancelItem returns error result for in_progress items", async () => {
+  test("cancelItem cancels in_progress items and reports previousStatus", async () => {
     const item = makeItem({ status: "in_progress", claimedAt: new Date().toISOString() });
     await saveItems([item]);
 
     const result = await cancelItem(item.id);
-    expect(result).toMatchObject({
-      ok: false,
-      error: expect.stringContaining('Cannot cancel item — status is "in_progress"'),
-    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.item.status).toBe("cancelled");
+      expect(result.value.previousStatus).toBe("in_progress");
+    }
   });
 
   test("cancelItem returns error result for completed items", async () => {
@@ -297,7 +298,9 @@ describe("store", () => {
     const result = await cancelItem(item.id);
     expect(result).toMatchObject({
       ok: false,
-      error: expect.stringContaining("Only queued, scheduled, or blocked items can be cancelled"),
+      error: expect.stringContaining(
+        "Only queued, scheduled, blocked, or in-progress items can be cancelled",
+      ),
     });
   });
 

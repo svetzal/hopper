@@ -60,7 +60,7 @@ Binaries are standalone — no runtime needed on the target machine.
 | `complete <token>` | Mark a claimed item as completed |
 | `requeue <id>` | Return an in-progress item to the queue |
 | `integrate <id>` | Merge item's branch into main of workingDir and clean up worktree/branch |
-| `cancel <id>` | Cancel a queued item |
+| `cancel <id>` | Cancel a queued or in-progress item (tears down any worktree/branch) |
 | `init` | Install Claude Code skill files into the current repo |
 
 ### Options

@@ -223,12 +223,17 @@ export async function requeueItem(
 export interface CancelResult {
   item: Item;
   blockedDependentCount: number;
+  previousStatus: ItemStatus;
 }
 
 export async function cancelItem(id: string): Promise<Result<CancelResult>> {
   return transact(
     (items) => cancel(items, id, new Date()),
-    (v) => ({ item: v.cancelled, blockedDependentCount: v.blockedDependentCount }),
+    (v) => ({
+      item: v.cancelled,
+      blockedDependentCount: v.blockedDependentCount,
+      previousStatus: v.previousStatus,
+    }),
   );
 }
 

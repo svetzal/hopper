@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`hopper cancel` now accepts in-progress items and tears down their
+  worktree.** hopper deliberately parks a failed engineering run at
+  `in_progress` (worktree + branch preserved) "until a human requeues or
+  cancels" — see `inferEngineeringPhase` — but `cancel` previously refused any
+  in-progress item, contradicting that documented contract and leaving no way
+  to abandon a stuck run short of requeuing it first. Cancelling an in-progress
+  engineering item now also removes its `~/.hopper/worktrees/<id>` worktree and
+  force-deletes the abandoned `hopper-eng/<slug>-<prefix>` work branch
+  (best-effort — teardown failures surface as warnings, the cancel still
+  succeeds). Queued/scheduled/blocked cancels are unchanged; completed and
+  cancelled items are still rejected.
+
 ## [3.4.0] - 2026-07-05
 
 ### Changed

@@ -114,7 +114,7 @@ Usage:
   hopper claim [--agent <name>]      Claim next queued item (priority, then FIFO)
   hopper complete <token>            Complete a claimed item
   hopper complete <token> --result "…" Attach a result summary
-  hopper cancel <id>                 Cancel a queued item
+  hopper cancel <id>                 Cancel a queued or in-progress item (tears down any worktree)
   hopper integrate <id>              Merge item's branch into main and clean up worktree
   hopper integrate <id> --dry-run    Show commands without executing them
   hopper integrate <id> --keep-worktree  Leave worktree and branch after merge

@@ -1,6 +1,7 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { buildEngineeringBranchName } from "../git-workflow.ts";
 import { addItem, saveItems } from "../store.ts";
-import { makeItem, makeParsed, setupTempStoreDir } from "../test-helpers.ts";
+import { makeItem, makeMockGit, makeParsed, setupTempStoreDir } from "../test-helpers.ts";
 import { cancelCommand } from "./cancel.ts";
 
 describe("cancelCommand", () => {
@@ -63,13 +64,96 @@ describe("cancelCommand", () => {
   });
 
   test("returns error from store when item cannot be cancelled", async () => {
-    const item = makeItem({ status: "in_progress" });
+    const item = makeItem({ status: "completed" });
     await addItem(item);
 
     const result = await cancelCommand(makeParsed("cancel", [item.id]));
     expect(result.status).toBe("error");
     if (result.status === "error") {
-      expect(result.message).toBeTruthy();
+      expect(result.message).toContain(
+        "Only queued, scheduled, blocked, or in-progress items can be cancelled",
+      );
     }
+  });
+
+  test("cancels an in_progress non-engineering item without touching git", async () => {
+    const item = makeItem({ status: "in_progress" });
+    await addItem(item);
+    const git = makeMockGit();
+
+    const result = await cancelCommand(makeParsed("cancel", [item.id]), git);
+
+    expect(result.status).toBe("success");
+    if (result.status === "success") {
+      expect(result.warnings).toBeUndefined();
+    }
+    expect(git.worktreeRemove).not.toHaveBeenCalled();
+    expect(git.forceDeleteBranch).not.toHaveBeenCalled();
+  });
+
+  test("cancelling an in_progress engineering item tears down its worktree and branch", async () => {
+    const workingDir = "/repo";
+    const item = makeItem({
+      status: "in_progress",
+      type: "engineering",
+      workingDir,
+      branch: "main",
+      engineeringBranchSlug: "fix-thing",
+    });
+    await addItem(item);
+    const git = makeMockGit();
+
+    // isDirectory => true so the worktree-removal path runs.
+    const result = await cancelCommand(makeParsed("cancel", [item.id]), git, async () => true);
+
+    expect(result.status).toBe("success");
+    if (result.status === "success") {
+      expect(result.warnings).toBeUndefined();
+    }
+    const workBranch = buildEngineeringBranchName(item.id, "fix-thing");
+    expect(git.worktreeRemove).toHaveBeenCalledTimes(1);
+    expect(git.forceDeleteBranch).toHaveBeenCalledWith(workingDir, workBranch);
+  });
+
+  test("skips worktree removal when the directory is absent but still deletes the branch", async () => {
+    const item = makeItem({
+      status: "in_progress",
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+    });
+    await addItem(item);
+    const git = makeMockGit();
+
+    const result = await cancelCommand(makeParsed("cancel", [item.id]), git, async () => false);
+
+    expect(result.status).toBe("success");
+    expect(git.worktreeRemove).not.toHaveBeenCalled();
+    expect(git.forceDeleteBranch).toHaveBeenCalledTimes(1);
+  });
+
+  test("surfaces a warning when worktree teardown fails, but still cancels", async () => {
+    const item = makeItem({
+      status: "in_progress",
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+    });
+    await addItem(item);
+    const git = makeMockGit({
+      worktreeRemove: mock(async () => {
+        throw new Error("worktree busy");
+      }),
+    });
+
+    const result = await cancelCommand(makeParsed("cancel", [item.id]), git, async () => true);
+
+    expect(result.status).toBe("success");
+    if (result.status === "success") {
+      expect(result.warnings).toBeDefined();
+      expect(result.warnings?.some((w) => w.includes("Could not remove worktree"))).toBe(true);
+    }
+    // Branch deletion is still attempted even after a worktree-removal failure.
+    expect(git.forceDeleteBranch).toHaveBeenCalledTimes(1);
   });
 });
