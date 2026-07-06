@@ -22,6 +22,13 @@ bun run build:all        # Cross-compile for macOS, Linux, Windows
 
 A pre-push hook runs `bun run lint` and `bun test` automatically.
 
+**Planned / deferred:** `integrate` and `cancel` still destroy state by default
+(inverted from the `--apply` convention). The design + dependency audit for
+making them safe-by-default lives in
+[`docs/planned-safe-by-default-mutations.md`](docs/planned-safe-by-default-mutations.md)
+— read it before touching those commands or the coordinator skill's
+integrate/cancel guidance.
+
 ## Architecture
 
 - **Runtime**: Bun (not Node). Uses `Bun.file()`, `Bun.write()`, `Bun.stdin`, `bun:test`, and Bun text imports (`with { type: "text" }`)
