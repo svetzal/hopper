@@ -7,6 +7,7 @@
       "dependencies": {
         "@types/node": "^26.1.0",
         "cmx-core": "^0.2.0",
+        "commander": "^15.0.0",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.5.2",
@@ -283,6 +284,8 @@
     "cmx-core": ["cmx-core@0.2.0", "", { "dependencies": { "semver": "^7.7.3" } }, "sha512-GhjhX9/TW/OpTlLC/rINbYcz266UjsLYCOYmx1a92Pyttc7pcc1Fnch6aWoeioYHFDDgTr0S92zv/TxqeDy/dw=="],
 
     "comma-separated-tokens": ["comma-separated-tokens@2.0.3", "", {}, "sha512-Fu4hJdvzeylCfQPp9SGWidpzrMs7tTrlu6Vb8XGaRGck8QSNZJJp538Wrb60Lax4fPwR64ViY468OIUTbRlGZg=="],
+
+    "commander": ["commander@15.0.0", "", {}, "sha512-z67u4ZhzCL/Tydu1lJARtEZYWbWaN7oYLHbsuzocr6y4N6WZAagG3RQ4FW61V1/0+jImpj293XfrcYnd1qxtPg=="],
 
     "copy-anything": ["copy-anything@4.0.5", "", { "dependencies": { "is-what": "^5.2.0" } }, "sha512-7Vv6asjS4gMOuILabD3l739tsaxFQmC+a7pLZm02zyvs8p977bL3zEgq3yDk5rn9B0PbYgIv++jmHcuUab4RhA=="],
 

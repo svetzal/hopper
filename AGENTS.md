@@ -25,14 +25,15 @@ A pre-push hook runs `bun run lint` and `bun test` automatically.
 ## Architecture
 
 - **Runtime**: Bun (not Node). Uses `Bun.file()`, `Bun.write()`, `Bun.stdin`, `bun:test`, and Bun text imports (`with { type: "text" }`)
-- **No framework/deps**: Zero runtime dependencies. Hand-rolled arg parsing in `cli.ts`, direct `fetch` to OpenAI API for title generation
+- **Minimal deps**: `commander` for arg parsing (command tree, per-command help, unknown-flag rejection, suggestions) and `cmx-core` for skill install. `cli.ts` builds the commander program and adapts its output into the internal `ParsedArgs` shape (`commander-adapter.ts`) so command bodies stay parser-agnostic. Direct `fetch` to OpenAI API for title generation
 - **Storage**: JSON file at `~/.hopper/items.json`. Single flat array of `Item` objects. No database
 
 ### Source layout
 
 | File | Purpose |
 | ---- | ------- |
-| `src/cli.ts` | Entry point, arg parser, command dispatch |
+| `src/cli.ts` | Entry point: builds the commander program (`buildProgram`), routes each command into its body via the `ParsedArgs` adapter. Command bodies + gateways are injectable (`CliDeps`/`defaultDeps`) for parse-layer tests |
+| `src/commander-adapter.ts` | Pure adapter: converts commander's parsed args/options into the internal `ParsedArgs` shape (camelCase→kebab, repeatables→`arrayFlags`) |
 | `src/store.ts` | I/O shell for data operations (load, save, claim, complete, requeue, cancel, find). Delegates all logic to `store-workflow.ts`. Module-level gateway updated via `setStoreDir()` for testing |
 | `src/store-workflow.ts` | Pure functions for all store domain logic: `claimNext`, `complete`, `requeue`, `cancel`, `reprioritize`, `addTags`, `removeTags`, `prependItem`, `resolveItem` |
 | `src/format.ts` | Display helpers (relative time, duration, short ID, `formatItemDetail`) |

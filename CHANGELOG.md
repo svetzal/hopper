@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Migrated CLI argument parsing from the hand-rolled parser to `commander`.**
+  The bespoke `parseArgs` in `cli.ts` is replaced by a `commander` command tree
+  (`buildProgram`), with a thin adapter (`commander-adapter.ts`) converting
+  commander's output into the internal `ParsedArgs` shape so all command bodies
+  and their tests are unchanged. This aligns hopper with the sibling TypeScript
+  CLI (`mailctl`, also commander) as identified in a CLI-UX audit. User-visible
+  improvements:
+  - **Per-command help** — `hopper <command> --help` now shows help specific to
+    that command instead of the whole global usage wall.
+  - **Unknown flags are rejected** — a mistyped or unsupported flag now errors
+    with exit code 1 instead of being silently ignored.
+  - **Unknown commands suggest a near match** — e.g. `integrte` → "Did you mean
+    integrate?".
+  - **Mutating commands are marked `[mutates]`** in help, making the read/write
+    boundary visible before anything runs.
+  - `preset` and `profiles` are now consistent subcommand trees with their own
+    per-subcommand help.
+
+  All existing flags, aliases (`-p`, `--depends-on`), repeatable options, exit
+  codes, stderr routing, and `--json` output are preserved.
+
 ## [3.6.0] - 2026-07-06
 
 ### Changed
