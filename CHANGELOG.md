@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.0] - 2026-07-06
+
+### Changed
+
+- **`hopper init` migrated to `cmx-core` plan/apply/status/remove.** The
+  hand-rolled installer has been replaced with the `cmx-core` abstraction,
+  preserving Hopper's JSON contract and deprecated-directory cleanup. Tests
+  and docs updated for global-default installs.
+
 ## [3.5.1] - 2026-07-05
 
 ### Documentation
