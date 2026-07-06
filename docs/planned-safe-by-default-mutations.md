@@ -1,8 +1,10 @@
-# Planned: safe-by-default `integrate` / `cancel`
+# Safe-by-default `integrate` / `cancel`
 
-Status: **not started** — design note + dependency audit. Captured 2026-07-06
-alongside the commander migration (which resolved audit findings #2, #3, #5,
-#6, #7). This note covers the remaining finding **#1** from the CLI-UX audit.
+Status: **shipped 2026-07-06** — kept as the design record + dependency audit
+behind the change. Captured alongside the commander migration (which resolved
+audit findings #2, #3, #5, #6, #7); this note covered the remaining finding
+**#1** from the CLI-UX audit, now implemented (`integrate` previews unless
+`--apply`; `cancel` confirms / needs `--yes` before discarding unmerged work).
 
 ## The change
 

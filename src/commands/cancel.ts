@@ -2,16 +2,19 @@ import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ParsedArgs } from "../cli.ts";
-import { unwrapPositional } from "../command-flags.ts";
+import { booleanFlag, unwrapPositional } from "../command-flags.ts";
 import type { CommandResult } from "../command-result.ts";
 import { TaskType } from "../constants.ts";
 import { toErrorMessage } from "../error-utils.ts";
+import { shortId } from "../format.ts";
+import type { ConfirmFn } from "../gateways/confirm-gateway.ts";
+import { createConfirmGateway } from "../gateways/confirm-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import { createGitGateway } from "../gateways/git-gateway.ts";
 import { buildEngineeringBranchName } from "../git-workflow.ts";
 import { catchCommandError, unwrap } from "../result.ts";
 import type { Item } from "../store.ts";
-import { cancelItem } from "../store.ts";
+import { cancelItem, findItem } from "../store.ts";
 
 async function pathIsDirectory(path: string): Promise<boolean> {
   try {
@@ -65,9 +68,38 @@ export function cancelCommand(
   parsed: ParsedArgs,
   git: GitGateway = createGitGateway(),
   isDirectory: (path: string) => Promise<boolean> = pathIsDirectory,
+  confirm: ConfirmFn = createConfirmGateway(),
 ): Promise<CommandResult<Item>> {
   return catchCommandError(async () => {
     const id = unwrapPositional(parsed, 0, "Usage: hopper cancel <item-id>");
+    const yes = booleanFlag(parsed, "yes");
+
+    // Cancelling an in-progress engineering item force-deletes its unmerged work
+    // branch (and worktree) — commits are lost irrecoverably. Confirm BEFORE the
+    // state transition so a declined prompt leaves the item fully untouched. The
+    // confirm gateway fails closed when non-interactive, so an unattended caller
+    // must pass --yes. Queued/scheduled/blocked cancels destroy nothing and skip
+    // this gate.
+    const target = unwrap(await findItem(id));
+    const destroysUnmergedWork =
+      target.status === "in_progress" && target.type === TaskType.ENGINEERING && !!target.branch;
+
+    if (destroysUnmergedWork && !yes) {
+      const workBranch = buildEngineeringBranchName(
+        target.id,
+        target.engineeringBranchSlug ?? null,
+      );
+      const confirmed = await confirm(
+        `Cancelling ${shortId(target.id)} force-deletes its unmerged work branch ${workBranch} and worktree — commits will be lost.`,
+      );
+      if (!confirmed) {
+        return {
+          status: "error",
+          message: `Cancel aborted — ${shortId(target.id)} left untouched. Re-run with --yes to force.`,
+        };
+      }
+    }
+
     const outcome = unwrap(await cancelItem(id));
     const { item, blockedDependentCount, previousStatus } = outcome;
 

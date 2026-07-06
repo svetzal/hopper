@@ -22,11 +22,11 @@ bun run build:all        # Cross-compile for macOS, Linux, Windows
 
 A pre-push hook runs `bun run lint` and `bun test` automatically.
 
-**Planned / deferred:** `integrate` and `cancel` still destroy state by default
-(inverted from the `--apply` convention). The design + dependency audit for
-making them safe-by-default lives in
+**Safe-by-default mutations:** `integrate` previews unless `--apply`; `cancel`
+confirms (or needs `--yes`) before discarding unmerged work. The design +
+dependency audit behind this is recorded in
 [`docs/planned-safe-by-default-mutations.md`](docs/planned-safe-by-default-mutations.md)
-— read it before touching those commands or the coordinator skill's
+— read it before changing those commands or the coordinator skill's
 integrate/cancel guidance.
 
 ## Architecture

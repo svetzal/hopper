@@ -104,7 +104,11 @@ describe("cancelCommand", () => {
     const git = makeMockGit();
 
     // isDirectory => true so the worktree-removal path runs.
-    const result = await cancelCommand(makeParsed("cancel", [item.id]), git, async () => true);
+    const result = await cancelCommand(
+      makeParsed("cancel", [item.id], { yes: true }),
+      git,
+      async () => true,
+    );
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -125,7 +129,11 @@ describe("cancelCommand", () => {
     await addItem(item);
     const git = makeMockGit();
 
-    const result = await cancelCommand(makeParsed("cancel", [item.id]), git, async () => false);
+    const result = await cancelCommand(
+      makeParsed("cancel", [item.id], { yes: true }),
+      git,
+      async () => false,
+    );
 
     expect(result.status).toBe("success");
     expect(git.worktreeRemove).not.toHaveBeenCalled();
@@ -146,7 +154,11 @@ describe("cancelCommand", () => {
       }),
     });
 
-    const result = await cancelCommand(makeParsed("cancel", [item.id]), git, async () => true);
+    const result = await cancelCommand(
+      makeParsed("cancel", [item.id], { yes: true }),
+      git,
+      async () => true,
+    );
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -154,6 +166,82 @@ describe("cancelCommand", () => {
       expect(result.warnings?.some((w) => w.includes("Could not remove worktree"))).toBe(true);
     }
     // Branch deletion is still attempted even after a worktree-removal failure.
+    expect(git.forceDeleteBranch).toHaveBeenCalledTimes(1);
+  });
+
+  test("destructive cancel without --yes aborts when confirmation is declined", async () => {
+    const item = makeItem({
+      status: "in_progress",
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+      engineeringBranchSlug: "risky",
+    });
+    await addItem(item);
+    const git = makeMockGit();
+
+    // confirm => false (models a declined prompt, or a non-interactive caller).
+    const result = await cancelCommand(
+      makeParsed("cancel", [item.id]),
+      git,
+      async () => true,
+      async () => false,
+    );
+
+    expect(result.status).toBe("error");
+    if (result.status === "error") {
+      expect(result.message).toContain("aborted");
+      expect(result.message).toContain("--yes");
+    }
+    // Nothing was torn down and the item was NOT transitioned.
+    expect(git.forceDeleteBranch).not.toHaveBeenCalled();
+    expect(git.worktreeRemove).not.toHaveBeenCalled();
+  });
+
+  test("destructive cancel proceeds when confirmation is approved", async () => {
+    const item = makeItem({
+      status: "in_progress",
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+      engineeringBranchSlug: "ok-to-drop",
+    });
+    await addItem(item);
+    const git = makeMockGit();
+
+    const result = await cancelCommand(
+      makeParsed("cancel", [item.id]),
+      git,
+      async () => true,
+      async () => true,
+    );
+
+    expect(result.status).toBe("success");
+    expect(git.forceDeleteBranch).toHaveBeenCalledTimes(1);
+  });
+
+  test("--yes skips the confirmation prompt entirely", async () => {
+    const item = makeItem({
+      status: "in_progress",
+      type: "engineering",
+      workingDir: "/repo",
+      branch: "main",
+      engineeringBranchSlug: "yes-flag",
+    });
+    await addItem(item);
+    const git = makeMockGit();
+
+    // A confirm that throws proves the prompt is never consulted when --yes is set.
+    const result = await cancelCommand(
+      makeParsed("cancel", [item.id], { yes: true }),
+      git,
+      async () => true,
+      async () => {
+        throw new Error("confirm must not be called when --yes is set");
+      },
+    );
+
+    expect(result.status).toBe("success");
     expect(git.forceDeleteBranch).toHaveBeenCalledTimes(1);
   });
 });

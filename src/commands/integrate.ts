@@ -65,7 +65,10 @@ export function integrateCommand(
     async (): Promise<CommandResult<IntegrateDryRunResult | IntegrateResult>> => {
       const id = unwrapPositional(parsed, 0, "Usage: hopper integrate <item-id>");
 
-      const dryRun = booleanFlag(parsed, "dry-run");
+      // Safe by default: preview the merge unless --apply is given. `--dry-run`
+      // is retained as an accepted no-op — preview is now the default, so it
+      // means the same thing and existing muscle memory keeps working.
+      const apply = booleanFlag(parsed, "apply");
       const keepWorktree = booleanFlag(parsed, "keep-worktree");
 
       const item = unwrap(await findItem(id));
@@ -121,7 +124,7 @@ export function integrateCommand(
             ]),
       ];
 
-      if (dryRun) {
+      if (!apply) {
         return {
           status: "success",
           data: {
@@ -133,7 +136,9 @@ export function integrateCommand(
             commands,
             keepWorktree,
           },
-          humanOutput: `Dry run:\n${commands.map((c) => `  ${c}`).join("\n")}`,
+          humanOutput: `Preview — no changes made. These commands would run:\n${commands
+            .map((c) => `  ${c}`)
+            .join("\n")}\n\nRe-run with --apply to execute.`,
         };
       }
 

@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING: `hopper integrate` is now safe-by-default — it previews unless
+  `--apply` is given.** Previously `integrate <id>` merged the item's branch
+  into `main` and force-deleted the branch immediately, with `--dry-run` as the
+  opt-in preview. Now `integrate <id>` prints the exact git commands and makes
+  **no changes**; pass `--apply` to execute (this is the standard plan-then-apply
+  convention across the tool fleet). `--dry-run` is retained as an accepted
+  no-op alias for the default preview, so existing muscle memory keeps working.
+  Nothing in `~/Work/Projects` scripts `integrate`, so no automation breaks; the
+  coordinator skill guidance is updated to the two-step form.
+- **`hopper cancel` now confirms before discarding unmerged work.** Cancelling
+  an in-progress *engineering* item force-deletes its unmerged work branch and
+  worktree (commits are lost). `cancel` now prompts for confirmation before that
+  teardown and requires `--yes` when run non-interactively (agents/workers/CI) —
+  without it the cancel aborts and the item is left untouched. Cancelling a
+  queued/scheduled/blocked item destroys nothing and is unaffected (no prompt).
+  Also corrects long-standing coordinator-skill drift that claimed `cancel`
+  refuses in-progress items.
 - **Migrated CLI argument parsing from the hand-rolled parser to `commander`.**
   The bespoke `parseArgs` in `cli.ts` is replaced by a `commander` command tree
   (`buildProgram`), with a thin adapter (`commander-adapter.ts`) converting

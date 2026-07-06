@@ -28,7 +28,7 @@ Recurring items: completed --> new scheduled copy created automatically
 
 **Claims are irrevocable — hopper has no abort command.** Once a worker claims an item and the autonomous runner session (or `--command` shell process) starts, hopper cannot stop it. The lifecycle arrows above describe queue-record state, not process state:
 
-- `hopper cancel` refuses to operate on IN_PROGRESS items. There is no `--force` flag.
+- `hopper cancel` on an IN_PROGRESS item cancels its queue record and tears down its worktree/branch, but does **not** stop the running session — the process keeps going until it finishes or is killed. For engineering items the teardown force-deletes unmerged work, so `cancel` prompts for confirmation first (bypass with `--yes`).
 - `hopper requeue` flips the queue record back to QUEUED but does **not** signal the running session. The process keeps running until it finishes naturally; if another worker then claims the requeued copy, two sessions race on the same work.
 - The only way to actually halt an in-flight task is to kill the OS process from outside hopper (see "Investigating In-Progress Tasks"). That is a destructive recovery move, not a routine workflow, and should only happen after the user agrees.
 
@@ -353,11 +353,12 @@ Do not `hopper requeue` a still-running session hoping the worker will notice; t
 ### Cancelling Items
 
 ```bash
-hopper cancel <id>
+hopper cancel <id>                      # Queued/scheduled/blocked item — no prompt
+hopper cancel <id> --yes                # In-progress engineering item — skip the confirmation prompt
 hopper cancel <id> --json
 ```
 
-Cancels a QUEUED, SCHEDULED, or BLOCKED item — i.e. items not yet picked up by a worker. **`cancel` cannot stop work in flight.** It refuses on IN_PROGRESS items (and already-COMPLETED ones); there is no `--force` and no companion command that aborts a claimed task. See "Claims are irrevocable — hopper has no abort command" near the top of this skill before reaching for a workaround. If other items depend on the cancelled item, they remain BLOCKED — consider cancelling or updating those too.
+Cancels a QUEUED, SCHEDULED, BLOCKED, or IN_PROGRESS item. Cancelling a QUEUED/SCHEDULED/BLOCKED item just flips the queue record and destroys nothing. Cancelling an IN_PROGRESS engineering item also tears down its worktree and **force-deletes its unmerged work branch** — so `cancel` prompts for confirmation first, and a non-interactive caller (agent/worker) must pass `--yes` to proceed (without it the cancel aborts and the item is left untouched). **`cancel` still cannot stop work in flight** — it cancels the queue record, but the running session keeps going until it finishes or is killed; see "Claims are irrevocable — hopper has no abort command" near the top of this skill. If other items depend on the cancelled item, they remain BLOCKED — consider cancelling or updating those too.
 
 ### Requeuing Items
 
@@ -373,13 +374,13 @@ Flips an IN_PROGRESS item's queue record back to QUEUED so a worker can re-claim
 ### Integrating Completed Work
 
 ```bash
-hopper integrate <id>                   # Merge branch into main, remove worktree and branch
-hopper integrate <id> --keep-worktree   # Merge but leave worktree and branch in place
-hopper integrate <id> --dry-run         # Print the git commands that would run, exit 0
-hopper integrate <id> --json            # Machine-readable output
+hopper integrate <id>                           # Preview the git commands — no changes made
+hopper integrate <id> --apply                   # Execute: merge into main, remove worktree and branch
+hopper integrate <id> --apply --keep-worktree   # Execute but leave worktree and branch in place
+hopper integrate <id> --json                    # Machine-readable preview (add --apply to execute)
 ```
 
-Checks out `main` in the item's `workingDir`, merges the item's worker branch with `--no-edit`, then deletes the branch and worktree by default. Only works on `completed` or `in_progress` items that have a `workingDir` and `branch`. On merge conflict, hopper surfaces the git stderr and leaves the repository state intact for manual resolution.
+**Safe by default: `integrate <id>` only *previews*.** It prints the exact git commands it would run and makes no changes — re-run with `--apply` to execute. (`--dry-run` is still accepted as a no-op alias for the default preview.) On `--apply`, hopper checks out `main` in the item's `workingDir`, merges the item's worker branch with `--no-edit`, then deletes the branch and worktree unless `--keep-worktree` is set. Only works on `completed` or `in_progress` items that have a `workingDir` and `branch`. On merge conflict, hopper surfaces the git stderr and leaves the repository state intact for manual resolution.
 
 ### Reprioritizing Items
 

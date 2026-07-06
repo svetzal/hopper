@@ -81,7 +81,7 @@ describe("integrateCommand", () => {
     await addItem(item);
 
     const git = makeMockGit();
-    const result = await integrateCommand(makeParsed("integrate", [item.id]), git);
+    const result = await integrateCommand(makeParsed("integrate", [item.id], { apply: true }), git);
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -106,7 +106,10 @@ describe("integrateCommand", () => {
     await addItem(item);
 
     const git = makeMockGit();
-    const result = await integrateCommand(makeParsed("integrate", [item.id.slice(0, 8)]), git);
+    const result = await integrateCommand(
+      makeParsed("integrate", [item.id.slice(0, 8)], { apply: true }),
+      git,
+    );
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -123,7 +126,7 @@ describe("integrateCommand", () => {
 
     const git = makeMockGit();
     const result = await integrateCommand(
-      makeParsed("integrate", [item.id], { "keep-worktree": true }),
+      makeParsed("integrate", [item.id], { "keep-worktree": true, apply: true }),
       git,
     );
 
@@ -132,10 +135,33 @@ describe("integrateCommand", () => {
     expect(git.worktreeRemove).not.toHaveBeenCalled();
   });
 
-  test("--dry-run returns commands without executing git", async () => {
+  test("previews by default (no --apply) without executing git", async () => {
     const workingDir = "/repo";
-    const branch = "hopper/dry-test";
+    const branch = "hopper/preview-test";
     const item = makeItem({ status: "completed", workingDir, branch });
+    await addItem(item);
+
+    const git = makeMockGit();
+    const result = await integrateCommand(makeParsed("integrate", [item.id]), git);
+
+    expect(result.status).toBe("success");
+    if (result.status === "success") {
+      const data = result.data as IntegrateDryRunResult;
+      expect(data.dryRun).toBe(true);
+      expect(data.targetBranch).toBe("main");
+      expect(data.commands).toBeArray();
+      expect(data.commands.length).toBeGreaterThan(0);
+      expect(result.humanOutput).toMatch(/^Preview/);
+      // The preview must tell the user how to actually execute.
+      expect(result.humanOutput).toContain("--apply");
+    }
+    // Safe by default: no git command runs without --apply.
+    expect(git.checkout).not.toHaveBeenCalled();
+    expect(git.mergeNoEdit).not.toHaveBeenCalled();
+  });
+
+  test("--dry-run is still accepted as a no-op preview (back-compat)", async () => {
+    const item = makeItem({ status: "completed", workingDir: "/repo", branch: "hopper/dry" });
     await addItem(item);
 
     const git = makeMockGit();
@@ -146,12 +172,7 @@ describe("integrateCommand", () => {
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
-      const data = result.data as IntegrateDryRunResult;
-      expect(data.dryRun).toBe(true);
-      expect(data.targetBranch).toBe("main");
-      expect(data.commands).toBeArray();
-      expect(data.commands.length).toBeGreaterThan(0);
-      expect(result.humanOutput).toMatch(/^Dry run:/);
+      expect((result.data as IntegrateDryRunResult).dryRun).toBe(true);
     }
     expect(git.checkout).not.toHaveBeenCalled();
     expect(git.mergeNoEdit).not.toHaveBeenCalled();
@@ -169,7 +190,7 @@ describe("integrateCommand", () => {
         stderr: "CONFLICT (content): Merge conflict in src/foo.ts",
       })),
     });
-    const result = await integrateCommand(makeParsed("integrate", [item.id]), git);
+    const result = await integrateCommand(makeParsed("integrate", [item.id], { apply: true }), git);
 
     expect(result.status).toBe("error");
     if (result.status === "error") {
@@ -187,7 +208,7 @@ describe("integrateCommand", () => {
 
     const git = makeMockGit();
     const result = await integrateCommand(
-      makeParsed("integrate", [item.id]),
+      makeParsed("integrate", [item.id], { apply: true }),
       git,
       async () => "directory",
     );
@@ -270,7 +291,7 @@ describe("integrateCommand", () => {
     const git = makeMockGit({
       mergeNoEdit: mock(async () => ({ exitCode: 1, stderr })),
     });
-    const result = await integrateCommand(makeParsed("integrate", [item.id]), git);
+    const result = await integrateCommand(makeParsed("integrate", [item.id], { apply: true }), git);
 
     expect(result.status).toBe("error");
     if (result.status === "error") {
@@ -298,7 +319,7 @@ describe("integrateCommand", () => {
     const workBranch = buildEngineeringBranchName(item.id, "fix-integrate-noop");
 
     const git = makeMockGit();
-    const result = await integrateCommand(makeParsed("integrate", [item.id]), git);
+    const result = await integrateCommand(makeParsed("integrate", [item.id], { apply: true }), git);
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -326,7 +347,7 @@ describe("integrateCommand", () => {
     const workBranch = buildEngineeringBranchName(item.id, null);
 
     const git = makeMockGit();
-    const result = await integrateCommand(makeParsed("integrate", [item.id]), git);
+    const result = await integrateCommand(makeParsed("integrate", [item.id], { apply: true }), git);
 
     expect(result.status).toBe("success");
     expect(git.mergeNoEdit).toHaveBeenCalledWith(workingDir, workBranch);
@@ -342,7 +363,7 @@ describe("integrateCommand", () => {
     const git = makeMockGit({
       revParse: mock(async () => "cafebabecafebabecafebabecafebabecafebabe"),
     });
-    const result = await integrateCommand(makeParsed("integrate", [item.id]), git);
+    const result = await integrateCommand(makeParsed("integrate", [item.id], { apply: true }), git);
 
     expect(result.status).toBe("error");
     if (result.status === "error") {
@@ -365,7 +386,7 @@ describe("integrateCommand", () => {
     const git = makeMockGit({
       revParse: mock(async (): Promise<string> => (call++ === 0 ? oldHead : newHead)),
     });
-    const result = await integrateCommand(makeParsed("integrate", [item.id]), git);
+    const result = await integrateCommand(makeParsed("integrate", [item.id], { apply: true }), git);
 
     expect(result.status).toBe("success");
     if (result.status === "success") {
@@ -387,7 +408,7 @@ describe("integrateCommand", () => {
         throw new Error("branch not fully merged");
       }),
     });
-    const result = await integrateCommand(makeParsed("integrate", [item.id]), git);
+    const result = await integrateCommand(makeParsed("integrate", [item.id], { apply: true }), git);
 
     expect(result.status).toBe("success");
     if (result.status === "success") {

@@ -186,7 +186,8 @@ export function buildProgram(deps: CliDeps = defaultDeps): Command {
   withJson(
     program
       .command("cancel <id>")
-      .summary("[mutates] Cancel a queued or in-progress item (tears down any worktree)"),
+      .summary("[mutates] Cancel a queued or in-progress item (tears down any worktree)")
+      .option("--yes", "Skip the confirmation prompt when cancelling would discard unmerged work"),
   ).action(async (id: string, opts: Record<string, unknown>) => {
     await runCommand(deps.cancelCommand, toParsedArgs([id], opts, "cancel"));
   });
@@ -226,13 +227,21 @@ export function buildProgram(deps: CliDeps = defaultDeps): Command {
   withJson(
     program
       .command("integrate <id>")
-      .summary("[mutates] Merge an item's branch into main and clean up its worktree")
-      .option("--dry-run", "Show the git commands without executing them")
+      .summary("[mutates with --apply] Merge an item's branch into main and clean up its worktree")
+      .option("--apply", "Execute the merge (previews the git commands by default)")
+      .option("--dry-run", "Deprecated: preview is the default; accepted as a no-op")
       .option("--keep-worktree", "Leave the worktree and branch after merge"),
-  ).action(async (id: string, opts: Record<string, unknown>) => {
-    const git = createGitGateway();
-    await runCommand((p) => deps.integrateCommand(p, git), toParsedArgs([id], opts, "integrate"));
-  });
+  )
+    .addHelpText(
+      "after",
+      "\nExamples:\n" +
+        "  hopper integrate a3f8            # preview the merge, no changes\n" +
+        "  hopper integrate a3f8 --apply    # execute the merge and clean up",
+    )
+    .action(async (id: string, opts: Record<string, unknown>) => {
+      const git = createGitGateway();
+      await runCommand((p) => deps.integrateCommand(p, git), toParsedArgs([id], opts, "integrate"));
+    });
 
   // ── audit ────────────────────────────────────────────────────────────────
   withJson(
