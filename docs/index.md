@@ -57,8 +57,10 @@ brew install svetzal/tap/hopper
 After install, drop the Hopper coordinator skill into your global Claude config:
 
 ```bash
-hopper init --global
+hopper init
 ```
+
+Use `hopper init --local` if you want the coordinator skill installed in the current project's `.claude/skills/` instead of your global Claude config.
 
 ## Quick start
 

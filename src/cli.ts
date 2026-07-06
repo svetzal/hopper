@@ -126,9 +126,10 @@ Usage:
   hopper preset list                                List saved presets
   hopper preset remove <name>                       Delete a preset
   hopper preset show <name>                         Show preset details
-  hopper init                        Install Claude Code skill files (local repo)
-  hopper init --global               Install skill files to ~/.claude/skills/
-  hopper init --force                Overwrite even if installed skill is newer
+  hopper init                        Install Claude Code skill files to ~/.claude/skills/
+  hopper init --local                Install skill files to ./.claude/skills/
+  hopper init --remove               Remove installed skill files for the chosen scope
+  hopper init --global --force       Force a global reinstall/downgrade (accepted for back-compat)
   hopper worker                      Run the worker loop (runner-agnostic; each
                                      item dispatches per its profile)
   hopper worker --once               Process one item then exit
@@ -150,6 +151,9 @@ Options:
   --agent     Agent for claim/complete/worker; or craftsperson override (add command)
   --profile   Profile name for the item (add command). Defaults to defaultProfile
               from ~/.hopper/config.json. See 'hopper profiles' for installed.
+  --global          Install/remove skills in ~/.claude/skills (default for init)
+  --local           Install/remove skills in ./.claude/skills (init)
+  --remove          Uninstall the coordinator skill for the chosen scope (init)
   --dry-run         Print commands without executing them (integrate)
   --keep-worktree   Skip worktree and branch cleanup after merge (integrate)
   --json      Output as JSON
@@ -233,11 +237,15 @@ async function main(): Promise<void> {
     }
     case "init": {
       const { initCommand } = await import("./commands/init.ts");
-      await initCommand(
-        parsed.flags.json === true,
-        parsed.flags.global === true,
-        parsed.flags.force === true,
-      );
+      if (parsed.flags.global === true && parsed.flags.local === true) {
+        fail("Use either --global or --local, not both.");
+      }
+      await initCommand({
+        jsonOutput: parsed.flags.json === true,
+        scope: parsed.flags.local === true ? "local" : "global",
+        force: parsed.flags.force === true,
+        remove: parsed.flags.remove === true,
+      });
       break;
     }
     case "worker":

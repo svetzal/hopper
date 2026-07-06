@@ -123,9 +123,9 @@ A pre-push hook runs `bun run lint` and `bun test` automatically.
 ### Skill Distribution
 
 - **Source of truth**: `skills/` directory in the repo. Each skill has a `SKILL.md` that is embedded at build time via Bun text imports
-- **Install command**: `hopper init [--global] [--force]` copies skill files into `.claude/skills/` (local repo) or `~/.claude/skills/` (global)
-- **Version stamping**: The `VERSION` constant from `src/constants.ts` is written into SKILL.md frontmatter as `hopper-version` at install time
-- **Version guard**: `hopper init` refuses to overwrite an installed skill that has a newer `hopper-version` than the running binary. Use `--force` to downgrade
+- **Install command**: `hopper init` installs the coordinator skill into `~/.claude/skills/` by default; `hopper init --local` installs into the current repo's `.claude/skills/`
+- **Version stamping**: `cmx-core` reconciles `metadata.version` in the installed `SKILL.md` to match `src/constants.ts`
+- **Version guard**: `cmx-core` refuses to overwrite a newer tracked install unless `--force` is passed; drifted installs also require `--force`
 - **Release note**: Skill content updates are automatically picked up via embedded imports — no manual version bump needed for skill-only changes
 
 ### Linting and Formatting
@@ -214,10 +214,10 @@ To create a new release:
 9. Refresh the globally-installed coordinator skill:
 
    ```bash
-   hopper init --global
+   hopper init
    ```
 
-   The `hopper` binary embeds the skill content at build time, but installing the binary does not by itself update the copy at `~/.claude/skills/hopper-coordinator/SKILL.md` that Claude Code loads. `hopper init --global` copies the embedded skill into place and stamps `metadata.version` and `hopper-version` from the running binary's `VERSION`. Running it as the last release step guarantees the global skill never lags behind the binary. The newer-binary-over-older-skill direction needs no `--force`; the version guard only blocks the reverse.
+   The `hopper` binary embeds the skill content at build time, but installing the binary does not by itself update the copy at `~/.claude/skills/hopper-coordinator/SKILL.md` that Claude Code loads. `hopper init` copies the embedded skill into place and reconciles `metadata.version` to the running binary's `VERSION` through `cmx-core`. Running it as the last release step guarantees the global skill never lags behind the binary. The newer-binary-over-older-skill direction needs no `--force`; `--force` is only required for downgrades or drifted on-disk installs.
 
    **Note for the in-flight Claude Code session:** the skill is loaded at session start, so a session that began before the release will keep using the old skill until you restart Claude Code (or open a new session). New sessions and other agents on the machine pick up the new skill immediately.
 

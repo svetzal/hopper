@@ -1,169 +1,259 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ConfigPaths, type InstallerContext, NodeFilesystem, SystemClock } from "cmx-core";
 import { VERSION } from "../constants.ts";
-import { compareSemver, parseInstalledVersion } from "./init.ts";
+import { type InitCommandOptions, initCommand } from "./init.ts";
+
+interface JsonFileResult {
+  path: string;
+  action: string;
+  warning?: string;
+}
+
+interface InitJsonResult {
+  success: boolean;
+  message: string;
+  version: string;
+  files: JsonFileResult[];
+}
 
 describe("init", () => {
-  describe("compareSemver", () => {
-    test("equal versions return 0", () => {
-      expect(compareSemver("1.2.0", "1.2.0")).toBe(0);
+  let tempRoot: string;
+  let homeDir: string;
+  let projectRoot: string;
+  let context: InstallerContext;
+
+  beforeEach(async () => {
+    tempRoot = await mkdtemp(join(tmpdir(), "hopper-init-"));
+    homeDir = join(tempRoot, "home");
+    projectRoot = join(tempRoot, "project");
+    await mkdir(homeDir, { recursive: true });
+    await mkdir(projectRoot, { recursive: true });
+    context = {
+      fs: new NodeFilesystem(),
+      clock: new SystemClock(),
+      paths: new ConfigPaths({
+        configDir: join(homeDir, ".config", "context-mixer"),
+        homeDir,
+        platform: "claude",
+        projectRoot,
+      }),
+    };
+  });
+
+  afterEach(async () => {
+    await rm(tempRoot, { recursive: true, force: true });
+  });
+
+  async function runInitJson(overrides: Partial<InitCommandOptions> = {}): Promise<InitJsonResult> {
+    const logs: string[] = [];
+    await initCommand(
+      {
+        jsonOutput: true,
+        scope: "global",
+        force: false,
+        remove: false,
+        ...overrides,
+      },
+      {
+        context,
+        log: (...args: unknown[]) => logs.push(args.join(" ")),
+      },
+    );
+    return JSON.parse(logs[0] as string) as InitJsonResult;
+  }
+
+  async function readInstalledSkill(scope: "global" | "local" = "global"): Promise<string> {
+    return readFile(installedSkillPath(scope), "utf8");
+  }
+
+  function installedSkillPath(
+    scope: "global" | "local" = "global",
+    platform: "claude" | "copilot" = "claude",
+  ): string {
+    const installDir = context.paths.withPlatform(platform).requireInstallDir("skill", scope);
+    return join(installDir, "hopper-coordinator", "SKILL.md");
+  }
+
+  async function mutateTrackedVersion(
+    version: string,
+    scope: "global" | "local" = "global",
+  ): Promise<void> {
+    const lockPath = context.paths.lockPath(scope);
+    const lock = JSON.parse(await readFile(lockPath, "utf8")) as {
+      packages?: Record<string, { version?: string }>;
+    };
+    const entry = lock.packages?.["hopper-coordinator"];
+    if (!entry) {
+      throw new Error("Missing hopper-coordinator lock entry");
+    }
+    entry.version = version;
+    await writeFile(lockPath, JSON.stringify(lock, null, 2));
+  }
+
+  async function createDeprecatedSkillDir(scope: "global" | "local" = "global"): Promise<string> {
+    const installDir = context.paths.withPlatform("claude").requireInstallDir("skill", scope);
+    const deprecatedDir = join(installDir, "hopper-worker");
+    await mkdir(deprecatedDir, { recursive: true });
+    await writeFile(join(deprecatedDir, "SKILL.md"), "# Deprecated skill\n");
+    return deprecatedDir;
+  }
+
+  async function configureManagedPlatforms(platforms: Array<"claude" | "copilot">): Promise<void> {
+    const configPath = context.paths.configPath();
+    await mkdir(context.paths.configDir, { recursive: true });
+    await writeFile(configPath, JSON.stringify({ platforms }, null, 2));
+  }
+
+  test("installs globally and stamps metadata.version without hopper-version", async () => {
+    const result = await runInitJson();
+
+    expect(result.success).toBe(true);
+    expect(result.version).toBe(VERSION);
+    expect(result.files).toContainEqual({
+      path: installedSkillPath(),
+      action: "created",
     });
 
-    test("first is newer returns 1", () => {
-      expect(compareSemver("1.3.0", "1.2.0")).toBe(1);
-    });
+    const content = await readInstalledSkill();
+    expect(content).toContain(`version: "${VERSION}"`);
+    expect(content).not.toContain("hopper-version:");
+  });
 
-    test("first is older returns -1", () => {
-      expect(compareSemver("1.2.0", "1.3.0")).toBe(-1);
-    });
+  test("second install is idempotent and reports up-to-date", async () => {
+    await runInitJson();
 
-    test("compares major version", () => {
-      expect(compareSemver("2.0.0", "1.9.9")).toBe(1);
-    });
+    const result = await runInitJson();
 
-    test("compares patch version", () => {
-      expect(compareSemver("1.2.3", "1.2.4")).toBe(-1);
+    expect(result.success).toBe(true);
+    expect(result.files).toContainEqual({
+      path: installedSkillPath(),
+      action: "up-to-date",
     });
   });
 
-  describe("parseInstalledVersion", () => {
-    test("extracts version from frontmatter", () => {
-      const content = "---\nname: test\nhopper-version: 1.3.0\n---\n# Skill";
-      expect(parseInstalledVersion(content)).toBe("1.3.0");
-    });
+  test("tracked older install updates", async () => {
+    await runInitJson();
+    await mutateTrackedVersion("0.1.0");
 
-    test("returns null when no version field", () => {
-      const content = "---\nname: test\n---\n# Skill";
-      expect(parseInstalledVersion(content)).toBeNull();
-    });
+    const result = await runInitJson();
 
-    test("returns null for plain content", () => {
-      expect(parseInstalledVersion("# Just a markdown file")).toBeNull();
+    expect(result.success).toBe(true);
+    expect(result.files).toContainEqual({
+      path: installedSkillPath(),
+      action: "updated",
     });
   });
 
-  describe("version guard (integration)", () => {
-    let tmpDir: string;
-    const skillRelPath = ".claude/skills/hopper-coordinator/SKILL.md";
+  test("drifted install skips without force", async () => {
+    await runInitJson();
+    await writeFile(installedSkillPath(), "---\nname: hopper-coordinator\n---\n# Drifted\n");
 
-    beforeEach(async () => {
-      tmpDir = await mkdtemp(join(tmpdir(), "hopper-init-test-"));
+    const result = await runInitJson();
+    const installedFile = result.files.find((file) => file.path === installedSkillPath());
+
+    expect(result.success).toBe(false);
+    expect(installedFile?.action).toBe("skipped");
+    expect(installedFile?.warning).toContain("drifted on disk");
+  });
+
+  test("newer tracked install refuses without --force", async () => {
+    await runInitJson();
+    await mutateTrackedVersion("99.0.0");
+
+    const result = await runInitJson();
+    const installedFile = result.files.find((file) => file.path === installedSkillPath());
+
+    expect(result.success).toBe(false);
+    expect(installedFile?.action).toBe("skipped");
+    expect(installedFile?.warning).toContain("v99.0.0");
+    expect(installedFile?.warning).toContain("--force");
+  });
+
+  test("blocked multi-platform plan reports pending writes as skipped", async () => {
+    await configureManagedPlatforms(["claude", "copilot"]);
+    await runInitJson();
+    await mutateTrackedVersion("99.0.0");
+    await rm(join(installedSkillPath("global", "copilot"), ".."), {
+      recursive: true,
+      force: true,
     });
 
-    afterEach(async () => {
-      await rm(tmpDir, { recursive: true });
+    const result = await runInitJson();
+    const claudeFile = result.files.find((file) => file.path === installedSkillPath());
+    const copilotFile = result.files.find(
+      (file) => file.path === installedSkillPath("global", "copilot"),
+    );
+
+    expect(result.success).toBe(false);
+    expect(claudeFile?.action).toBe("skipped");
+    expect(claudeFile?.warning).toContain("v99.0.0");
+    expect(copilotFile?.action).toBe("skipped");
+    expect(copilotFile?.warning).toContain("another platform");
+    expect(await Bun.file(installedSkillPath("global", "copilot")).exists()).toBe(false);
+  });
+
+  test("force downgrades a newer tracked install", async () => {
+    await runInitJson();
+    await mutateTrackedVersion("99.0.0");
+
+    const result = await runInitJson({ force: true });
+    const installedFile = result.files.find((file) => file.path === installedSkillPath());
+
+    expect(result.success).toBe(true);
+    expect(installedFile?.action).toBe("updated");
+    expect(installedFile?.warning).toContain("Downgrading skill from v99.0.0");
+
+    const content = await readInstalledSkill();
+    expect(content).toContain(`version: "${VERSION}"`);
+  });
+
+  test("remove deletes the installed skill directory", async () => {
+    await runInitJson();
+
+    const result = await runInitJson({ remove: true });
+
+    expect(result.success).toBe(true);
+    expect(result.files).toContainEqual({
+      path: join(
+        context.paths.withPlatform("claude").requireInstallDir("skill", "global"),
+        "hopper-coordinator",
+      ),
+      action: "removed",
+    });
+    expect(await Bun.file(installedSkillPath()).exists()).toBe(false);
+
+    const lockPath = context.paths.lockPath("global");
+    const lock = JSON.parse(await readFile(lockPath, "utf8")) as {
+      packages?: Record<string, unknown>;
+    };
+    expect(lock.packages?.["hopper-coordinator"]).toBeUndefined();
+  });
+
+  test("install removes the deprecated hopper-worker directory", async () => {
+    const deprecatedDir = await createDeprecatedSkillDir();
+
+    const result = await runInitJson();
+
+    expect(result.files).toContainEqual({
+      path: deprecatedDir,
+      action: "removed",
+    });
+    expect(await Bun.file(join(deprecatedDir, "SKILL.md")).exists()).toBe(false);
+  });
+
+  test("local scope installs into the project .claude directory", async () => {
+    const result = await runInitJson({ scope: "local" });
+
+    expect(result.success).toBe(true);
+    expect(result.files).toContainEqual({
+      path: installedSkillPath("local"),
+      action: "created",
     });
 
-    async function writeSkill(content: string) {
-      const fullPath = join(tmpDir, skillRelPath);
-      const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
-      await Bun.spawn(["mkdir", "-p", dir]).exited;
-      await Bun.write(fullPath, content);
-    }
-
-    async function readSkill(): Promise<string | null> {
-      const fullPath = join(tmpDir, skillRelPath);
-      const f = Bun.file(fullPath);
-      if (!(await f.exists())) return null;
-      return f.text();
-    }
-
-    function makeFrontmatter(version?: string): string {
-      const versionLine = version ? `\nhopper-version: ${version}` : "";
-      return `---\nname: hopper-coordinator\ndescription: Test skill${versionLine}\n---\n\n# Test Skill\n\nSome content.`;
-    }
-
-    // We need to call initCommand with the tmpDir as cwd
-    // Since initCommand uses process.cwd(), we'll temporarily change it
-    async function runInit(force: boolean = false): Promise<string> {
-      const originalCwd = process.cwd();
-      process.chdir(tmpDir);
-      // Capture console output
-      const logs: string[] = [];
-      const originalLog = console.log;
-      console.log = (...args: unknown[]) => logs.push(args.join(" "));
-      try {
-        const { initCommand } = await import("./init.ts");
-        await initCommand(false, false, force);
-      } finally {
-        process.chdir(originalCwd);
-        console.log = originalLog;
-      }
-      return logs.join("\n");
-    }
-
-    async function runInitJson(
-      force: boolean = false,
-    ): Promise<{ success: boolean; files: Array<{ action: string; warning?: string }> }> {
-      const originalCwd = process.cwd();
-      process.chdir(tmpDir);
-      const logs: string[] = [];
-      const originalLog = console.log;
-      console.log = (...args: unknown[]) => logs.push(args.join(" "));
-      try {
-        const { initCommand } = await import("./init.ts");
-        await initCommand(true, false, force);
-      } finally {
-        process.chdir(originalCwd);
-        console.log = originalLog;
-      }
-      return JSON.parse(logs[0] as string);
-    }
-
-    test("no installed file → create", async () => {
-      const result = await runInitJson();
-      expect(result.success).toBe(true);
-      expect(result.files[0]?.action).toBe("created");
-      const content = await readSkill();
-      expect(content).toContain(`hopper-version: ${VERSION}`);
-    });
-
-    test("no version in installed file → overwrite", async () => {
-      await writeSkill(makeFrontmatter());
-      const result = await runInitJson();
-      expect(result.success).toBe(true);
-      expect(result.files[0]?.action).toBe("updated");
-    });
-
-    test("installed version older than binary → overwrite", async () => {
-      await writeSkill(makeFrontmatter("0.1.0"));
-      const result = await runInitJson();
-      expect(result.success).toBe(true);
-      expect(result.files[0]?.action).toBe("updated");
-    });
-
-    test("installed version same as binary → up-to-date or updated", async () => {
-      // Install first to get the correct content
-      await runInit();
-      // Run again — should be up-to-date
-      const result = await runInitJson();
-      expect(result.success).toBe(true);
-      expect(result.files[0]?.action).toBe("up-to-date");
-    });
-
-    test("installed version newer than binary → refuse without --force", async () => {
-      await writeSkill(makeFrontmatter("99.0.0"));
-      const result = await runInitJson();
-      expect(result.success).toBe(false);
-      expect(result.files[0]?.action).toBe("skipped");
-      expect(result.files[0]?.warning).toContain("v99.0.0");
-      expect(result.files[0]?.warning).toContain("--force");
-      // File should be unchanged
-      const content = await readSkill();
-      expect(content).toContain("hopper-version: 99.0.0");
-    });
-
-    test("installed version newer + --force → overwrite with warning", async () => {
-      await writeSkill(makeFrontmatter("99.0.0"));
-      const result = await runInitJson(true);
-      expect(result.success).toBe(true);
-      expect(result.files[0]?.action).toBe("updated");
-      expect(result.files[0]?.warning).toContain("Downgrading");
-      // File should now have current version
-      const content = await readSkill();
-      expect(content).toContain(`hopper-version: ${VERSION}`);
-    });
+    const content = await readInstalledSkill("local");
+    expect(content).toContain(`version: "${VERSION}"`);
   });
 });

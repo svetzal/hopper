@@ -61,7 +61,7 @@ Binaries are standalone — no runtime needed on the target machine.
 | `requeue <id>` | Return an in-progress item to the queue |
 | `integrate <id>` | Merge item's branch into main of workingDir and clean up worktree/branch |
 | `cancel <id>` | Cancel a queued or in-progress item (tears down any worktree/branch) |
-| `init` | Install Claude Code skill files into the current repo |
+| `init` | Install the Hopper coordinator skill into `~/.claude/skills/` by default |
 
 ### Options
 
@@ -148,7 +148,7 @@ Hopper is designed to be driven by AI agents. There are two roles:
 
 ### Coordinator
 
-Breaks down work into discrete tasks and adds them to the queue. Run `hopper init` in a target repo to install the coordinator skill for Claude Code.
+Breaks down work into discrete tasks and adds them to the queue. Run `hopper init` to install the coordinator skill for Claude Code globally, or `hopper init --local` inside a repo when you want a project-local install.
 
 ### Worker
 

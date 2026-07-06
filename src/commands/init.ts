@@ -1,32 +1,21 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
-// Embed skill files at build time via Bun text imports
-// Source of truth lives in skills/ — .claude/skills/ is the installed copy
+import {
+  BundledSkill,
+  ConfigPaths,
+  type InstallerContext,
+  NodeFilesystem,
+  type Scope,
+  SkillInstaller,
+  type Status,
+  SystemClock,
+  type TargetAction,
+  type TargetStatus,
+  ToolIdentity,
+} from "cmx-core";
 import COORDINATOR_SKILL_MD from "../../skills/hopper-coordinator/SKILL.md" with { type: "text" };
 import { VERSION } from "../constants.ts";
-import { createInitGateway, type InitGateway } from "../gateways/init-gateway.ts";
-
-interface SkillFile {
-  relativePath: string;
-  content: string;
-}
-
-const SKILL_FILES: SkillFile[] = [
-  { relativePath: ".claude/skills/hopper-coordinator/SKILL.md", content: COORDINATOR_SKILL_MD },
-];
-
-// Skills removed in previous versions — clean up if present
-const DEPRECATED_SKILL_DIRS: string[] = [".claude/skills/hopper-worker"];
 
 type FileAction = "created" | "updated" | "up-to-date" | "removed" | "skipped";
-
-const ACTION_META: Record<FileAction, { icon: string; label: string }> = {
-  created: { icon: "+", label: "Created" },
-  updated: { icon: "~", label: "Updated" },
-  "up-to-date": { icon: "=", label: "Up to date" },
-  removed: { icon: "-", label: "Removed" },
-  skipped: { icon: "!", label: "Skipped" },
-};
 
 interface FileResult {
   path: string;
@@ -41,154 +30,218 @@ interface InitResult {
   files: FileResult[];
 }
 
-export function stampVersion(content: string): string {
-  const closingIndex = content.indexOf("\n---", 1);
-  if (closingIndex === -1) return content;
-  // Update metadata.version to match binary version
-  let frontmatter = content.slice(0, closingIndex);
-  frontmatter = frontmatter.replace(/(\n {2}version: )"[^"]*"/, `$1"${VERSION}"`);
-  // Stamp hopper-version for backwards compatibility
-  return `${frontmatter}\nhopper-version: ${VERSION}${content.slice(closingIndex)}`;
+export interface InitCommandOptions {
+  jsonOutput: boolean;
+  scope?: Scope;
+  force?: boolean;
+  remove?: boolean;
 }
 
-export function stripVersionInfo(content: string): string {
-  // Old format: HTML comment on first line
-  if (content.startsWith("<!-- hopper v")) {
-    const newlineIndex = content.indexOf("\n");
-    if (newlineIndex !== -1) {
-      content = content.slice(newlineIndex + 1);
-    }
-  }
-  // Strip hopper-version field in front-matter
-  content = content.replace(/\nhopper-version: .+/g, "");
-  // Strip metadata.version value (replace with source placeholder)
-  content = content.replace(/(\n {2}version: )"[^"]*"/, '$1"0.0.0"');
-  return content;
+interface InitDeps {
+  context?: InstallerContext;
+  installer?: SkillInstaller;
+  log?: (...args: unknown[]) => void;
 }
 
-export function parseInstalledVersion(content: string): string | null {
-  const match = content.match(/\nhopper-version:\s*(.+)/);
-  return match ? (match[1]?.trim() ?? null) : null;
+const TOOL_NAME = "hopper-coordinator";
+const DEPRECATED_CLAUDE_SKILL = "hopper-worker";
+const DEPRECATED_CLAUDE_PLATFORM = "claude";
+const skill = BundledSkill.singleMd(COORDINATOR_SKILL_MD);
+
+function createInstaller(): SkillInstaller {
+  return new SkillInstaller(new ToolIdentity(TOOL_NAME, VERSION));
 }
 
-/** Compare two semver strings. Returns -1, 0, or 1. */
-export function compareSemver(a: string, b: string): number {
-  const pa = a.split(".").map(Number);
-  const pb = b.split(".").map(Number);
-  for (let i = 0; i < 3; i++) {
-    const va = pa[i] ?? 0;
-    const vb = pb[i] ?? 0;
-    if (va < vb) return -1;
-    if (va > vb) return 1;
-  }
-  return 0;
+function createContext(): InstallerContext {
+  return {
+    fs: new NodeFilesystem(),
+    clock: new SystemClock(),
+    paths: ConfigPaths.fromEnv(DEPRECATED_CLAUDE_PLATFORM),
+  };
 }
 
-export async function initCommand(
-  jsonOutput: boolean,
-  global: boolean = false,
-  force: boolean = false,
-  gateway: InitGateway = createInitGateway(),
-): Promise<void> {
-  const baseDir = global ? join(homedir(), ".claude") : process.cwd();
-  const results: FileResult[] = [];
-
-  for (const file of SKILL_FILES) {
-    const relPath = global ? file.relativePath.replace(/^\.claude\//, "") : file.relativePath;
-    const fullPath = join(baseDir, relPath);
-    const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
-    const stamped = stampVersion(file.content);
-
-    let action: FileAction;
-    let warning: string | undefined;
-
-    if (!(await gateway.exists(fullPath))) {
-      await gateway.mkdirp(dir);
-      await gateway.writeFile(fullPath, stamped);
-      action = "created";
-    } else {
-      const existing = await gateway.readText(fullPath);
-
-      // Version guard: refuse to overwrite a newer installed skill
-      const installedVersion = parseInstalledVersion(existing);
-      if (installedVersion && compareSemver(installedVersion, VERSION) > 0) {
-        if (!force) {
-          warning = `Installed skill is from hopper v${installedVersion} but this binary is v${VERSION}. Use --force to downgrade.`;
-          action = "skipped";
-          results.push({ path: relPath, action, warning });
-          continue;
-        }
-        warning = `Downgrading skill from v${installedVersion} to v${VERSION} (--force)`;
-      }
-
-      const existingBody = stripVersionInfo(existing);
-      const newBody = stripVersionInfo(file.content);
-
-      if (existingBody === newBody) {
-        if (existing !== stamped) {
-          await gateway.writeFile(fullPath, stamped);
-        }
-        action = "up-to-date";
-      } else {
-        await gateway.writeFile(fullPath, stamped);
-        action = "updated";
-      }
-    }
-
-    results.push({ path: relPath, action, warning });
+function mapInstallAction(action: TargetAction, wasInstalled: boolean): FileAction {
+  switch (action.kind) {
+    case "install":
+      return wasInstalled ? "updated" : "created";
+    case "update":
+    case "downgrade":
+      return "updated";
+    case "skip":
+      return "up-to-date";
+    case "drifted-skip":
+    case "refuse-newer":
+      return "skipped";
   }
+}
 
-  // Remove deprecated skills
-  for (const relDir of DEPRECATED_SKILL_DIRS) {
-    const relPath = global ? relDir.replace(/^\.claude\//, "") : relDir;
-    const fullPath = join(baseDir, relPath);
-    const markerPath = join(fullPath, "SKILL.md");
-    if (await gateway.exists(markerPath)) {
-      await gateway.rmrf(fullPath);
-      results.push({ path: relPath, action: "removed" });
-    }
+function writesDuringApply(action: TargetAction): boolean {
+  switch (action.kind) {
+    case "install":
+    case "update":
+    case "downgrade":
+      return true;
+    case "skip":
+    case "drifted-skip":
+    case "refuse-newer":
+      return false;
   }
+}
 
+function blockedPlanWarning(): string {
+  return "Install was blocked by a newer managed skill on another platform. Use --force to apply pending changes.";
+}
+
+function actionWarning(action: TargetAction): string | undefined {
+  switch (action.kind) {
+    case "drifted-skip":
+      return `Installed skill v${action.installed} has drifted on disk. Use --force to overwrite local changes.`;
+    case "refuse-newer":
+      return `Installed skill is from hopper v${action.installed} but this binary is v${VERSION}. Use --force to downgrade.`;
+    case "downgrade":
+      return `Downgrading skill from v${action.from} to v${VERSION} (--force).`;
+    default:
+      return undefined;
+  }
+}
+
+function statusByPlatform(status: Status): Map<string, TargetStatus> {
+  return new Map(status.targets.map((target) => [target.platform, target]));
+}
+
+function summarize(results: FileResult[]): string {
   const counts = results.reduce(
-    (acc, r) => {
-      acc[r.action] = (acc[r.action] ?? 0) + 1;
+    (acc, result) => {
+      acc[result.action] = (acc[result.action] ?? 0) + 1;
       return acc;
     },
     {} as Partial<Record<FileAction, number>>,
   );
-  const created = counts.created ?? 0;
-  const updated = counts.updated ?? 0;
-  const upToDate = counts["up-to-date"] ?? 0;
-  const removed = counts.removed ?? 0;
-  const skipped = counts.skipped ?? 0;
-
   const parts: string[] = [];
-  if (created > 0) parts.push(`${created} created`);
-  if (updated > 0) parts.push(`${updated} updated`);
-  if (upToDate > 0) parts.push(`${upToDate} up to date`);
-  if (removed > 0) parts.push(`${removed} removed`);
-  if (skipped > 0) parts.push(`${skipped} skipped`);
-  const summary = parts.join(", ");
+  if ((counts.created ?? 0) > 0) parts.push(`${counts.created} created`);
+  if ((counts.updated ?? 0) > 0) parts.push(`${counts.updated} updated`);
+  if ((counts["up-to-date"] ?? 0) > 0) parts.push(`${counts["up-to-date"]} up to date`);
+  if ((counts.removed ?? 0) > 0) parts.push(`${counts.removed} removed`);
+  if ((counts.skipped ?? 0) > 0) parts.push(`${counts.skipped} skipped`);
+  return parts.join(", ") || "no changes";
+}
 
-  if (jsonOutput) {
-    const output: InitResult = {
-      success: skipped === 0,
-      message:
-        skipped > 0 ? `Skill files skipped: ${summary}` : `Skill files installed: ${summary}`,
-      version: VERSION,
-      files: results,
-    };
-    console.log(JSON.stringify(output));
-  } else {
-    const scope = global ? "global (~/.claude)" : "local";
-    console.log(`\nHopper v${VERSION} — skill files (${scope})\n`);
-    for (const r of results) {
-      const { icon, label } = ACTION_META[r.action];
-      console.log(`  ${icon} ${r.path} (${label})`);
-      if (r.warning) {
-        console.log(`    ${r.warning}`);
-      }
-    }
-    console.log(`\n${summary}`);
+async function cleanupDeprecatedClaudeSkill(
+  scope: Scope,
+  context: InstallerContext,
+): Promise<FileResult[]> {
+  const installDir = context.paths
+    .withPlatform(DEPRECATED_CLAUDE_PLATFORM)
+    .requireInstallDir("skill", scope);
+  const deprecatedDir = join(installDir, DEPRECATED_CLAUDE_SKILL);
+  const markerPath = join(deprecatedDir, "SKILL.md");
+
+  if (!(await context.fs.exists(markerPath))) {
+    return [];
   }
+
+  await context.fs.removeDirAll(deprecatedDir);
+  return [{ path: deprecatedDir, action: "removed" }];
+}
+
+async function buildInstallResults(
+  scope: Scope,
+  force: boolean,
+  context: InstallerContext,
+  installer: SkillInstaller,
+): Promise<FileResult[]> {
+  const beforeStatus = await installer.status(scope, context);
+  const beforeByPlatform = statusByPlatform(beforeStatus);
+  const plan = await installer.plan(skill, scope, force, context);
+  const hasBlockedTarget = plan.targets.some((target) => target.action.kind === "refuse-newer");
+
+  if (!hasBlockedTarget) {
+    await installer.apply(skill, plan, context);
+  }
+
+  const installResults = plan.targets.flatMap((target) => {
+    const previous = beforeByPlatform.get(target.platform);
+    const action =
+      hasBlockedTarget && writesDuringApply(target.action)
+        ? "skipped"
+        : mapInstallAction(target.action, previous?.installed === true);
+    const warning =
+      hasBlockedTarget && writesDuringApply(target.action)
+        ? blockedPlanWarning()
+        : actionWarning(target.action);
+    return target.files.map((file) => ({
+      path: file.dest_path,
+      action,
+      warning,
+    }));
+  });
+
+  const cleanupResults = await cleanupDeprecatedClaudeSkill(scope, context);
+  return [...installResults, ...cleanupResults];
+}
+
+async function buildRemoveResults(
+  scope: Scope,
+  context: InstallerContext,
+  installer: SkillInstaller,
+): Promise<FileResult[]> {
+  const report = await installer.remove(scope, context);
+  return report.removed_dirs.map((path) => ({ path, action: "removed" as const }));
+}
+
+function buildOutput(results: FileResult[], remove: boolean, success: boolean): InitResult {
+  const summary = summarize(results);
+  return {
+    success,
+    message: remove
+      ? `Skill files removed: ${summary}`
+      : success
+        ? `Skill files installed: ${summary}`
+        : `Skill files skipped: ${summary}`,
+    version: VERSION,
+    files: results,
+  };
+}
+
+function humanScopeLabel(scope: Scope): string {
+  return scope === "global" ? "global (~/.claude)" : "local";
+}
+
+function printHumanOutput(
+  output: InitResult,
+  scope: Scope,
+  remove: boolean,
+  log: (...args: unknown[]) => void,
+): void {
+  const title = remove ? "skill removal" : "skill files";
+  log(`\nHopper v${VERSION} — ${title} (${humanScopeLabel(scope)})\n`);
+  for (const result of output.files) {
+    log(`  ${result.action}: ${result.path}`);
+    if (result.warning) {
+      log(`    ${result.warning}`);
+    }
+  }
+  log(`\n${output.message.replace(/^Skill files (installed|removed|skipped): /, "")}`);
+}
+
+export async function initCommand(options: InitCommandOptions, deps: InitDeps = {}): Promise<void> {
+  const scope = options.scope ?? "global";
+  const force = options.force ?? false;
+  const remove = options.remove ?? false;
+  const context = deps.context ?? createContext();
+  const installer = deps.installer ?? createInstaller();
+  const log = deps.log ?? console.log;
+
+  const results = remove
+    ? await buildRemoveResults(scope, context, installer)
+    : await buildInstallResults(scope, force, context, installer);
+  const skipped = results.some((result) => result.action === "skipped");
+  const output = buildOutput(results, remove, !skipped);
+
+  if (options.jsonOutput) {
+    log(JSON.stringify(output));
+    return;
+  }
+
+  printHumanOutput(output, scope, remove, log);
 }
