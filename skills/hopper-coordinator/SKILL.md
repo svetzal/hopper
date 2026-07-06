@@ -78,7 +78,7 @@ As coordinator, you:
 3. **Organize work** using priorities, tags, dependencies, and scheduling
 4. **Monitor progress** using `hopper list` with appropriate filters
 5. **Review completed work** using `hopper show`
-6. **Manage the queue** — cancel, requeue, reprioritize, and tag items as needed
+6. **Manage the queue** — cancel, requeue, edit priority, and tag items as needed
 
 ## Read State in JSON, Always
 
@@ -382,15 +382,15 @@ hopper integrate <id> --json                    # Machine-readable preview (add 
 
 **Safe by default: `integrate <id>` only *previews*.** It prints the exact git commands it would run and makes no changes — re-run with `--apply` to execute. (`--dry-run` is still accepted as a no-op alias for the default preview.) On `--apply`, hopper checks out `main` in the item's `workingDir`, merges the item's worker branch with `--no-edit`, then deletes the branch and worktree unless `--keep-worktree` is set. Only works on `completed` or `in_progress` items that have a `workingDir` and `branch`. On merge conflict, hopper surfaces the git stderr and leaves the repository state intact for manual resolution.
 
-### Reprioritizing Items
+### Editing Item Priority
 
 ```bash
-hopper reprioritize <id> high
-hopper reprioritize <id> normal
-hopper reprioritize <id> low
+hopper edit <id> --priority high
+hopper edit <id> --priority normal
+hopper edit <id> --priority low
 ```
 
-Changes the priority of a QUEUED or SCHEDULED item. Cannot reprioritize items that are IN_PROGRESS, COMPLETED, or CANCELLED.
+Changes the priority of a QUEUED or SCHEDULED item. Cannot change items that are IN_PROGRESS, COMPLETED, or CANCELLED.
 
 ### Tagging Items
 
@@ -454,7 +454,7 @@ You no longer need `--after-item` purely to prevent concurrent execution conflic
 2. **Organize** — Decide on priority, tags, scheduling, and dependencies
 3. **Add items** — Queue each piece of work with a clear description, project directory, and branch. Use `--after-item` only for logical dependencies or explicit ordering
 4. **Monitor** — Check `hopper list` to see what's been claimed, what's blocked, and what's still queued
-5. **Adjust** — Reprioritize, tag, cancel, or requeue items as the situation evolves
+5. **Adjust** — Edit priority, tag, cancel, or requeue items as the situation evolves
 6. **Review** — Check completed items with `hopper show <id>` to see the agent's results
 
 ### Batch Operations
@@ -735,7 +735,7 @@ hopper list --json \
 hopper list --tag backend --json | jq 'length'
 
 # Mutations don't need --json unless you want to verify the post-state
-hopper reprioritize a1b2c3d4 high
+hopper edit a1b2c3d4 --priority high
 hopper cancel e5f6g7h8
 
 # When showing the user, run the bare form separately

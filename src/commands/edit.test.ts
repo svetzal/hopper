@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { addItem } from "../store.ts";
 import { makeItem, makeParsed, setupTempStoreDir } from "../test-helpers.ts";
-import { reprioritizeCommand } from "./reprioritize.ts";
+import { editCommand } from "./edit.ts";
 
-describe("reprioritizeCommand", () => {
-  const storeDir = setupTempStoreDir("hopper-reprioritize-test-");
+describe("editCommand", () => {
+  const storeDir = setupTempStoreDir("hopper-edit-test-");
 
   beforeEach(storeDir.beforeEach);
   afterEach(storeDir.afterEach);
 
   test("returns error when id is missing", async () => {
-    const result = await reprioritizeCommand(makeParsed("reprioritize", []));
+    const result = await editCommand(makeParsed("edit", []));
 
     expect(result.status).toBe("error");
     if (result.status === "error") {
@@ -18,12 +18,12 @@ describe("reprioritizeCommand", () => {
     }
   });
 
-  test("returns error when priority level is missing", async () => {
-    const result = await reprioritizeCommand(makeParsed("reprioritize", ["some-id"]));
+  test("returns error when --priority is missing", async () => {
+    const result = await editCommand(makeParsed("edit", ["some-id"]));
 
     expect(result.status).toBe("error");
     if (result.status === "error") {
-      expect(result.message).toContain("Usage:");
+      expect(result.message).toContain("--priority");
     }
   });
 
@@ -31,7 +31,7 @@ describe("reprioritizeCommand", () => {
     const item = makeItem();
     await addItem(item);
 
-    const result = await reprioritizeCommand(makeParsed("reprioritize", [item.id, "invalid"]));
+    const result = await editCommand(makeParsed("edit", [item.id], { priority: "invalid" }));
 
     expect(result.status).toBe("error");
     if (result.status === "error") {
@@ -43,7 +43,7 @@ describe("reprioritizeCommand", () => {
     const item = makeItem({ priority: "normal" });
     await addItem(item);
 
-    const result = await reprioritizeCommand(makeParsed("reprioritize", [item.id, "high"]));
+    const result = await editCommand(makeParsed("edit", [item.id], { priority: "high" }));
 
     expect(result.status).toBe("success");
     if (result.status === "success") {

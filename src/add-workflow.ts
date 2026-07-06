@@ -352,15 +352,18 @@ export function formatValidationError(error: AddValidationError): string {
     case "MISSING_DESCRIPTION":
       return 'Usage: hopper add <description>\n  or:  echo "description" | hopper add';
     case "BRANCH_REQUIRES_DIR":
-      return "Error: --branch requires --dir";
+      return 'Error: --branch requires --dir.\n  Try: hopper add "…" --dir ~/proj --branch main';
     case "DIR_REQUIRES_BRANCH_OR_COMMAND":
-      return "Error: --branch is required when --dir is set (unless --command is provided)";
+      return (
+        "Error: --branch is required when --dir is set (unless --command is provided).\n" +
+        '  Try: hopper add "…" --dir ~/proj --branch main'
+      );
     case "TIMES_REQUIRES_EVERY":
-      return "Error: --times requires --every";
+      return 'Error: --times requires --every.\n  Try: hopper add "…" --every 1d --times 5';
     case "TIMES_INVALID":
       return "Error: --times must be a positive integer";
     case "UNTIL_REQUIRES_EVERY":
-      return "Error: --until requires --every";
+      return 'Error: --until requires --every.\n  Try: hopper add "…" --every 1d --until 2026-12-31';
     case "EVERY_INVALID":
       return `Error: --every requires a relative duration (e.g. 4h, 30m, 1d), got "${error.value}"`;
     case "EVERY_TOO_SHORT":

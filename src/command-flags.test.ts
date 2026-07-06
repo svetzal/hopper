@@ -29,7 +29,7 @@ describe("command-flags", () => {
 
     test("returns the correct positional at the given index", () => {
       const parsed = makeParsed({}, ["first", "second"]);
-      expect(requirePositional(parsed, 1, "Usage: hopper reprioritize <id> <level>")).toEqual({
+      expect(requirePositional(parsed, 1, "Usage: hopper tag <id> <tag>")).toEqual({
         ok: true,
         value: "second",
       });

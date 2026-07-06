@@ -9,11 +9,11 @@ import { auditCommand } from "./commands/audit.ts";
 import { cancelCommand } from "./commands/cancel.ts";
 import { claimCommand } from "./commands/claim.ts";
 import { completeCommand } from "./commands/complete.ts";
+import { editCommand } from "./commands/edit.ts";
 import { integrateCommand } from "./commands/integrate.ts";
 import { listCommand } from "./commands/list.ts";
 import { presetCommand } from "./commands/preset.ts";
 import { profilesCommand } from "./commands/profiles.ts";
-import { reprioritizeCommand } from "./commands/reprioritize.ts";
 import { requeueCommand } from "./commands/requeue.ts";
 import { showCommand } from "./commands/show.ts";
 import { tagCommand, untagCommand } from "./commands/tag.ts";
@@ -53,7 +53,7 @@ export interface CliDeps {
   cancelCommand: typeof cancelCommand;
   completeCommand: typeof completeCommand;
   requeueCommand: typeof requeueCommand;
-  reprioritizeCommand: typeof reprioritizeCommand;
+  editCommand: typeof editCommand;
   integrateCommand: typeof integrateCommand;
   auditCommand: typeof auditCommand;
   showCommand: typeof showCommand;
@@ -71,7 +71,7 @@ export const defaultDeps: CliDeps = {
   cancelCommand,
   completeCommand,
   requeueCommand,
-  reprioritizeCommand,
+  editCommand,
   integrateCommand,
   auditCommand,
   showCommand,
@@ -214,13 +214,14 @@ export function buildProgram(deps: CliDeps = defaultDeps): Command {
     await runCommand(deps.requeueCommand, toParsedArgs([id], opts, "requeue"));
   });
 
-  // ── reprioritize ─────────────────────────────────────────────────────────
+  // ── edit ─────────────────────────────────────────────────────────────────
   withJson(
     program
-      .command("reprioritize <id> <level>")
-      .summary("[mutates] Change the priority of a queued/scheduled item"),
-  ).action(async (id: string, level: string, opts: Record<string, unknown>) => {
-    await runCommand(deps.reprioritizeCommand, toParsedArgs([id, level], opts, "reprioritize"));
+      .command("edit <id>")
+      .summary("[mutates] Edit a queued/scheduled item's priority")
+      .requiredOption("--priority <level>", "New priority: high, normal, or low"),
+  ).action(async (id: string, opts: Record<string, unknown>) => {
+    await runCommand(deps.editCommand, toParsedArgs([id], opts, "edit"));
   });
 
   // ── integrate ────────────────────────────────────────────────────────────

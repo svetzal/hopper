@@ -103,7 +103,7 @@ export const INVESTIGATION_DISALLOWED_TOOLS: readonly string[] = [
   "Bash(hopper cancel:*)",
   "Bash(hopper requeue:*)",
   "Bash(hopper integrate:*)",
-  "Bash(hopper reprioritize:*)",
+  "Bash(hopper edit:*)",
   "Bash(hopper tag:*)",
   "Bash(hopper untag:*)",
   "Bash(hopper preset:*)",

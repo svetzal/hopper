@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING: `hopper reprioritize <id> <level>` is renamed to
+  `hopper edit <id> --priority <level>`.** `reprioritize` was a bespoke verb
+  outside the shared fleet vocabulary (`add`/`list`/`show`/`edit`/`remove`/…);
+  `edit` aligns it and leaves room to grow other editable fields. There is no
+  back-compat alias — the old verb is gone. The coordinator skill and the
+  investigation sandbox's queue-mutation denylist are updated to `edit`.
+- **Error messages now suggest the fix.** The `add` validation errors that
+  previously only restated the failure (`--branch requires --dir`,
+  `--branch is required when --dir is set`, `--times requires --every`,
+  `--until requires --every`) now append a runnable `Try: hopper add …` example,
+  per the CLI-UX principle that an error should teach the next step.
 - **BREAKING: `hopper integrate` is now safe-by-default — it previews unless
   `--apply` is given.** Previously `integrate <id>` merged the item's branch
   into `main` and force-deleted the branch immediately, with `--dry-run` as the

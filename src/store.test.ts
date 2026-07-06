@@ -656,7 +656,7 @@ describe("store", () => {
     const result = await reprioritizeItem(item.id, "high");
     expect(result).toMatchObject({
       ok: false,
-      error: expect.stringContaining("Cannot reprioritize item"),
+      error: expect.stringContaining("Cannot change priority"),
     });
   });
 
@@ -667,7 +667,7 @@ describe("store", () => {
     const result = await reprioritizeItem(item.id, "high");
     expect(result).toMatchObject({
       ok: false,
-      error: expect.stringContaining("Cannot reprioritize item"),
+      error: expect.stringContaining("Cannot change priority"),
     });
   });
 

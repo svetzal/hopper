@@ -963,7 +963,7 @@ describe("reprioritize", () => {
 
     expect(result).toMatchObject({
       ok: false,
-      error: expect.stringContaining("Cannot reprioritize item"),
+      error: expect.stringContaining("Cannot change priority"),
     });
   });
 
@@ -973,7 +973,7 @@ describe("reprioritize", () => {
 
     expect(result).toMatchObject({
       ok: false,
-      error: expect.stringContaining("Cannot reprioritize item"),
+      error: expect.stringContaining("Cannot change priority"),
     });
   });
 

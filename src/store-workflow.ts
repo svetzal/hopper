@@ -335,7 +335,7 @@ export function reprioritize(
   const item = itemResult.value;
   if (item.status !== Status.QUEUED && item.status !== Status.SCHEDULED) {
     return err(
-      `Cannot reprioritize item — status is "${item.status}". Only queued or scheduled items can be reprioritized.`,
+      `Cannot change priority of item — status is "${item.status}". Only queued or scheduled items can be edited.`,
     );
   }
 
