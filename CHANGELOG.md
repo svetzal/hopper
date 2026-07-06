@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-07-06
+
+CLI-UX release: the command surface was migrated to `commander` and audited
+against the [CLI-UX principles](https://github.com/svetzal/guidelines). See
+[docs/migration-3.x-to-4.x.md](https://github.com/svetzal/hopper/blob/main/docs/migration-3.x-to-4.x.md)
+for the upgrade guide.
+
 ### Changed
 
 - **BREAKING: `hopper reprioritize <id> <level>` is renamed to

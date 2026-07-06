@@ -17,7 +17,7 @@ export default defineConfig({
     nav: [
       { text: "Home", link: "/" },
       { text: "Profiles", link: "/profiles" },
-      { text: "Migration", link: "/migration-2.x-to-3.x" },
+      { text: "Migration", link: "/migration-3.x-to-4.x" },
       { text: "Opencode spike", link: "/opencode-spike" },
       {
         text: "Releases",
@@ -40,7 +40,10 @@ export default defineConfig({
       },
       {
         text: "Upgrading",
-        items: [{ text: "2.x → 3.x migration", link: "/migration-2.x-to-3.x" }],
+        items: [
+          { text: "3.x → 4.x migration", link: "/migration-3.x-to-4.x" },
+          { text: "2.x → 3.x migration", link: "/migration-2.x-to-3.x" },
+        ],
       },
       {
         text: "Design notes",
