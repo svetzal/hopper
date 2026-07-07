@@ -6,7 +6,7 @@
       "name": "hopper",
       "dependencies": {
         "@types/node": "^26.1.0",
-        "cmx-core": "^0.2.0",
+        "cmx-core": "^0.3.0",
         "commander": "^15.0.0",
       },
       "devDependencies": {
@@ -281,7 +281,7 @@
 
     "character-entities-legacy": ["character-entities-legacy@3.0.0", "", {}, "sha512-RpPp0asT/6ufRm//AJVwpViZbGM/MkjQFxJccQRHmISF/22NBtsHqAWmL+/pmkPWoIUJdWyeVleTl1wydHATVQ=="],
 
-    "cmx-core": ["cmx-core@0.2.0", "", { "dependencies": { "semver": "^7.7.3" } }, "sha512-GhjhX9/TW/OpTlLC/rINbYcz266UjsLYCOYmx1a92Pyttc7pcc1Fnch6aWoeioYHFDDgTr0S92zv/TxqeDy/dw=="],
+    "cmx-core": ["cmx-core@0.3.0", "", { "dependencies": { "semver": "^7.7.3" } }, "sha512-lfmy6zS40KBLypYDoSvTqQruqWH2uvYLrRKFYzgCy52yfN55t8j/JjRnRMqPcqHA4jVKIQty3DueBi7yyjg84g=="],
 
     "comma-separated-tokens": ["comma-separated-tokens@2.0.3", "", {}, "sha512-Fu4hJdvzeylCfQPp9SGWidpzrMs7tTrlu6Vb8XGaRGck8QSNZJJp538Wrb60Lax4fPwR64ViY468OIUTbRlGZg=="],
 
