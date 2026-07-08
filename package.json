@@ -30,7 +30,7 @@
     "vitepress": "^1.6.4"
   },
   "dependencies": {
-    "@types/node": "^26.1.0",
+    "@types/node": "^26.1.1",
     "cmx-core": "^0.3.0",
     "commander": "^15.0.0"
   },
