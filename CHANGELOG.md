@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Hopper now enforces ownership of the complete git lifecycle across agent
+  runners.** Default tasks and engineering execute/validate phases receive an
+  explicit instruction to ignore embedded git-operation clauses, Claude gets a
+  git-mutation denylist, and all POSIX runners get a git-only PATH shim. The
+  coordinator skill now tells dispatchers to describe the work product and
+  validation only, leaving sync, branch/worktree setup, commit, merge, push,
+  and cleanup to Hopper.
+
 ## [4.0.0] - 2026-07-06
 
 CLI-UX release: the command surface was migrated to `commander` and audited

@@ -150,12 +150,17 @@ Hopper is designed to be driven by AI agents. There are two roles:
 
 Breaks down work into discrete tasks and adds them to the queue. Run `hopper init` to install the coordinator skill for Claude Code globally, or `hopper init --local` inside a repo when you want a project-local install.
 
+Task descriptions specify the work product and validation, not repository
+lifecycle steps. Hopper owns sync, branch/worktree setup, staging, commit,
+merge, push, and cleanup. Agent sessions are instructed to ignore conflicting
+git clauses and git mutations are blocked across supported POSIX runners.
+
 ### Worker
 
 Claims items, executes the described task, and reports back. The `hopper worker` command automates this loop:
 
 1. Claims the next item via `hopper claim --json`
-2. If the item has a `command` field, runs that shell command; otherwise runs a `claude --print` session with the task description
+2. If the item has a `command` field, runs that shell command; otherwise runs an agent session with the task description and Hopper's git-ownership guardrails
 3. Calls `hopper complete` on success or leaves the item for manual requeue on failure
 4. Polls for more work
 

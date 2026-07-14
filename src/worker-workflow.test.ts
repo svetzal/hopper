@@ -111,9 +111,11 @@ describe("worker-workflow", () => {
       expect(buildTaskPrompt(item)).toContain("Users cannot log in via OAuth");
     });
 
-    test("instructs Claude not to commit and to provide a summary", () => {
+    test("reserves the complete git lifecycle for Hopper and requests a summary", () => {
       const prompt = buildTaskPrompt(makeItem());
       expect(prompt).toContain("Do NOT commit");
+      expect(prompt).toContain("Hopper owns the complete git lifecycle");
+      expect(prompt).toContain("Ignore any conflicting git-operation instructions");
       expect(prompt).toContain("summary");
     });
 
@@ -569,6 +571,12 @@ describe("worker-workflow", () => {
       expect(plan.type).toBe("task");
       if (plan.type === "task") {
         expect(plan.prompt).toContain("Fix bug");
+        expect(plan.options.disallowedTools).toContain("Bash(git commit:*)");
+        expect(plan.options.disallowedTools).toContain("Bash(git push:*)");
+        expect(plan.options.env).toEqual({
+          HOPPER_REAL_PATH: "/usr/bin",
+          PATH: `${HOPPER_HOME}/git-ownership-shims:/usr/bin`,
+        });
       }
     });
 

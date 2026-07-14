@@ -1,9 +1,9 @@
 /**
  * Gateway that materialises PATH-shim scripts on disk.
  *
- * Investigation sessions prepend `~/.hopper/worker-shims/` to PATH and set
+ * Sandboxed sessions prepend a Hopper-managed shim directory to PATH and set
  * `HOPPER_REAL_PATH` to the original PATH. Each shim script intercepts a
- * specific binary and denies the verbs listed in INVESTIGATION_DISALLOWED_TOOLS
+ * specific binary and denies the configured verbs
  * regardless of how the shell composed the call — closing the shell-composition
  * bypass where `cd /tmp && git commit ...` slips past `Bash(git commit:*)`.
  *
@@ -11,11 +11,7 @@
  * `disallowedTools` option.
  *
  * Shims are POSIX `/bin/sh` scripts and are not installed on Windows. Windows
- * investigation sessions fall back to the denylist guardrail alone.
- *
- * TODO: Engineering-phase items would also benefit from this shim layer if the
- * design is later extended to cover EXECUTE_DISALLOWED_TOOLS. The current
- * implementation is scoped to investigation sessions only.
+ * sessions fall back to runner denylist support alone.
  */
 
 import { chmod, mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";

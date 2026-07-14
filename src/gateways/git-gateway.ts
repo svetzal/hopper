@@ -48,6 +48,7 @@ async function spawnGit(
 export interface GitGateway {
   branchExists(repoDir: string, branch: string): Promise<boolean>;
   remoteBranchExists(repoDir: string, branch: string): Promise<boolean>;
+  fetchBranch(repoDir: string, branch: string): Promise<void>;
   createTrackingBranch(repoDir: string, branch: string, remoteRef: string): Promise<void>;
   createBranch(repoDir: string, branch: string): Promise<void>;
   createWorktree(
@@ -122,6 +123,17 @@ async function remoteBranchExists(repoDir: string, branch: string): Promise<bool
     repoDir,
   );
   return exitCode === 0;
+}
+
+async function fetchBranch(repoDir: string, branch: string): Promise<void> {
+  const { exitCode, stderr } = await spawnGit(
+    ["fetch", "origin", `${branch}:refs/remotes/origin/${branch}`],
+    repoDir,
+    { stderr: true },
+  );
+  if (exitCode !== 0) {
+    throw new Error(`Failed to fetch origin/${branch}: ${stderr.trim()}`);
+  }
 }
 
 async function createTrackingBranch(
@@ -325,6 +337,7 @@ export function createGitGateway(): GitGateway {
   return {
     branchExists,
     remoteBranchExists,
+    fetchBranch,
     createTrackingBranch,
     createBranch,
     createWorktree,

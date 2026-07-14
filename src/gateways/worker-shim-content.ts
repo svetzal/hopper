@@ -1,6 +1,6 @@
 /**
- * Pure functions for building the PATH-shim scripts that enforce the
- * investigation sandbox at the binary level.
+ * Pure functions for building PATH-shim scripts that enforce Hopper worker
+ * safety boundaries at the binary level.
  *
  * The `disallowedTools` denylist on Claude sessions is leading-token-prefix-
  * matched — `Bash(git commit:*)` is bypassed by `cd /tmp && git commit ...`
@@ -135,14 +135,14 @@ export function parseDisallowedTools(patterns: readonly string[]): ShimDenyMap {
  * restoring `HOPPER_REAL_PATH` so the real binary resolves correctly.
  *
  * The deny message format:
- * `hopper-worker-shim: '<binary> <verb>' is denied in investigation sessions`
+ * `hopper-worker-shim: '<binary> <verb>' is denied in this managed session`
  */
 export function buildShimScript(binary: string, deniedVerbs: ShimSpec): string {
   if (deniedVerbs === "all") {
     return (
       `#!/bin/sh\n` +
-      `# hopper-worker-shim: ${binary} is fully denied in investigation sessions\n` +
-      `echo "hopper-worker-shim: '${binary}' is denied in investigation sessions" >&2\n` +
+      `# hopper-worker-shim: ${binary} is fully denied in this managed session\n` +
+      `echo "hopper-worker-shim: '${binary}' is denied in this managed session" >&2\n` +
       `exit 1\n`
     );
   }
@@ -155,7 +155,7 @@ export function buildShimScript(binary: string, deniedVerbs: ShimSpec): string {
     .map(
       (verb) =>
         `    ${verb})\n` +
-        `      echo "hopper-worker-shim: '${binary} ${verb}' is denied in investigation sessions" >&2\n` +
+        `      echo "hopper-worker-shim: '${binary} ${verb}' is denied in this managed session" >&2\n` +
         `      exit 1\n` +
         `      ;;`,
     )
@@ -163,7 +163,7 @@ export function buildShimScript(binary: string, deniedVerbs: ShimSpec): string {
 
   return (
     `#!/bin/sh\n` +
-    `# hopper-worker-shim: ${binary} — deny specific verbs in investigation sessions\n` +
+    `# hopper-worker-shim: ${binary} — deny specific verbs in this managed session\n` +
     `case "$1" in\n` +
     `${casePatterns}\n` +
     `esac\n` +

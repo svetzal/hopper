@@ -116,6 +116,10 @@ export async function orchestrateWorktreeSetup(ctx: WorktreeSetupContext): Promi
   const { git, repoDir, branch, worktreePath, itemId, workBranchOverride, log } = ctx;
   const localExists = await git.branchExists(repoDir, branch);
   const remoteExists = await git.remoteBranchExists(repoDir, branch);
+  if (remoteExists) {
+    log?.(`Fetching origin/${branch}...`);
+    await git.fetchBranch(repoDir, branch);
+  }
   const branchAction = resolveBranchSetup(branch, { localExists, remoteExists });
 
   switch (branchAction.type) {
@@ -127,6 +131,22 @@ export async function orchestrateWorktreeSetup(ctx: WorktreeSetupContext): Promi
       break;
     case "use-existing":
       break;
+  }
+
+  let baseRef = branch;
+  if (localExists && remoteExists) {
+    const remoteRef = `origin/${branch}`;
+    const localContainsRemote = await git.branchIsAncestorOf(repoDir, remoteRef, branch);
+    const remoteContainsLocal = await git.branchIsAncestorOf(repoDir, branch, remoteRef);
+    if (!localContainsRemote && !remoteContainsLocal) {
+      throw new Error(
+        `Local ${branch} and ${remoteRef} have diverged; refusing to choose a worktree base automatically.`,
+      );
+    }
+    if (remoteContainsLocal && !localContainsRemote) {
+      baseRef = remoteRef;
+      log?.(`Using freshly fetched ${remoteRef} as the worktree base.`);
+    }
   }
 
   const workBranch = workBranchOverride ?? buildWorkBranchName(itemId);
@@ -142,7 +162,7 @@ export async function orchestrateWorktreeSetup(ctx: WorktreeSetupContext): Promi
         worktreePaths.length === 1 &&
         worktreePaths[0] === worktreePath &&
         !(await git.isWorktreeDirty(worktreePath)) &&
-        (await git.branchIsAncestorOf(repoDir, workBranch, branch))
+        (await git.branchIsAncestorOf(repoDir, workBranch, baseRef))
       ) {
         log?.(
           `Reusing preserved worktree at \`${worktreePath}\` (clean, no commits ahead of \`${branch}\`).`,
@@ -156,7 +176,7 @@ export async function orchestrateWorktreeSetup(ctx: WorktreeSetupContext): Promi
     // descended from the current target branch HEAD (i.e. target is an
     // ancestor of the work branch). This covers the common orphan case where
     // the branch was created but no commits landed before the worker crashed.
-    const isSafeOrphan = await git.branchIsAncestorOf(repoDir, branch, workBranch);
+    const isSafeOrphan = await git.branchIsAncestorOf(repoDir, baseRef, workBranch);
     if (!isSafeOrphan) {
       // Branch has diverged — may contain real work; leave it for inspection.
       throw new StaleEngineeringBranchError(workBranch, []);
@@ -165,7 +185,7 @@ export async function orchestrateWorktreeSetup(ctx: WorktreeSetupContext): Promi
     await git.forceDeleteBranch(repoDir, workBranch);
   }
 
-  await git.createWorktree(repoDir, worktreePath, workBranch, branch);
+  await git.createWorktree(repoDir, worktreePath, workBranch, baseRef);
   return workBranch;
 }
 

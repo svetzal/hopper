@@ -4,6 +4,7 @@ import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { GitGateway } from "../gateways/git-gateway.ts";
 import type { ProfilesGateway } from "../gateways/profiles-gateway.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
+import type { ShimDenyMap } from "../gateways/worker-shim-content.ts";
 import type { WorkerShimGateway } from "../gateways/worker-shim-gateway.ts";
 import type { ClaimedItem } from "../store.ts";
 import { callArgs, makeClaimedItem, typedMock } from "../test-helpers.ts";
@@ -540,6 +541,36 @@ describe("runWorkerLoop", () => {
 // ---------------------------------------------------------------------------
 
 describe("workerCommand", () => {
+  test("synchronizes separate investigation and git-ownership shim directories", async () => {
+    const synchronize = mock(async (_shimDir: string, _denyMap: ShimDenyMap) => ({
+      status: "synchronized" as const,
+    }));
+    const workerShim: WorkerShimGateway = { synchronize };
+    const profiles: ProfilesGateway = {
+      ...makeStubProfilesGateway(),
+      bootstrap: mock(async () => false),
+    };
+
+    await workerCommand(
+      { command: "worker", positional: [], flags: { once: true }, arrayFlags: {} },
+      {
+        claimNext: async () => null,
+        workerShim,
+        profiles,
+        claude: {} as AgentRunner,
+        git: {} as GitGateway,
+        fs: {} as FsGateway,
+        shell: {} as ShellGateway,
+      },
+    );
+
+    expect(synchronize).toHaveBeenCalledTimes(2);
+    expect(callArgs(synchronize, 0)[0]).toEndWith("/.hopper/worker-shims");
+    expect(callArgs(synchronize, 1)[0]).toEndWith("/.hopper/git-ownership-shims");
+    expect(callArgs(synchronize, 1)[1].get("git")).toContain("commit");
+    expect(callArgs(synchronize, 1)[1].has("aws")).toBe(false);
+  });
+
   test("workerShim returning skipped-windows logs the PATH shims warning via log", async () => {
     const logs: string[] = [];
 

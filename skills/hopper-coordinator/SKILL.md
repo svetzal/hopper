@@ -169,11 +169,22 @@ Since an autonomous agent will execute this work with no human oversight, descri
 - One piece of work per item — avoid compound tasks
 - Always include validation criteria — specify which commands must pass (test, lint, type-check, build) and any project-specific checks. Workers validate their work automatically, but explicit steps in the description make expectations unambiguous
 
+**Keep git operations out of agent-runner descriptions.** For `task` and `engineering` items, Hopper owns the complete repository lifecycle: sync/branch/worktree setup before the session, then staging, commit, merge, push, and cleanup after successful validation. The description must specify the work product and validation commands only.
+
+- Do not tell the worker to run `git fetch`, `git pull`, `git checkout`, `git switch`, `git worktree`, `git branch`, `git add`, `git commit`, `git merge`, `git rebase`, `git push`, `git tag`, `git stash`, or `git reset`.
+- The `--branch` flag is the coordinator's branch input. Do not repeat branch-management steps in the description.
+- If the source request or a pasted implementation plan contains git lifecycle steps, remove those clauses when translating it into a Hopper description. Preserve the requested code/doc changes and validation criteria.
+- Read-only git inspection such as `git diff`, `git status`, or `git log` may be mentioned when it is genuinely part of validation, but usually does not need to be spelled out.
+
+Workers receive an explicit runtime instruction to ignore conflicting git-operation clauses, and Hopper blocks git mutations inside agent sessions. This is a safety boundary, not permission to leave misleading lifecycle instructions in queued work.
+
 **Recommended description structure:**
 
 1. **Context** — what exists today and why the change is needed
 2. **Work** — what specifically to do, with file paths and concrete details
 3. **Validation** — what commands must pass and what success looks like (e.g., "Run `bun test` and `bun run lint` — both must pass with zero errors")
+
+There is intentionally no "Git" or "Delivery" section: Hopper handles both.
 
 **Choosing a task type:**
 
@@ -198,7 +209,7 @@ Engineering items run a multi-phase workflow with model assignments tuned per ph
 2. **Execute** (sonnet, with the resolved craftsperson agent, git mutations denied) — follows the plan and makes code changes.
 3. **Validate** (opus, read-only git, test/lint tools allowed) — runs the plan's validation commands, inspects the diff, emits `VALIDATE: PASS` or `VALIDATE: FAIL`.
 
-Hopper owns every git operation. The agent never commits, branches, or pushes — if validate passes, Hopper generates a commit message via Haiku from the diff summary and runs the commit / merge / push itself.
+Hopper owns every git operation. The agent never syncs, checks out, commits, branches, merges, or pushes — if validate passes, Hopper generates a commit message via Haiku from the diff summary and runs the commit / merge / push itself. The same ownership rule also applies to default `task` items.
 
 **Remediation retries.** When validate reports `VALIDATE: FAIL`, Hopper loops back into execute with the prior execute summary and the validate failure inlined in the prompt, so the agent can target the regression rather than redoing working code. The cap is `--retries <n>` (default 1, max 5). `--retries 0` disables remediation — a first-pass validate FAIL terminates immediately with the worktree preserved. Each retry gets its own audit files: `<id>-execute-2.jsonl`, `<id>-validate-2.jsonl`, and so on; the first attempt keeps the legacy names (`<id>-execute.jsonl`, `<id>-validate.jsonl`).
 
@@ -452,7 +463,7 @@ You no longer need `--after-item` purely to prevent concurrent execution conflic
 
 1. **Validate** — Confirm the work is concrete, specific, and ready for autonomous execution
 2. **Organize** — Decide on priority, tags, scheduling, and dependencies
-3. **Add items** — Queue each piece of work with a clear description, project directory, and branch. Use `--after-item` only for logical dependencies or explicit ordering
+3. **Add items** — Queue each piece of work with a clear work-product-and-validation description, project directory, and branch. Strip any embedded git lifecycle steps before adding. Use `--after-item` only for logical dependencies or explicit ordering
 4. **Monitor** — Check `hopper list` to see what's been claimed, what's blocked, and what's still queued
 5. **Adjust** — Edit priority, tag, cancel, or requeue items as the situation evolves
 6. **Review** — Check completed items with `hopper show <id>` to see the agent's results

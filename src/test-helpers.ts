@@ -63,6 +63,7 @@ export function makeMockGit(overrides?: Partial<GitGateway>): GitGateway {
   return {
     branchExists: mock(async () => true),
     remoteBranchExists: mock(async () => false),
+    fetchBranch: mock(async () => {}),
     createTrackingBranch: mock(async () => {}),
     createBranch: mock(async () => {}),
     createWorktree: mock(async () => {}),

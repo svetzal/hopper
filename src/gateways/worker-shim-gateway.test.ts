@@ -164,7 +164,7 @@ describeOnPosix("WorkerShimGateway subprocess smoke tests", () => {
 
     expect(exitCode).not.toBe(0);
     expect(stderr).toContain("hopper-worker-shim");
-    expect(stderr).toContain("denied in investigation sessions");
+    expect(stderr).toContain("denied in this managed session");
   });
 
   test("git shim allows read-only 'git log' with correct HOPPER_REAL_PATH", async () => {

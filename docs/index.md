@@ -31,7 +31,7 @@ features:
 
   - icon: 🔁
     title: Engineering pipeline
-    details: Plan → execute → validate, with one remediation pass on validate failure. Read-only plan and validate phases. Hopper owns every git mutation; the agent is denylisted from commit/push/branch.
+    details: Plan → execute → validate, with one remediation pass on validate failure. Hopper owns sync, worktrees, commit, merge, push, and cleanup. Agent git mutations are blocked across POSIX runners, including default tasks.
 
   - icon: 🧪
     title: Functional core + imperative shell

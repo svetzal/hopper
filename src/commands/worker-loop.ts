@@ -14,11 +14,14 @@ import { createProfilesGateway } from "../gateways/profiles-gateway.ts";
 import { createRoutingRunner } from "../gateways/routing-runner.ts";
 import type { ShellGateway } from "../gateways/shell-gateway.ts";
 import { createShellGateway } from "../gateways/shell-gateway.ts";
-import { buildInvestigationShimMap } from "../gateways/worker-shim-content.ts";
+import {
+  buildInvestigationShimMap,
+  parseDisallowedTools,
+} from "../gateways/worker-shim-content.ts";
 import { createWorkerShimGateway } from "../gateways/worker-shim-gateway.ts";
 import type { ClaimedItem } from "../store.ts";
 import { claimNextItem, findItem } from "../store.ts";
-import { INVESTIGATION_DISALLOWED_TOOLS } from "../task-type-workflow.ts";
+import { EXECUTE_DISALLOWED_TOOLS, INVESTIGATION_DISALLOWED_TOOLS } from "../task-type-workflow.ts";
 import {
   resolveLoopAction,
   resolvePostClaimLoopAction,
@@ -198,9 +201,13 @@ export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Prom
   const shimDir = join(hopperHome, "worker-shims");
   const denyMap = buildInvestigationShimMap(INVESTIGATION_DISALLOWED_TOOLS);
   const shimResult = await workerShim.synchronize(shimDir, denyMap);
-  if (shimResult.status === "skipped-windows") {
+  const gitShimResult = await workerShim.synchronize(
+    join(hopperHome, "git-ownership-shims"),
+    parseDisallowedTools(EXECUTE_DISALLOWED_TOOLS),
+  );
+  if (shimResult.status === "skipped-windows" || gitShimResult.status === "skipped-windows") {
     log(
-      "Warning: PATH shims are POSIX-only; investigation sandbox on Windows relies on the denylist alone.",
+      "Warning: PATH shims are POSIX-only; investigation and git-ownership enforcement on Windows rely on runner denylist support.",
     );
   }
 

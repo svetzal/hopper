@@ -82,6 +82,7 @@ describe("orchestrateWorktreeSetup", () => {
       TARGET_BRANCH,
       `origin/${TARGET_BRANCH}`,
     );
+    expect(git.fetchBranch).toHaveBeenCalledWith(REPO_DIR, TARGET_BRANCH);
     expect(git.createBranch).not.toHaveBeenCalled();
   });
 
@@ -119,6 +120,80 @@ describe("orchestrateWorktreeSetup", () => {
 
     expect(git.createBranch).not.toHaveBeenCalled();
     expect(git.createTrackingBranch).not.toHaveBeenCalled();
+  });
+
+  test("remote ahead: fetches and bases the worktree on origin/<branch>", async () => {
+    const git = makeMockGit({
+      branchExists: mock(async (_, branch) => branch === TARGET_BRANCH),
+      remoteBranchExists: mock(async () => true),
+      branchIsAncestorOf: mock(async (_, ancestor, ref) => {
+        if (ancestor === TARGET_BRANCH && ref === `origin/${TARGET_BRANCH}`) return true;
+        if (ancestor === `origin/${TARGET_BRANCH}` && ref === TARGET_BRANCH) return false;
+        return true;
+      }),
+    });
+
+    await orchestrateWorktreeSetup({
+      git,
+      repoDir: REPO_DIR,
+      branch: TARGET_BRANCH,
+      worktreePath: WORKTREE_PATH,
+      itemId: ITEM_ID,
+    });
+
+    expect(git.fetchBranch).toHaveBeenCalledWith(REPO_DIR, TARGET_BRANCH);
+    expect(git.createWorktree).toHaveBeenCalledWith(
+      REPO_DIR,
+      WORKTREE_PATH,
+      WORK_BRANCH,
+      `origin/${TARGET_BRANCH}`,
+    );
+  });
+
+  test("local ahead: fetches but preserves the local branch as the worktree base", async () => {
+    const git = makeMockGit({
+      branchExists: mock(async (_, branch) => branch === TARGET_BRANCH),
+      remoteBranchExists: mock(async () => true),
+      branchIsAncestorOf: mock(async (_, ancestor, ref) => {
+        if (ancestor === `origin/${TARGET_BRANCH}` && ref === TARGET_BRANCH) return true;
+        if (ancestor === TARGET_BRANCH && ref === `origin/${TARGET_BRANCH}`) return false;
+        return true;
+      }),
+    });
+
+    await orchestrateWorktreeSetup({
+      git,
+      repoDir: REPO_DIR,
+      branch: TARGET_BRANCH,
+      worktreePath: WORKTREE_PATH,
+      itemId: ITEM_ID,
+    });
+
+    expect(git.createWorktree).toHaveBeenCalledWith(
+      REPO_DIR,
+      WORKTREE_PATH,
+      WORK_BRANCH,
+      TARGET_BRANCH,
+    );
+  });
+
+  test("diverged local and remote target branches fail before worktree creation", async () => {
+    const git = makeMockGit({
+      branchExists: mock(async (_, branch) => branch === TARGET_BRANCH),
+      remoteBranchExists: mock(async () => true),
+      branchIsAncestorOf: mock(async () => false),
+    });
+
+    await expect(
+      orchestrateWorktreeSetup({
+        git,
+        repoDir: REPO_DIR,
+        branch: TARGET_BRANCH,
+        worktreePath: WORKTREE_PATH,
+        itemId: ITEM_ID,
+      }),
+    ).rejects.toThrow("have diverged");
+    expect(git.createWorktree).not.toHaveBeenCalled();
   });
 
   test("createWorktree called with derived work branch name in all cases", async () => {

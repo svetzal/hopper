@@ -6,6 +6,7 @@ import {
   buildExecuteOptions,
   buildExecutePrompt,
   buildExecuteRemediationPrompt,
+  buildGitOwnershipShimEnv,
   buildInvestigationOptions,
   buildInvestigationPrompt,
   buildPlanOptions,
@@ -244,7 +245,7 @@ describe("buildExecutePrompt", () => {
   test("forbids the agent from mutating git", () => {
     const prompt = buildExecutePrompt(makeEngItem(), "plan");
     expect(prompt.toLowerCase()).toContain("do not commit");
-    expect(prompt.toLowerCase()).toContain("hopper owns all git");
+    expect(prompt.toLowerCase()).toContain("hopper owns the complete git lifecycle");
   });
 });
 
@@ -270,6 +271,11 @@ describe("buildExecuteOptions", () => {
 
   test("uses medium reasoning effort", () => {
     expect(buildExecuteOptions().effort).toBe("medium");
+  });
+
+  test("forwards the cross-runner shim environment", () => {
+    const env = { HOPPER_REAL_PATH: "/usr/bin", PATH: "/shims:/usr/bin" };
+    expect(buildExecuteOptions(undefined, env).env).toEqual(env);
   });
 });
 
@@ -345,7 +351,7 @@ describe("buildExecuteRemediationPrompt", () => {
       priorValidate,
       1,
     );
-    expect(prompt.toLowerCase()).toContain("hopper owns all git");
+    expect(prompt.toLowerCase()).toContain("hopper owns the complete git lifecycle");
     expect(prompt.toLowerCase()).toContain("do not commit");
   });
 
@@ -363,8 +369,20 @@ describe("buildExecuteRemediationPrompt", () => {
 
 describe("GIT_OWNERSHIP_INSTRUCTION", () => {
   test("is the single prose source shared by execute and validate phases", () => {
-    expect(GIT_OWNERSHIP_INSTRUCTION.toLowerCase()).toContain("hopper owns all git");
+    expect(GIT_OWNERSHIP_INSTRUCTION.toLowerCase()).toContain(
+      "hopper owns the complete git lifecycle",
+    );
     expect(GIT_OWNERSHIP_INSTRUCTION.toLowerCase()).toContain("do not commit");
+    expect(GIT_OWNERSHIP_INSTRUCTION.toLowerCase()).toContain("task description");
+  });
+});
+
+describe("buildGitOwnershipShimEnv", () => {
+  test("prepends the git-only shim directory while preserving the real PATH", () => {
+    expect(buildGitOwnershipShimEnv("/home/.hopper", "/usr/bin:/bin")).toEqual({
+      HOPPER_REAL_PATH: "/usr/bin:/bin",
+      PATH: "/home/.hopper/git-ownership-shims:/usr/bin:/bin",
+    });
   });
 });
 
@@ -387,7 +405,7 @@ describe("buildValidatePrompt", () => {
 
   test("forbids git mutations", () => {
     const prompt = buildValidatePrompt(makeEngItem(), "plan");
-    expect(prompt.toLowerCase()).toContain("hopper owns all git");
+    expect(prompt.toLowerCase()).toContain("hopper owns the complete git lifecycle");
     expect(prompt.toLowerCase()).toContain("do not commit");
   });
 });
@@ -415,6 +433,11 @@ describe("buildValidateOptions", () => {
 
   test("uses high reasoning effort", () => {
     expect(buildValidateOptions().effort).toBe("high");
+  });
+
+  test("forwards the cross-runner shim environment", () => {
+    const env = { HOPPER_REAL_PATH: "/usr/bin", PATH: "/shims:/usr/bin" };
+    expect(buildValidateOptions(env).env).toEqual(env);
   });
 });
 

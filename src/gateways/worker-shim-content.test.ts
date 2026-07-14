@@ -130,7 +130,7 @@ describe("buildShimScript", () => {
 
   test("full-deny script includes the deny message with binary name", () => {
     const script = buildShimScript("curl", "all");
-    expect(script).toContain("hopper-worker-shim: 'curl' is denied in investigation sessions");
+    expect(script).toContain("hopper-worker-shim: 'curl' is denied in this managed session");
   });
 
   test("verb-list script uses case statement and allows pass-through", () => {
@@ -150,10 +150,8 @@ describe("buildShimScript", () => {
 
   test("verb-list script includes deny message with binary and verb", () => {
     const script = buildShimScript("git", ["commit", "push"]);
-    expect(script).toContain(
-      "hopper-worker-shim: 'git commit' is denied in investigation sessions",
-    );
-    expect(script).toContain("hopper-worker-shim: 'git push' is denied in investigation sessions");
+    expect(script).toContain("hopper-worker-shim: 'git commit' is denied in this managed session");
+    expect(script).toContain("hopper-worker-shim: 'git push' is denied in this managed session");
   });
 
   test("verb-list re-exec line passes all args through", () => {

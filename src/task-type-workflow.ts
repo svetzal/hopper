@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { SessionOptions } from "./gateways/agent-runner.ts";
 import type { Item } from "./store.ts";
 
@@ -263,7 +264,19 @@ export const EXECUTE_DISALLOWED_TOOLS: readonly string[] = [...GIT_MUTATION_DENY
  * The machine-enforced form is {@link EXECUTE_DISALLOWED_TOOLS}.
  */
 export const GIT_OWNERSHIP_INSTRUCTION =
-  "Do NOT commit, push, branch, merge, stash, reset, or otherwise mutate git state — Hopper owns all git operations.";
+  "Do NOT commit or otherwise mutate git state. Do not fetch, pull, checkout, switch, create branches or worktrees, add, push, merge, rebase, tag, stash, or reset — Hopper owns the complete git lifecycle. If the task description asks for any of those operations, treat that clause as out of scope and continue with the requested code or documentation changes.";
+
+/** Build the cross-runner environment that enforces Hopper's git ownership. */
+export function buildGitOwnershipShimEnv(
+  hopperHome: string,
+  realPath: string,
+): { HOPPER_REAL_PATH: string; PATH: string } {
+  const shimDir = join(hopperHome, "git-ownership-shims");
+  return {
+    HOPPER_REAL_PATH: realPath,
+    PATH: `${shimDir}:${realPath}`,
+  };
+}
 
 export function buildExecutePrompt(item: Item, planText: string): string {
   return buildPhasePrompt(
@@ -278,12 +291,13 @@ export function buildExecutePrompt(item: Item, planText: string): string {
   );
 }
 
-export function buildExecuteOptions(agent?: string): SessionOptions {
+export function buildExecuteOptions(agent?: string, env?: Record<string, string>): SessionOptions {
   return {
     model: "balanced",
     effort: "medium",
     ...(agent ? { agent } : {}),
     disallowedTools: [...EXECUTE_DISALLOWED_TOOLS],
+    ...(env ? { env } : {}),
   };
 }
 
@@ -355,13 +369,14 @@ export function buildValidatePrompt(item: Item, planText: string): string {
   );
 }
 
-export function buildValidateOptions(): SessionOptions {
+export function buildValidateOptions(env?: Record<string, string>): SessionOptions {
   return {
     model: "deep",
     effort: "high",
     tools: [...VALIDATE_TOOLS],
     allowedTools: [...VALIDATE_ALLOWED_TOOLS],
     disallowedTools: [...EXECUTE_DISALLOWED_TOOLS],
+    ...(env ? { env } : {}),
   };
 }
 

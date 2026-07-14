@@ -22,6 +22,7 @@ import {
   buildExecuteOptions,
   buildExecutePrompt,
   buildExecuteRemediationPrompt,
+  buildGitOwnershipShimEnv,
   buildPlanOptions,
   buildPlanPrompt,
   buildValidateFallbackPrompt,
@@ -333,7 +334,10 @@ async function runExecuteAttempt(
     prompt: executePrompt,
     worktreePath,
     auditFile: executeAuditPath,
-    sessionOptions: buildExecuteOptions(item.agent),
+    sessionOptions: buildExecuteOptions(
+      item.agent,
+      buildGitOwnershipShimEnv(hopperHome, process.env.PATH ?? ""),
+    ),
     phaseRecord: (run, startedAt, endedAt) => ({
       name: "execute",
       startedAt,
@@ -371,7 +375,9 @@ async function runValidateAttempt(
     prompt: buildValidatePrompt(item, planText),
     worktreePath,
     auditFile: validateAuditPath,
-    sessionOptions: buildValidateOptions(),
+    sessionOptions: buildValidateOptions(
+      buildGitOwnershipShimEnv(hopperHome, process.env.PATH ?? ""),
+    ),
     phaseRecord: async (run, startedAt, endedAt) => {
       if (run.terminalFailure?.terminal) {
         outcome = {
