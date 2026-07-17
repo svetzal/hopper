@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.1] - 2026-07-17
+
+### Fixed
+
+- Codex profiles now receive Hopper's per-phase reasoning effort through the
+  Codex CLI configuration surface. Profile-bound effort still overrides the
+  workflow default, and Hopper's `minimal` level maps to Codex `low`, matching
+  the existing Claude translation.
+
 ## [4.1.0] - 2026-07-16
 
 ### Fixed

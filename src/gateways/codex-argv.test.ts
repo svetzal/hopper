@@ -14,6 +14,15 @@ const CODEX_PROFILE: Profile = {
   },
 };
 
+const EFFORT_PROFILE: Profile = {
+  ...CODEX_PROFILE,
+  name: "codex-effort",
+  models: {
+    ...CODEX_PROFILE.models,
+    deep: { model: "gpt-5.5", effort: "max" },
+  },
+};
+
 describe("buildCodexArgv", () => {
   test("minimal invocation uses codex exec JSONL and unattended sandbox bypass", () => {
     expect(buildCodexArgv(BIN, "hi")).toEqual([
@@ -52,6 +61,29 @@ describe("buildCodexArgv", () => {
     expect(argv.includes("--model")).toBe(false);
   });
 
+  test("forwards the workflow effort through Codex config", () => {
+    const argv = buildCodexArgv(BIN, "hi", { effort: "high" });
+    const configIdx = argv.indexOf("--config");
+    expect(configIdx).toBeGreaterThan(-1);
+    expect(argv[configIdx + 1]).toBe('model_reasoning_effort="high"');
+  });
+
+  test("profile-tier effort overrides the workflow effort", () => {
+    const argv = buildCodexArgv(BIN, "hi", {
+      model: "deep",
+      profile: EFFORT_PROFILE,
+      effort: "high",
+    });
+    const configIdx = argv.indexOf("--config");
+    expect(argv[configIdx + 1]).toBe('model_reasoning_effort="max"');
+  });
+
+  test("maps Hopper minimal effort to Codex low effort", () => {
+    const argv = buildCodexArgv(BIN, "hi", { effort: "minimal" });
+    const configIdx = argv.indexOf("--config");
+    expect(argv[configIdx + 1]).toBe('model_reasoning_effort="low"');
+  });
+
   test("captures the last assistant message when a path is provided", () => {
     const argv = buildCodexArgv(BIN, "hi", {}, "/tmp/result.txt");
     const idx = argv.indexOf("--output-last-message");
@@ -66,13 +98,11 @@ describe("buildCodexArgv", () => {
       allowedTools: ["Bash(git diff:*)"],
       disallowedTools: ["Bash(git commit:*)"],
       permissionMode: "plan",
-      effort: "high",
     });
     expect(argv.includes("--agent")).toBe(false);
     expect(argv.includes("--tools")).toBe(false);
     expect(argv.includes("--allowedTools")).toBe(false);
     expect(argv.includes("--disallowedTools")).toBe(false);
     expect(argv.includes("--permission-mode")).toBe(false);
-    expect(argv.includes("--effort")).toBe(false);
   });
 });

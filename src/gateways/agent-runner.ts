@@ -88,6 +88,8 @@ export interface SessionOptions {
    *   builder maps `minimal` → `low`).
    * - opencode → `--variant <value>` (provider-specific; opencode passes
    *   the value through verbatim — supported levels depend on the model).
+   * - codex → `--config model_reasoning_effort=<value>` (codex has no
+   *   `minimal`; the codex argv builder maps `minimal` → `low`).
    *
    * Runner-native strings outside the unified set (e.g. claude's `xhigh`)
    * are forwarded as-is; the CLI surfaces the error if invalid.

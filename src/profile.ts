@@ -52,7 +52,7 @@ export type ProfileRunner = "claude" | "opencode" | "codex";
  * `SessionOptions.effort` in `agent-runner.ts`. Runners translate:
  * - claude → `--effort` (maps `minimal` → `low`).
  * - opencode → `--variant`.
- * - codex → ignored for now; model/effort coupling is profile-specific.
+ * - codex → `--config model_reasoning_effort=...` (maps `minimal` → `low`).
  *
  * Profile entries may include this to lock a tier to a specific effort,
  * overriding the per-phase default chosen by the workflow.
