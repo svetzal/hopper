@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is Hopper?
 
-Hopper is a personal work queue CLI that distributes tasks to AI agents. Items flow through: `queued -> in_progress -> completed` (with requeue and cancel paths). It's a Bun/TypeScript CLI tool that compiles to standalone binaries.
+Hopper is a personal work queue CLI that distributes tasks to AI agents. Items flow through: `queued -> in_progress -> completed` (with a terminal `failed` state for engineering runs that end without integrable work, plus requeue and cancel paths). It's a Bun/TypeScript CLI tool that compiles to standalone binaries.
 
 See the product @CHARTER.md for more details about the product and purpose.
 

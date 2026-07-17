@@ -145,6 +145,8 @@ export function formatItemDetail(item: Item, cost?: CostBreakdown): string {
   if (item.claimedBy) lines.push(`Claimed by:  ${item.claimedBy}`);
   if (item.completedAt) lines.push(`Completed:   ${item.completedAt}`);
   if (item.completedBy) lines.push(`Completed by: ${item.completedBy}`);
+  if (item.failedAt) lines.push(`Failed:      ${item.failedAt}`);
+  if (item.failedBy) lines.push(`Failed by:   ${item.failedBy}`);
   if (item.tags?.length) lines.push(`Tags:        ${item.tags.join(", ")}`);
   if (item.scheduledAt) lines.push(`Scheduled:   ${item.scheduledAt}`);
   if (item.workingDir) lines.push(`Directory:   ${item.workingDir}`);

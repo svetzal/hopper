@@ -8,6 +8,7 @@ import {
   complete,
   dirsOverlap,
   ensureDefaults,
+  fail,
   isValidItemShape,
   normalizeDir,
   prependItem,
@@ -240,6 +241,29 @@ describe("dirsOverlap", () => {
 // ---------------------------------------------------------------------------
 
 describe("claimNext — directory-aware", () => {
+  test("failed item's workingDir does NOT block claiming (terminal state frees the repo slot)", () => {
+    // Regression: an engineering run that exhausted its validate budget used to
+    // park at in_progress forever, wedging every later queued item for the
+    // same repo. Failed is terminal and must not count as busy.
+    const failedItem = makeItem({
+      status: "failed",
+      workingDir: "/repo/project",
+      claimedAt: FIXED_NOW.toISOString(),
+      failedAt: FIXED_NOW.toISOString(),
+    });
+    const queued = makeItem({ title: "Next for same repo", workingDir: "/repo/project" });
+    const result = claimNext([failedItem, queued], undefined, FIXED_NOW, FIXED_UUID);
+
+    expect(result.claimed?.title).toBe("Next for same repo");
+  });
+
+  test("records the claiming worker's pid when provided", () => {
+    const queued = makeItem({ workingDir: "/repo/project" });
+    const result = claimNext([queued], "agent", FIXED_NOW, FIXED_UUID, undefined, 12345);
+
+    expect(result.claimed?.claimedPid).toBe(12345);
+  });
+
   test("skips queued item whose workingDir matches an in-progress item", () => {
     const inProgress = makeItem({
       status: "in_progress",
@@ -657,6 +681,84 @@ describe("complete", () => {
 // requeue
 // ---------------------------------------------------------------------------
 
+describe("fail", () => {
+  function makeInProgressItem(overrides?: Partial<Item>): Item {
+    return makeItem({
+      status: "in_progress",
+      claimedAt: FIXED_NOW.toISOString(),
+      claimedBy: "agent",
+      claimToken: FIXED_UUID,
+      claimedPid: 4242,
+      ...overrides,
+    });
+  }
+
+  test("marks item as failed with valid token", () => {
+    const item = makeInProgressItem();
+    const result = fail([item], FIXED_UUID, "agent", "Validate did not pass", FIXED_NOW);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.failed.status).toBe("failed");
+      expect(result.value.failed.failedAt).toBe(FIXED_NOW.toISOString());
+      expect(result.value.failed.failedBy).toBe("agent");
+      expect(result.value.failed.result).toBe("Validate did not pass");
+    }
+  });
+
+  test("clears claimToken and claimedPid", () => {
+    const item = makeInProgressItem();
+    const result = fail([item], FIXED_UUID, "agent", undefined, FIXED_NOW);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.failed.claimToken).toBeUndefined();
+      expect(result.value.failed.claimedPid).toBeUndefined();
+    }
+  });
+
+  test("returns error on invalid token", () => {
+    const item = makeInProgressItem();
+    const result = fail([item], "bad-token", "agent", undefined, FIXED_NOW);
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("No in-progress item found"),
+    });
+  });
+
+  test("returns error when item is not in_progress", () => {
+    const item = makeItem({ status: "queued", claimToken: FIXED_UUID });
+    const result = fail([item], FIXED_UUID, "agent", undefined, FIXED_NOW);
+
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("not in progress") });
+  });
+
+  test("does not unblock dependents (failure is not completion)", () => {
+    const item = makeInProgressItem();
+    const blocked = makeItem({ status: "blocked", dependsOn: [item.id] });
+    const result = fail([item, blocked], FIXED_UUID, "agent", undefined, FIXED_NOW);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const stillBlocked = result.value.items.find((i) => i.id === blocked.id);
+      expect(stillBlocked?.status).toBe("blocked");
+    }
+  });
+
+  test("returns new items array (does not mutate input)", () => {
+    const item = makeInProgressItem();
+    const items = [item];
+    const result = fail(items, FIXED_UUID, "agent", undefined, FIXED_NOW);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.items).not.toBe(items);
+      expect(item.status).toBe("in_progress");
+    }
+  });
+});
+
 describe("requeue", () => {
   test("resets in_progress item to queued with reason", () => {
     const item = makeItem({
@@ -697,6 +799,27 @@ describe("requeue", () => {
     const result = requeue([item], item.id, "reason", undefined);
 
     expect(result).toMatchObject({ ok: false, error: expect.stringContaining("not in progress") });
+  });
+
+  test("requeues a failed item and clears failure fields (retry path)", () => {
+    const item = makeItem({
+      status: "failed",
+      claimedAt: FIXED_NOW.toISOString(),
+      claimedBy: "agent",
+      failedAt: FIXED_NOW.toISOString(),
+      failedBy: "agent",
+      result: "Validate did not pass after 2/2 attempt(s)",
+    });
+    const result = requeue([item], item.id, "retry with more context", "coordinator");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.requeued.status).toBe("queued");
+      expect(result.value.requeued.failedAt).toBeUndefined();
+      expect(result.value.requeued.failedBy).toBeUndefined();
+      expect(result.value.requeued.result).toBeUndefined();
+      expect(result.value.requeued.requeueReason).toBe("retry with more context");
+    }
   });
 
   test("returns error on no match", () => {
@@ -759,6 +882,20 @@ describe("requeue", () => {
 // ---------------------------------------------------------------------------
 
 describe("cancel", () => {
+  test("cancels a failed item (discard preserved work)", () => {
+    const item = makeItem({
+      status: "failed",
+      failedAt: FIXED_NOW.toISOString(),
+    });
+    const result = cancel([item], item.id, FIXED_NOW);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.cancelled.status).toBe("cancelled");
+      expect(result.value.previousStatus).toBe("failed");
+    }
+  });
+
   test("cancels a queued item", () => {
     const item = makeItem({ title: "To cancel", status: "queued" });
     const result = cancel([item], item.id, FIXED_NOW);
@@ -824,7 +961,7 @@ describe("cancel", () => {
     expect(result).toMatchObject({
       ok: false,
       error: expect.stringContaining(
-        "Only queued, scheduled, blocked, or in-progress items can be cancelled",
+        "Only queued, scheduled, blocked, in-progress, or failed items can be cancelled",
       ),
     });
   });

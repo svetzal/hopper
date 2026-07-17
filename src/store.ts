@@ -9,6 +9,7 @@ import {
   cancel,
   claimNext,
   complete,
+  fail,
   prependItem,
   removeTags,
   reprioritize,
@@ -56,8 +57,22 @@ export interface Item {
   claimedAt?: string;
   claimedBy?: string;
   claimToken?: string;
+  /**
+   * OS process id of the worker that claimed this item. Recorded at claim
+   * time so reconciliation can flag `in_progress` items whose worker process
+   * is gone (crashed / killed) instead of silently holding the repo's claim
+   * slot. Only meaningful while `in_progress`; cleared on every transition out.
+   */
+  claimedPid?: number;
   completedAt?: string;
   completedBy?: string;
+  /**
+   * Set when the item reaches the terminal `failed` status — a worker run that
+   * ended without integrable work (plan/execute failed or validate never
+   * passed). The worktree + work branch are preserved for human recovery.
+   */
+  failedAt?: string;
+  failedBy?: string;
   result?: string;
   priority?: "high" | "normal" | "low";
   requeueReason?: string;
@@ -183,7 +198,14 @@ export async function addItem(item: Item): Promise<void> {
 
 export async function claimNextItem(agent?: string): Promise<ClaimedItem | undefined> {
   return transactConditional((items) => {
-    const result = claimNext(items, agent, new Date(), crypto.randomUUID(), process.cwd());
+    const result = claimNext(
+      items,
+      agent,
+      new Date(),
+      crypto.randomUUID(),
+      process.cwd(),
+      process.pid,
+    );
     return { items: result.items, changed: !!result.claimed, value: result.claimed };
   });
 }
@@ -201,6 +223,22 @@ export async function completeItem(
   return transact(
     (items) => complete(items, token, agent, result, new Date(), crypto.randomUUID()),
     (v) => ({ completed: v.completed, recurred: v.recurred }),
+  );
+}
+
+/**
+ * Mark an item as terminally failed by claim token. Used by the worker when an
+ * engineering run ends without integrable work; the worktree + branch are left
+ * in place for human recovery (requeue / integrate / cancel).
+ */
+export async function failItem(
+  token: string,
+  agent?: string,
+  result?: string,
+): Promise<Result<Item>> {
+  return transact(
+    (items) => fail(items, token, agent, result, new Date()),
+    (v) => v.failed,
   );
 }
 

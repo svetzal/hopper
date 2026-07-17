@@ -14,7 +14,7 @@ import {
   resolveMergeStep,
 } from "../git-workflow.ts";
 import type { Profile } from "../profile.ts";
-import { type ClaimedItem, completeItem, requeueItem } from "../store.ts";
+import { type ClaimedItem, completeItem, failItem, requeueItem } from "../store.ts";
 
 export type LogFn = (message: string) => void;
 
@@ -58,6 +58,31 @@ export async function logCompleteOutcome(
     }
   } else {
     log(`Complete failed: ${completeOutcome.error}`);
+  }
+}
+
+/**
+ * Transition a run that ended without integrable work to the terminal `failed`
+ * status. The result file has already been written by the failure path; this
+ * only records the store transition so the item stops holding its repo's
+ * claim slot. The worktree + work branch are deliberately NOT touched —
+ * recovery (requeue / integrate / cancel) is a human decision.
+ */
+export async function finalizeFailure(ctx: {
+  claimToken: string;
+  agentName: string;
+  finalResult: string;
+  log: LogFn;
+}): Promise<void> {
+  const { claimToken, agentName, finalResult, log } = ctx;
+  log("Marking item failed...");
+  const failOutcome = await failItem(claimToken, agentName, finalResult);
+  if (failOutcome.ok) {
+    log(
+      `Failed: ${failOutcome.value.title} (worktree + branch preserved; requeue, integrate, or cancel to recover)`,
+    );
+  } else {
+    log(`Fail transition failed: ${failOutcome.error}`);
   }
 }
 

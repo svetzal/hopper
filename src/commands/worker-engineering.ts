@@ -44,6 +44,7 @@ import {
 import {
   createLogger,
   finalizeCompletion,
+  finalizeFailure,
   finalizeWorktreeAndComplete,
   type LogFn,
   logClaimBanner,
@@ -299,6 +300,7 @@ interface ExecuteValidateResult {
   executeResults: readonly string[];
   validateResults: readonly string[];
   terminalFailure?: TerminalRunnerFailure;
+  /** Set on every failure path — the text already written to the result file. */
   finalResult?: string;
 }
 
@@ -436,12 +438,16 @@ export async function runExecuteValidateLoop(
   let previousExecuteResult = "";
   let previousValidateResult = "";
 
-  async function writeEngineeringFailure(msg: string): Promise<void> {
+  async function writeEngineeringFailure(msg: string): Promise<string> {
     log(msg);
-    await fs.writeFile(
-      paths.resultFile,
-      buildEngineeringFailureResult(planText, executeResults, validateResults, msg),
+    const finalResult = buildEngineeringFailureResult(
+      planText,
+      executeResults,
+      validateResults,
+      msg,
     );
+    await fs.writeFile(paths.resultFile, finalResult);
+    return finalResult;
   }
 
   async function writeTerminalFailure(
@@ -479,8 +485,8 @@ export async function runExecuteValidateLoop(
 
     if (executeAttempt.exitCode !== 0) {
       const msg = `Execute phase attempt ${attempt} failed (exit ${executeAttempt.exitCode}); worktree + branch preserved.`;
-      await writeEngineeringFailure(msg);
-      return { passed: false, reason: msg, executeResults, validateResults };
+      const finalResult = await writeEngineeringFailure(msg);
+      return { passed: false, reason: msg, executeResults, validateResults, finalResult };
     }
 
     const validateAttempt = await runValidateAttempt(ctx, attempt, maxAttempts);
@@ -511,8 +517,8 @@ export async function runExecuteValidateLoop(
 
   if (!outcome.passed) {
     const msg = `Validate did not pass after ${attempt}/${maxAttempts} attempt(s) (${outcome.reason}); worktree + branch preserved.`;
-    await writeEngineeringFailure(msg);
-    return { passed: false, reason: outcome.reason, executeResults, validateResults };
+    const finalResult = await writeEngineeringFailure(msg);
+    return { passed: false, reason: outcome.reason, executeResults, validateResults, finalResult };
   }
 
   return { passed: true, reason: outcome.reason, executeResults, validateResults };
@@ -528,7 +534,9 @@ async function safePersistBranchSlug(itemId: string, slug: string, log: LogFn): 
 
 export async function runPlanPhase(
   ctx: EngineeringContext,
-): Promise<{ planText: string } | TerminalFailureResult | null> {
+): Promise<
+  { planText: string } | TerminalFailureResult | { planFailed: true; finalResult: string }
+> {
   const { item, worktreePath, paths, deps, log } = ctx;
   const { claude, fs, profile } = deps;
   log(`Plan phase (deep, plan mode, read-only)...\nAudit log: ${paths.planAuditFile}`);
@@ -559,8 +567,9 @@ export async function runPlanPhase(
   if (exitCode !== 0 || !planText) {
     const msg = `Plan phase failed (exit ${exitCode}); worktree + branch preserved for inspection.`;
     log(msg);
-    await fs.writeFile(paths.resultFile, `${result}\n\n${msg}`);
-    return null;
+    const finalResult = `${result}\n\n${msg}`;
+    await fs.writeFile(paths.resultFile, finalResult);
+    return { planFailed: true, finalResult };
   }
   log("Persisting plan to audit directory...");
   await fs.writeFile(paths.planFile, planText);
@@ -707,7 +716,6 @@ export async function processEngineeringItem(args: ProcessEngineeringItemArgs): 
   if (!worktreeSetup.ok) return;
 
   const planResult = await runPlanPhase(ctx);
-  if (!planResult) return;
   if ("terminalFailure" in planResult) {
     await finalizeCompletion({
       fs: deps.fs,
@@ -715,6 +723,15 @@ export async function processEngineeringItem(args: ProcessEngineeringItemArgs): 
       finalResult: planResult.finalResult,
       claimToken: ctx.item.claimToken,
       agentName,
+      log,
+    });
+    return;
+  }
+  if ("planFailed" in planResult) {
+    await finalizeFailure({
+      claimToken: ctx.item.claimToken,
+      agentName,
+      finalResult: planResult.finalResult,
       log,
     });
     return;
@@ -740,7 +757,26 @@ export async function processEngineeringItem(args: ProcessEngineeringItemArgs): 
         agentName,
         log,
       });
+      return;
     }
+    // Execute exited non-zero or validate never passed within the retry
+    // budget. This is terminal for the run: record `failed` so the item stops
+    // holding its repo's serialization slot (a parked `in_progress` item used
+    // to wedge every later queued item for the same workingDir). The worktree
+    // + work branch stay exactly as the run left them.
+    await finalizeFailure({
+      claimToken: ctx.item.claimToken,
+      agentName,
+      finalResult:
+        loopResult.finalResult ??
+        buildEngineeringFailureResult(
+          planText,
+          loopResult.executeResults,
+          loopResult.validateResults,
+          loopResult.reason,
+        ),
+      log,
+    });
     return;
   }
 

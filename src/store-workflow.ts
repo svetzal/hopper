@@ -57,6 +57,8 @@ export interface ClaimNextResult {
  *
  * @param cwd  Effective CWD for items without an explicit workingDir.
  *             When omitted, no-dir items are treated as ungrouped.
+ * @param pid  OS process id of the claiming worker, recorded on the item so
+ *             orphaned claims (worker process gone) can be detected later.
  *
  * Returns a new items array — the input is never mutated.
  */
@@ -66,6 +68,7 @@ export function claimNext(
   now: Date,
   newUUID: string,
   cwd?: string,
+  pid?: number,
 ): ClaimNextResult {
   // Compute busy directories from in-progress items
   const busyDirs = items
@@ -105,6 +108,7 @@ export function claimNext(
     claimedAt: now.toISOString(),
     claimedBy: agent,
     claimToken: newUUID,
+    ...(pid !== undefined ? { claimedPid: pid } : {}),
   };
   const updatedItems = replaceItem(items, next.id, claimed);
   return { items: updatedItems, claimed };
@@ -190,6 +194,7 @@ export function complete(
     completedBy: agent,
     result,
     claimToken: undefined,
+    claimedPid: undefined,
   };
 
   // Replace the completed item and unblock dependents in one pass
@@ -213,6 +218,58 @@ export function complete(
 }
 
 // ---------------------------------------------------------------------------
+// fail
+// ---------------------------------------------------------------------------
+
+export interface WorkflowFailResult {
+  items: Item[];
+  failed: Item;
+}
+
+/**
+ * Mark an item as failed by claim token — the terminal state for a worker run
+ * that ended without producing integrable work (plan phase failed, execute
+ * exited non-zero, or validate never passed within the retry budget).
+ *
+ * Failed is terminal: the item no longer counts as busy for directory-aware
+ * claiming, so later queued items for the same repo can proceed. The worktree
+ * and work branch are deliberately left untouched by this transition — a human
+ * recovers via `requeue` (retry), `integrate` (salvage), or `cancel` (discard).
+ *
+ * Dependents blocked on this item stay blocked, and recurrence is NOT
+ * scheduled — a failed run needs human attention before it should run again.
+ * Returns a new items array — the input is never mutated.
+ */
+export function fail(
+  items: Item[],
+  token: string,
+  agent: string | undefined,
+  result: string | undefined,
+  now: Date,
+): Result<WorkflowFailResult> {
+  const item = items.find((i) => i.claimToken === token);
+
+  if (!item) {
+    return err(`No in-progress item found with token: ${token}`);
+  }
+  if (item.status !== Status.IN_PROGRESS) {
+    return err(`Item is not in progress (status: ${item.status})`);
+  }
+
+  const failedItem: Item = {
+    ...item,
+    status: Status.FAILED,
+    failedAt: now.toISOString(),
+    failedBy: agent,
+    result,
+    claimToken: undefined,
+    claimedPid: undefined,
+  };
+
+  return ok({ items: replaceItem(items, item.id, failedItem), failed: failedItem });
+}
+
+// ---------------------------------------------------------------------------
 // requeue
 // ---------------------------------------------------------------------------
 
@@ -222,8 +279,10 @@ export interface RequeueResult {
 }
 
 /**
- * Reset an in-progress item back to queued.
- * Clears claim fields and records the requeue reason and agent.
+ * Reset an in-progress or failed item back to queued.
+ * Clears claim and failure fields and records the requeue reason and agent.
+ * Failed items are requeueable because that is the retry path for an
+ * engineering run that exhausted its validate budget.
  * Returns a new items array — the input is never mutated.
  */
 export function requeue(
@@ -235,8 +294,8 @@ export function requeue(
   const itemResult = resolveItem(items, id);
   if (!itemResult.ok) return itemResult;
   const item = itemResult.value;
-  if (item.status !== Status.IN_PROGRESS) {
-    return err(`Item is not in progress (status: ${item.status})`);
+  if (item.status !== Status.IN_PROGRESS && item.status !== Status.FAILED) {
+    return err(`Item is not in progress or failed (status: ${item.status})`);
   }
 
   const requeued: Item = {
@@ -245,6 +304,10 @@ export function requeue(
     claimedAt: undefined,
     claimedBy: undefined,
     claimToken: undefined,
+    claimedPid: undefined,
+    failedAt: undefined,
+    failedBy: undefined,
+    result: undefined,
     requeueReason: reason,
     requeuedBy: agent,
   };
@@ -262,22 +325,21 @@ export interface CancelWorkflowResult {
   blockedDependentCount: number;
   /**
    * Status the item held before cancellation. The command layer uses this to
-   * decide whether worktree teardown is warranted: an `in_progress` engineering
-   * item leaves a live worktree + branch behind that abandoning must clean up,
-   * whereas queued/scheduled/blocked items never had one.
+   * decide whether worktree teardown is warranted: an `in_progress` or `failed`
+   * engineering item leaves a live worktree + branch behind that abandoning
+   * must clean up, whereas queued/scheduled/blocked items never had one.
    */
   previousStatus: ItemStatus;
 }
 
 /**
- * Cancel a queued, scheduled, blocked, or in-progress item.
+ * Cancel a queued, scheduled, blocked, in-progress, or failed item.
  *
- * In-progress is allowed because hopper deliberately parks a failed engineering
- * run at `in_progress` (worktree preserved) "until a human requeues or cancels"
- * — see `inferEngineeringPhase` in list-workflow.ts. Refusing to cancel such an
- * item contradicted that documented contract and left no way to abandon a stuck
- * run without first requeuing it. This function only moves status; the command
- * layer performs any worktree/branch teardown (I/O) using `previousStatus`.
+ * In-progress is allowed so a live-but-stuck run can be abandoned. Failed is
+ * allowed because a failed engineering run leaves its worktree + branch behind
+ * for human recovery, and cancel is the "discard that work" path. This function
+ * only moves status; the command layer performs any worktree/branch teardown
+ * (I/O) using `previousStatus`.
  *
  * Counts how many blocked items depended on the cancelled item.
  * Returns a new items array — the input is never mutated.
@@ -290,10 +352,11 @@ export function cancel(items: Item[], id: string, now: Date): Result<CancelWorkf
     item.status !== Status.QUEUED &&
     item.status !== Status.SCHEDULED &&
     item.status !== Status.BLOCKED &&
-    item.status !== Status.IN_PROGRESS
+    item.status !== Status.IN_PROGRESS &&
+    item.status !== Status.FAILED
   ) {
     return err(
-      `Cannot cancel item — status is "${item.status}". Only queued, scheduled, blocked, or in-progress items can be cancelled.`,
+      `Cannot cancel item — status is "${item.status}". Only queued, scheduled, blocked, in-progress, or failed items can be cancelled.`,
     );
   }
 

@@ -1,9 +1,10 @@
-export const VERSION = "4.0.1";
+export const VERSION = "4.1.0";
 
 export const Status = {
   QUEUED: "queued",
   IN_PROGRESS: "in_progress",
   COMPLETED: "completed",
+  FAILED: "failed",
   CANCELLED: "cancelled",
   SCHEDULED: "scheduled",
   BLOCKED: "blocked",

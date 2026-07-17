@@ -94,21 +94,28 @@ export function integrateCommand(
 
       const worktreePath = join(homedir(), ".hopper", "worktrees", item.id);
 
-      if (item.status !== "completed" && item.status !== "in_progress") {
+      // `failed` is integrable because a failed engineering run preserves its
+      // worktree + work branch — integrate is the "salvage the work anyway"
+      // recovery path.
+      if (
+        item.status !== "completed" &&
+        item.status !== "in_progress" &&
+        item.status !== "failed"
+      ) {
         return {
           status: "error",
-          message: `Cannot integrate item with status '${item.status}'. Only 'completed' or 'in_progress' items can be integrated.`,
+          message: `Cannot integrate item with status '${item.status}'. Only 'completed', 'in_progress', or 'failed' items can be integrated.`,
         };
       }
 
-      if (item.status === "in_progress") {
+      if (item.status === "in_progress" || item.status === "failed") {
         const worktreeState = await checkWorktree(worktreePath);
         if (worktreeState !== "directory") {
           const reason =
             worktreeState === "file" ? "path exists but is not a directory" : "path does not exist";
           return {
             status: "error",
-            message: `Cannot integrate item ${shortId(item.id)}: status is in_progress but worktree ${reason}: ${worktreePath}`,
+            message: `Cannot integrate item ${shortId(item.id)}: status is ${item.status} but worktree ${reason}: ${worktreePath}`,
           };
         }
       }

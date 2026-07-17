@@ -239,7 +239,7 @@ describe("integrateCommand", () => {
       expect(result.message).toContain("worktree");
       expect(result.message).toContain("does not exist");
       expect(result.message).not.toContain(
-        "Only 'completed' or 'in_progress' items can be integrated",
+        "Only 'completed', 'in_progress', or 'failed' items can be integrated",
       );
     }
   });
@@ -262,7 +262,7 @@ describe("integrateCommand", () => {
     if (result.status === "error") {
       expect(result.message).toContain("not a directory");
       expect(result.message).not.toContain(
-        "Only 'completed' or 'in_progress' items can be integrated",
+        "Only 'completed', 'in_progress', or 'failed' items can be integrated",
       );
     }
   });
@@ -276,7 +276,9 @@ describe("integrateCommand", () => {
     expect(result.status).toBe("error");
     if (result.status === "error") {
       expect(result.message).toContain("Cannot integrate item with status 'cancelled'");
-      expect(result.message).toContain("Only 'completed' or 'in_progress' items can be integrated");
+      expect(result.message).toContain(
+        "Only 'completed', 'in_progress', or 'failed' items can be integrated",
+      );
     }
   });
 

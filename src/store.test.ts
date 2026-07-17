@@ -299,7 +299,7 @@ describe("store", () => {
     expect(result).toMatchObject({
       ok: false,
       error: expect.stringContaining(
-        "Only queued, scheduled, blocked, or in-progress items can be cancelled",
+        "Only queued, scheduled, blocked, in-progress, or failed items can be cancelled",
       ),
     });
   });

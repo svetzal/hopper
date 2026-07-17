@@ -2,7 +2,7 @@
 name: hopper-coordinator
 description: Dispatch concrete, ready-to-execute work to background Hopper workers via the hopper queue. Use this skill when the user wants to queue up substantive coding tasks for unattended processing in specific projects on their machine — not for planning, to-do tracking, or lightweight tasks.
 metadata:
-  version: "4.0.1"
+  version: "4.1.0"
   author: Stacey Vetzal
 ---
 
@@ -16,9 +16,13 @@ Hopper is a personal work dispatch system. You queue up substantive coding work 
 
 ```
 queued -----> (claim) --> in_progress --> (complete) --> completed
-  ^                           |                            |
-  +-------- (requeue) -------+                            |
-                                                           |
+  ^                           |
+  |                           +--> (fail) --> failed  (terminal; worktree +
+  +-------- (requeue) -------+-----------------+       branch preserved)
+                                                |
+                     recovery from failed: requeue (retry), integrate
+                     (salvage the preserved branch), or cancel (discard)
+
 blocked ----> (auto-unblock when dependencies complete) -> queued
 scheduled --> (time arrives) -----------------------------> queued
 cancelled (terminal)
@@ -45,6 +49,7 @@ Workers follow an **analyze → plan → execute → validate** cycle. Descripti
 | `queued` | Ready for a worker to claim |
 | `in_progress` | Claimed by a worker agent |
 | `completed` | Work finished successfully |
+| `failed` | Terminal: run ended without integrable work (plan/execute failed or validate never passed). Engineering worktree + branch preserved; recover via `requeue`, `integrate`, or `cancel` |
 | `cancelled` | Removed from the queue |
 | `scheduled` | Deferred until a future time |
 | `blocked` | Waiting on other items to complete first |
@@ -235,7 +240,7 @@ When you (the agent) are reading state, default to `--json` and let `jq` do the 
 
 ```bash
 # Agent-facing (default): JSON for reasoning
-hopper list --json                                        # Active queue (queued + in_progress + scheduled + blocked)
+hopper list --json                                        # Active queue (queued + in_progress + scheduled + blocked + failed)
 hopper list --all --json                                  # Everything, including completed and cancelled
 hopper list --completed --json                            # Only completed
 hopper list --scheduled --json                            # Only scheduled
@@ -391,7 +396,7 @@ hopper integrate <id> --apply --keep-worktree   # Execute but leave worktree and
 hopper integrate <id> --json                    # Machine-readable preview (add --apply to execute)
 ```
 
-**Safe by default: `integrate <id>` only *previews*.** It prints the exact git commands it would run and makes no changes — re-run with `--apply` to execute. (`--dry-run` is still accepted as a no-op alias for the default preview.) On `--apply`, hopper checks out `main` in the item's `workingDir`, merges the item's worker branch with `--no-edit`, then deletes the branch and worktree unless `--keep-worktree` is set. Only works on `completed` or `in_progress` items that have a `workingDir` and `branch`. On merge conflict, hopper surfaces the git stderr and leaves the repository state intact for manual resolution.
+**Safe by default: `integrate <id>` only *previews*.** It prints the exact git commands it would run and makes no changes — re-run with `--apply` to execute. (`--dry-run` is still accepted as a no-op alias for the default preview.) On `--apply`, hopper checks out `main` in the item's `workingDir`, merges the item's worker branch with `--no-edit`, then deletes the branch and worktree unless `--keep-worktree` is set. Only works on `completed`, `in_progress`, or `failed` items that have a `workingDir` and `branch` — integrating a `failed` engineering item salvages its preserved work branch. On merge conflict, hopper surfaces the git stderr and leaves the repository state intact for manual resolution.
 
 ### Editing Item Priority
 
@@ -635,7 +640,7 @@ hopper add "Bump lockfile and fix any resulting test breakage." \
   --retries 0
 ```
 
-Engineering items run plan → execute → validate; Hopper commits + merges only if validate reports `VALIDATE: PASS`. On failure the worktree + branch are preserved under `~/.hopper/worktrees/<id>` and `hopper-eng/<slug>-<prefix>` for inspection. Audit artefacts live at `~/.hopper/audit/<id>-{plan,execute,validate}.jsonl` plus `<id>-plan.md`.
+Engineering items run plan → execute → validate; Hopper commits + merges only if validate reports `VALIDATE: PASS`. On failure the item transitions to the terminal `failed` status (so it stops blocking other queued items for the same repo) and the worktree + branch are preserved under `~/.hopper/worktrees/<id>` and `hopper-eng/<slug>-<prefix>` for inspection. Recover with `requeue` (retry), `integrate` (salvage), or `cancel` (discard). Audit artefacts live at `~/.hopper/audit/<id>-{plan,execute,validate}.jsonl` plus `<id>-plan.md`.
 
 ### Investigation-type work (read-only, markdown deliverable)
 

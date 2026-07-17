@@ -19,10 +19,11 @@ import {
   parseDisallowedTools,
 } from "../gateways/worker-shim-content.ts";
 import { createWorkerShimGateway } from "../gateways/worker-shim-gateway.ts";
-import type { ClaimedItem } from "../store.ts";
-import { claimNextItem, findItem } from "../store.ts";
+import type { ClaimedItem, Item } from "../store.ts";
+import { claimNextItem, findItem, loadItems } from "../store.ts";
 import { EXECUTE_DISALLOWED_TOOLS, INVESTIGATION_DISALLOWED_TOOLS } from "../task-type-workflow.ts";
 import {
+  detectOrphanedClaims,
   resolveLoopAction,
   resolvePostClaimLoopAction,
   resolveShutdownAction,
@@ -67,6 +68,46 @@ export function createCancellableSleep(): {
   };
 
   return { sleep, cancel };
+}
+
+/**
+ * Signal-0 pid liveness probe. EPERM means the process exists but belongs to
+ * another user — still alive; anything else (ESRCH) means it is gone.
+ */
+export function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/**
+ * Startup reconciliation: surface `in_progress` items whose claiming worker
+ * process no longer exists. They hold their repo's claim slot (directory-aware
+ * claiming skips overlapping dirs), so a crashed worker would otherwise wedge
+ * that repo's queue silently. Flag-only — recovery is a human decision.
+ */
+export async function warnOrphanedClaims(
+  log: (message: string) => void,
+  deps: {
+    loadItems: () => Promise<Item[]>;
+    isPidAlive: (pid: number) => boolean;
+  } = { loadItems, isPidAlive },
+): Promise<void> {
+  try {
+    const orphans = detectOrphanedClaims(await deps.loadItems(), deps.isPidAlive);
+    for (const orphan of orphans) {
+      log(
+        `Warning: item ${shortId(orphan.id)} ("${orphan.title}") is in_progress but its worker process (pid ${orphan.claimedPid}) is gone.` +
+          `${orphan.workingDir ? ` It is blocking queued items for ${orphan.workingDir}.` : ""}` +
+          ` Requeue or cancel it: hopper requeue ${shortId(orphan.id)} --reason "worker died" | hopper cancel ${shortId(orphan.id)}`,
+      );
+    }
+  } catch (e) {
+    log(`Warning: orphaned-claim check failed: ${toErrorMessage(e)}`);
+  }
 }
 
 export async function runWorkerLoop(
@@ -241,6 +282,10 @@ export async function workerCommand(parsed: ParsedArgs, deps?: WorkerDeps): Prom
       }
     },
   };
+
+  // Startup reconciliation: a previous worker that died mid-run leaves items
+  // parked at in_progress; flag them so they aren't silently held forever.
+  await warnOrphanedClaims(log);
 
   await runWorkerLoop(config, hopperHome, { git, claude, fs, shell, profiles }, loopDeps);
 }

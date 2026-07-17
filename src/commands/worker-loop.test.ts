@@ -13,6 +13,7 @@ import {
   createCancellableSleep,
   runWorkerLoop,
   type WorkerLoopDeps,
+  warnOrphanedClaims,
   workerCommand,
 } from "./worker-loop.ts";
 
@@ -598,5 +599,55 @@ describe("workerCommand", () => {
     );
 
     expect(logs.some((l) => l.includes("PATH shims are POSIX-only"))).toBe(true);
+  });
+});
+
+describe("warnOrphanedClaims", () => {
+  test("logs a warning for each in_progress item whose worker pid is dead", async () => {
+    const orphan = makeClaimedItem({
+      id: "bbbbbbbb-0000-0000-0000-000000000000",
+      title: "Wedged item",
+      claimedPid: 999999,
+      workingDir: "/repo/project",
+    });
+    const logs: string[] = [];
+
+    await warnOrphanedClaims((msg) => logs.push(msg), {
+      loadItems: async () => [orphan],
+      isPidAlive: () => false,
+    });
+
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toContain("bbbbbbbb");
+    expect(logs[0]).toContain("999999");
+    expect(logs[0]).toContain("/repo/project");
+    expect(logs[0]).toContain("requeue");
+  });
+
+  test("stays quiet when claims are alive or unpidded", async () => {
+    const alive = makeClaimedItem({ claimedPid: 4242 });
+    const legacy = makeClaimedItem({ id: "cccccccc-0000-0000-0000-000000000000" });
+    const logs: string[] = [];
+
+    await warnOrphanedClaims((msg) => logs.push(msg), {
+      loadItems: async () => [alive, legacy],
+      isPidAlive: () => true,
+    });
+
+    expect(logs).toHaveLength(0);
+  });
+
+  test("a store read failure becomes a warning, never a crash", async () => {
+    const logs: string[] = [];
+
+    await warnOrphanedClaims((msg) => logs.push(msg), {
+      loadItems: async () => {
+        throw new Error("corrupt items.json");
+      },
+      isPidAlive: () => true,
+    });
+
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toContain("orphaned-claim check failed");
   });
 });

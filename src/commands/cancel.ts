@@ -27,8 +27,8 @@ async function pathIsDirectory(path: string): Promise<boolean> {
 /**
  * Tear down the worktree + work branch a stuck engineering run left behind.
  *
- * Only reached when an `in_progress` engineering item is cancelled — those are
- * the ones hopper parks with a live worktree at `~/.hopper/worktrees/<id>` and
+ * Only reached when an `in_progress` or `failed` engineering item is cancelled
+ * — those are the ones with a live worktree at `~/.hopper/worktrees/<id>` and
  * an unmerged `hopper-eng/<slug>-<prefix>` branch. Best-effort: failures become
  * warnings rather than aborting the cancel, since the status transition has
  * already been persisted and a leftover worktree is a tidiness issue, not a
@@ -74,15 +74,17 @@ export function cancelCommand(
     const id = unwrapPositional(parsed, 0, "Usage: hopper cancel <item-id>");
     const yes = booleanFlag(parsed, "yes");
 
-    // Cancelling an in-progress engineering item force-deletes its unmerged work
-    // branch (and worktree) — commits are lost irrecoverably. Confirm BEFORE the
-    // state transition so a declined prompt leaves the item fully untouched. The
-    // confirm gateway fails closed when non-interactive, so an unattended caller
-    // must pass --yes. Queued/scheduled/blocked cancels destroy nothing and skip
-    // this gate.
+    // Cancelling an in-progress or failed engineering item force-deletes its
+    // unmerged work branch (and worktree) — commits are lost irrecoverably.
+    // Confirm BEFORE the state transition so a declined prompt leaves the item
+    // fully untouched. The confirm gateway fails closed when non-interactive,
+    // so an unattended caller must pass --yes. Queued/scheduled/blocked cancels
+    // destroy nothing and skip this gate.
     const target = unwrap(await findItem(id));
     const destroysUnmergedWork =
-      target.status === "in_progress" && target.type === TaskType.ENGINEERING && !!target.branch;
+      (target.status === "in_progress" || target.status === "failed") &&
+      target.type === TaskType.ENGINEERING &&
+      !!target.branch;
 
     if (destroysUnmergedWork && !yes) {
       const workBranch = buildEngineeringBranchName(
@@ -110,10 +112,14 @@ export function cancelCommand(
       );
     }
 
-    // A cancelled in-progress engineering run leaves a live worktree + branch;
-    // clean them up so abandoning doesn't orphan disk state. Nothing else will
-    // ever revisit a cancelled item to do it.
-    if (previousStatus === "in_progress" && item.type === TaskType.ENGINEERING && item.branch) {
+    // A cancelled in-progress or failed engineering run leaves a live worktree
+    // + branch; clean them up so abandoning doesn't orphan disk state. Nothing
+    // else will ever revisit a cancelled item to do it.
+    if (
+      (previousStatus === "in_progress" || previousStatus === "failed") &&
+      item.type === TaskType.ENGINEERING &&
+      item.branch
+    ) {
       warnings.push(...(await teardownEngineeringWorktree(item, git, isDirectory)));
     }
 

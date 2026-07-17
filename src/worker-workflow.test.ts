@@ -4,6 +4,7 @@ import {
   buildCommitMessage,
   buildInvestigationShimEnv,
   buildTaskPrompt,
+  detectOrphanedClaims,
   resolveAttemptAuditPath,
   resolveAuditPaths,
   resolveAutoRequeue,
@@ -667,5 +668,34 @@ describe("worker-workflow", () => {
         expect(plan.finalResult).toBe("Some output\n---\nNote");
       }
     });
+  });
+});
+
+describe("detectOrphanedClaims", () => {
+  const deadPid = () => false;
+  const alivePid = () => true;
+
+  test("flags in_progress item whose recorded pid is dead", () => {
+    const orphan = makeItem({ status: "in_progress", claimedPid: 999999 });
+    const result = detectOrphanedClaims([orphan], deadPid);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.id).toBe(orphan.id);
+  });
+
+  test("does not flag in_progress item whose pid is alive", () => {
+    const active = makeItem({ status: "in_progress", claimedPid: 4242 });
+    expect(detectOrphanedClaims([active], alivePid)).toHaveLength(0);
+  });
+
+  test("skips in_progress items without a recorded pid (pre-feature claims)", () => {
+    const legacy = makeItem({ status: "in_progress" });
+    expect(detectOrphanedClaims([legacy], deadPid)).toHaveLength(0);
+  });
+
+  test("ignores items in other statuses even with a dead pid recorded", () => {
+    const failed = makeItem({ status: "failed", claimedPid: 999999 });
+    const queued = makeItem({ status: "queued" });
+    expect(detectOrphanedClaims([failed, queued], deadPid)).toHaveLength(0);
   });
 });

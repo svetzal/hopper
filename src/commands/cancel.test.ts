@@ -71,7 +71,7 @@ describe("cancelCommand", () => {
     expect(result.status).toBe("error");
     if (result.status === "error") {
       expect(result.message).toContain(
-        "Only queued, scheduled, blocked, or in-progress items can be cancelled",
+        "Only queued, scheduled, blocked, in-progress, or failed items can be cancelled",
       );
     }
   });

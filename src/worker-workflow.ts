@@ -484,3 +484,27 @@ export function resolveCompletionLabels(item: { command?: string }): {
     sessionLabel: isCommand ? "Command" : "Claude session",
   };
 }
+
+// ---------------------------------------------------------------------------
+// Orphaned-claim detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Find `in_progress` items whose claiming worker process is gone — the
+ * worker recorded its pid at claim time, and that pid is no longer alive.
+ * Such items silently hold their repo's serialization slot (directory-aware
+ * claiming skips any queued item whose dir overlaps an in-progress one), so
+ * the worker surfaces them at startup rather than leaving them invisible.
+ *
+ * Items claimed before pid recording existed (no `claimedPid`) are skipped:
+ * liveness cannot be determined for them. Detection is flag-only — requeueing
+ * automatically would risk double-running work if a pid was recycled.
+ */
+export function detectOrphanedClaims(
+  items: readonly Item[],
+  isPidAlive: (pid: number) => boolean,
+): Item[] {
+  return items.filter(
+    (i) => i.status === "in_progress" && i.claimedPid !== undefined && !isPidAlive(i.claimedPid),
+  );
+}

@@ -15,6 +15,7 @@ const TEST_PROFILE: Profile = {
 import {
   callArgs,
   makeClaimedItem,
+  makeItem,
   makeMockGit,
   setupTempStoreDir,
   typedMock,
@@ -152,14 +153,13 @@ describe("runPlanPhase", () => {
 
     const result = await runPlanPhase(makeEngineeringCtx({ item, claude }));
 
-    expect(result).not.toBeNull();
-    if (!result || "terminalFailure" in result) {
+    if ("terminalFailure" in result || "planFailed" in result) {
       throw new Error("Expected successful plan result");
     }
     expect(result.planText).toBe("## Approach\nDo the thing.");
   });
 
-  test("returns null when plan exit code is non-zero", async () => {
+  test("returns planFailed with finalResult when plan exit code is non-zero", async () => {
     const item = makeEngineeringItem({ id: ITEM_ID });
     const claude: AgentRunner = {
       runSession: mock(async () => ({ exitCode: 1, result: "Plan crashed." })),
@@ -168,10 +168,15 @@ describe("runPlanPhase", () => {
 
     const result = await runPlanPhase(makeEngineeringCtx({ item, claude }));
 
-    expect(result).toBeNull();
+    if (!("planFailed" in result)) {
+      throw new Error("Expected planFailed result");
+    }
+    expect(result.planFailed).toBe(true);
+    expect(result.finalResult).toContain("Plan crashed.");
+    expect(result.finalResult).toContain("Plan phase failed (exit 1)");
   });
 
-  test("returns null when plan text is empty after trimming", async () => {
+  test("returns planFailed when plan text is empty after trimming", async () => {
     const item = makeEngineeringItem({ id: ITEM_ID });
     const claude: AgentRunner = {
       runSession: mock(async () => ({ exitCode: 0, result: "   " })),
@@ -180,7 +185,10 @@ describe("runPlanPhase", () => {
 
     const result = await runPlanPhase(makeEngineeringCtx({ item, claude }));
 
-    expect(result).toBeNull();
+    if (!("planFailed" in result)) {
+      throw new Error("Expected planFailed result");
+    }
+    expect(result.planFailed).toBe(true);
   });
 
   test("writes plan file on success", async () => {
@@ -746,6 +754,111 @@ describe("processEngineeringItem", () => {
   // ---------------------------------------------------------------------------
   // Step 8 — fs.ensureDir failure triggers auto-requeue
   // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Terminal `failed` status — regression for the zombie-in_progress bug where
+  // an exhausted validate budget left the item in_progress forever, and the
+  // per-workingDir claim serialization then blocked every later queued item
+  // for the same repo (observed 2026-07-16, item b77a91b1 / parite-cli).
+  // ---------------------------------------------------------------------------
+
+  test("validate retry budget exhausted → item transitions to failed; worktree preserved; same-dir queue unblocked", async () => {
+    const item = makeClaimedItem({
+      id: ITEM_ID,
+      workingDir: "/repo/project",
+      branch: "main",
+      engineeringBranchSlug: "my-slug",
+      retries: 1,
+    });
+    await store.saveItems([item]);
+    completeItemSpy.mockClear();
+    const deps = makeFullDeps();
+    let sessions = 0;
+    typedMock(deps.claude.runSession).mockImplementation(async () => {
+      sessions += 1;
+      if (sessions === 1) return { exitCode: 0, result: "the plan" };
+      // After plan: even calls are execute, odd calls are validate.
+      return sessions % 2 === 0
+        ? { exitCode: 0, result: "did the work" }
+        : { exitCode: 0, result: "VALIDATE: FAIL" };
+    });
+
+    await processEngineeringItem({ item, agentName: AGENT_NAME, hopperHome: HOPPER_HOME, deps });
+
+    // plan + 2 × (execute + validate) — the full retry budget was spent
+    expect(sessions).toBe(5);
+
+    const reloadedResult = await store.findItem(ITEM_ID);
+    const reloaded = reloadedResult.ok ? reloadedResult.value : null;
+    expect(reloaded?.status).toBe("failed");
+    expect(reloaded?.failedAt).toBeDefined();
+    expect(reloaded?.failedBy).toBe(AGENT_NAME);
+    expect(reloaded?.claimToken).toBeUndefined();
+    expect(reloaded?.result).toContain("Validate did not pass after 2/2 attempt(s)");
+
+    // Worktree + work branch preserved exactly as the run left them
+    expect(deps.git.worktreeRemove).not.toHaveBeenCalled();
+    expect(deps.git.deleteBranch).not.toHaveBeenCalled();
+    // Neither completed nor requeued — failed is its own terminal state
+    expect(completeItemSpy).not.toHaveBeenCalled();
+    expect(requeueItemMock).not.toHaveBeenCalled();
+
+    // THE regression: a later queued item for the same workingDir is claimable
+    // (the failed item no longer counts as busy for directory serialization).
+    const queued = makeItem({ title: "Next in line", workingDir: "/repo/project" });
+    await store.saveItems([...(await store.loadItems()), queued]);
+    const claimed = await store.claimNextItem("agent-2");
+    expect(claimed?.id).toBe(queued.id);
+  });
+
+  test("plan phase failure → item transitions to failed, not left in_progress", async () => {
+    const item = makeClaimedItem({
+      id: ITEM_ID,
+      workingDir: "/repo/project",
+      branch: "main",
+      engineeringBranchSlug: "my-slug",
+    });
+    await store.saveItems([item]);
+    const deps = makeFullDeps();
+    typedMock(deps.claude.runSession).mockImplementation(async () => ({
+      exitCode: 1,
+      result: "plan crashed",
+    }));
+
+    await processEngineeringItem({ item, agentName: AGENT_NAME, hopperHome: HOPPER_HOME, deps });
+
+    const reloadedResult = await store.findItem(ITEM_ID);
+    const reloaded = reloadedResult.ok ? reloadedResult.value : null;
+    expect(reloaded?.status).toBe("failed");
+    expect(reloaded?.result).toContain("Plan phase failed (exit 1)");
+    expect(deps.git.worktreeRemove).not.toHaveBeenCalled();
+    expect(requeueItemMock).not.toHaveBeenCalled();
+  });
+
+  test("execute phase non-zero exit → item transitions to failed", async () => {
+    const item = makeClaimedItem({
+      id: ITEM_ID,
+      workingDir: "/repo/project",
+      branch: "main",
+      engineeringBranchSlug: "my-slug",
+    });
+    await store.saveItems([item]);
+    const deps = makeFullDeps();
+    let sessions = 0;
+    typedMock(deps.claude.runSession).mockImplementation(async () => {
+      sessions += 1;
+      if (sessions === 1) return { exitCode: 0, result: "the plan" };
+      return { exitCode: 2, result: "execute blew up" };
+    });
+
+    await processEngineeringItem({ item, agentName: AGENT_NAME, hopperHome: HOPPER_HOME, deps });
+
+    const reloadedResult = await store.findItem(ITEM_ID);
+    const reloaded = reloadedResult.ok ? reloadedResult.value : null;
+    expect(reloaded?.status).toBe("failed");
+    expect(reloaded?.result).toContain("Execute phase attempt 1 failed (exit 2)");
+    expect(deps.git.worktreeRemove).not.toHaveBeenCalled();
+  });
 
   test("fs.ensureDir failure during audit dir creation → auto-requeue, no worktree setup", async () => {
     const item = makeClaimedItem({ id: ITEM_ID, workingDir: "/repo", branch: "main" });

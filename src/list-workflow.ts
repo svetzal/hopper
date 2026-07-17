@@ -43,12 +43,16 @@ export function filterAndSortItems(
   } else if (filter.mode === "all") {
     items = allItems;
   } else {
+    // Failed items are part of the default view: they hold preserved worktrees
+    // awaiting a human decision (requeue / integrate / cancel), so hiding them
+    // would bury exactly the items that need attention.
     items = allItems.filter(
       (i) =>
         i.status === Status.QUEUED ||
         i.status === Status.IN_PROGRESS ||
         i.status === Status.SCHEDULED ||
-        i.status === Status.BLOCKED,
+        i.status === Status.BLOCKED ||
+        i.status === Status.FAILED,
     );
   }
 
@@ -84,27 +88,28 @@ export function filterAndSortItems(
 }
 
 /**
- * Phase status for an in-progress engineering item. `running` means the worker
- * is actively in the named phase; `failed` means the worker bailed (preserving
- * worktree + branch) and the item is stuck in_progress awaiting human action.
+ * Phase status for an in-progress or failed engineering item. `running` means
+ * the worker is actively in the named phase; `failed` means the worker bailed
+ * (preserving worktree + branch) awaiting human action.
  */
 export type EngineeringPhaseStatus =
   | { kind: "running"; phase: string }
   | { kind: "failed"; phase: "plan" | "execute" | "validate" };
 
 /**
- * Infer which engineering phase an in-progress item is currently running (or
- * failed at), based on the `phases` record. Records are written at phase
- * *completion*, so the next phase is the running one — unless the last phase
- * exited non-zero or validate didn't pass within the retry budget, in which
- * case the worker has bailed and the item is stuck.
+ * Infer which engineering phase an item is currently running (or failed at),
+ * based on the `phases` record. Records are written at phase *completion*, so
+ * the next phase is the running one — unless the last phase exited non-zero or
+ * validate didn't pass within the retry budget, in which case the worker
+ * bailed. Bailed runs now transition to the terminal `failed` status; the
+ * in_progress failure inference is kept for items recorded before that change.
  *
- * Returns undefined for non-engineering items, items not in_progress, or
+ * Returns undefined for non-engineering items, items in other statuses, or
  * completed validate runs awaiting final completion.
  */
 export function inferEngineeringPhase(item: Item): EngineeringPhaseStatus | undefined {
   if (item.type !== "engineering") return undefined;
-  if (item.status !== Status.IN_PROGRESS) return undefined;
+  if (item.status !== Status.IN_PROGRESS && item.status !== Status.FAILED) return undefined;
 
   const phases = item.phases ?? [];
   if (phases.length === 0) return { kind: "running", phase: "plan" };
@@ -112,8 +117,7 @@ export function inferEngineeringPhase(item: Item): EngineeringPhaseStatus | unde
   const last = phases[phases.length - 1];
   if (!last) return { kind: "running", phase: "plan" };
 
-  // Terminal failure paths — worker preserves worktree + branch and stops.
-  // The item remains in_progress until a human requeues or cancels.
+  // Failure paths — worker preserves worktree + branch and stops.
   if (last.name === "plan" && last.exitCode !== 0) {
     return { kind: "failed", phase: "plan" };
   }
@@ -148,6 +152,9 @@ export function itemTiming(item: Item): string {
   if (item.status === Status.IN_PROGRESS && item.claimedAt) {
     const by = item.claimedBy ? ` by ${item.claimedBy}` : "";
     return `  (claimed${by} ${relativeTime(item.claimedAt)})`;
+  }
+  if (item.status === Status.FAILED && item.claimedAt && item.failedAt) {
+    return `  (failed ${relativeTime(item.failedAt)}, took ${formatDuration(item.claimedAt, item.failedAt)})`;
   }
   return `  (added ${relativeTime(item.createdAt)})`;
 }
@@ -189,18 +196,25 @@ export function formatItemList(items: Item[]): string {
       if (phase.kind === "failed") return ` [failed at ${phase.phase}]`;
       return ` [in progress: ${phase.phase}]`;
     })();
+    const failedBadge = (() => {
+      const phase = inferEngineeringPhase(item);
+      if (phase?.kind === "failed") return ` [failed at ${phase.phase}]`;
+      return " [failed]";
+    })();
     const badge =
       item.status === Status.IN_PROGRESS
         ? inProgressBadge
-        : item.status === Status.CANCELLED
-          ? " [cancelled]"
-          : item.status === Status.BLOCKED
-            ? blockedBadge
-            : item.recurrence
-              ? recurrenceBadge
-              : item.status === Status.SCHEDULED
-                ? scheduledBadge
-                : "";
+        : item.status === Status.FAILED
+          ? failedBadge
+          : item.status === Status.CANCELLED
+            ? " [cancelled]"
+            : item.status === Status.BLOCKED
+              ? blockedBadge
+              : item.recurrence
+                ? recurrenceBadge
+                : item.status === Status.SCHEDULED
+                  ? scheduledBadge
+                  : "";
 
     lines.push(
       `  ${id}${badge}${pBadge}${tBadge}${typeBadgeStr}${dirBadge}  ${item.title}${timing}`,

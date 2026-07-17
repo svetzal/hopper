@@ -6,8 +6,9 @@ Work items flow through a simple lifecycle:
 
 ```
 queued → (claim) → in_progress → (complete) → completed
-  ↑                                    │
-  └──────── (requeue) ────────────────┘
+  ↑                     │
+  │                     └─ (fail) → failed   (worktree preserved for recovery)
+  └──────── (requeue) ──────────────┘
 ```
 
 ## Quick Start
@@ -58,9 +59,9 @@ Binaries are standalone — no runtime needed on the target machine.
 | `list` | Show queued and in-progress items |
 | `claim` | Claim the next queued item (FIFO) |
 | `complete <token>` | Mark a claimed item as completed |
-| `requeue <id>` | Return an in-progress item to the queue |
+| `requeue <id>` | Return an in-progress or failed item to the queue |
 | `integrate <id>` | Merge item's branch into main of workingDir and clean up worktree/branch |
-| `cancel <id>` | Cancel a queued or in-progress item (tears down any worktree/branch) |
+| `cancel <id>` | Cancel a queued, in-progress, or failed item (tears down any worktree/branch) |
 | `init` | Install the Hopper coordinator skill into `~/.claude/skills/` by default |
 
 ### Options
