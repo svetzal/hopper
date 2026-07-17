@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-07-16
+
+### Fixed
+
+- **Engineering runs that end without integrable work no longer wedge their
+  repo's queue.** An item whose plan phase failed, whose execute phase exited
+  non-zero, or whose validate never passed within the retry budget used to be
+  parked at `in_progress` forever; because the worker serializes claims per
+  working directory, that zombie silently blocked every later queued item for
+  the same repo (observed 2026-07-16 with item b77a91b1 / parite-cli). Those
+  runs now transition to a new terminal `failed` status. The worktree and work
+  branch are preserved exactly as before.
+
+### Added
+
+- **`failed` item status.** Terminal state for worker runs that ended without
+  integrable work. Failed items appear in the default `hopper list` view with a
+  `[failed at <phase>]` badge, carry `failedAt`/`failedBy` and the failure
+  transcript in `result`, and are recoverable three ways: `requeue` (retry),
+  `integrate` (salvage the preserved work branch), or `cancel` (discard, with
+  worktree/branch teardown and the same confirm gate as in-progress cancels).
+- **Orphaned-claim detection at worker startup.** `hopper claim` now records
+  the claiming worker's OS pid on the item; when a worker starts, any
+  `in_progress` item whose recorded pid is no longer alive is flagged with a
+  warning (including the requeue/cancel commands to recover) instead of being
+  silently held. Detection is flag-only — nothing is auto-requeued.
+
+
 ## [4.0.1] - 2026-07-14
 
 ### Changed
@@ -803,7 +831,8 @@ If you never set up an opencode runner pre-3.0, the upgrade is a no-op.
 
 - Release workflow: use macos-14 for x64 builds
 
-[Unreleased]: https://github.com/svetzal/hopper/compare/v3.3.0...HEAD
+[Unreleased]: https://github.com/svetzal/hopper/compare/v4.1.0...HEAD
+[4.1.0]: https://github.com/svetzal/hopper/compare/v4.0.1...v4.1.0
 [3.3.0]: https://github.com/svetzal/hopper/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/svetzal/hopper/compare/v3.1.1...v3.2.0
 [3.1.1]: https://github.com/svetzal/hopper/compare/v3.1.0...v3.1.1
