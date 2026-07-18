@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.2] - 2026-07-18
+
 ### Fixed
 
 - OpenCode-backed sessions now recover their final assistant text from the
@@ -52,7 +54,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `in_progress` item whose recorded pid is no longer alive is flagged with a
   warning (including the requeue/cancel commands to recover) instead of being
   silently held. Detection is flag-only — nothing is auto-requeued.
-
 
 ## [4.0.1] - 2026-07-14
 
@@ -376,7 +377,7 @@ If you never set up an opencode runner pre-3.0, the upgrade is a no-op.
   `--profile anthropic`.
 - **`hopper profiles` commands.** `hopper profiles` lists every installed
   profile (the default flagged with `*`) along with each profile's runner
-  + tier mapping. `hopper profiles show <name>` prints a profile's file
+  and tier mapping. `hopper profiles show <name>` prints a profile's file
   contents.
 - **Routing runner.** `src/gateways/routing-runner.ts` dispatches each
   `runSession`/`generateText` call to the right underlying runner based on
