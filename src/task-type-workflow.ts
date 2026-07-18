@@ -291,6 +291,17 @@ export function buildExecutePrompt(item: Item, planText: string): string {
   );
 }
 
+/**
+ * Remove the original checkout path from a phase prompt when Hopper is running
+ * in a worktree. Absolute paths beneath the checkout become worktree-relative,
+ * so delegated agents receive the same unambiguous location as their parent.
+ */
+export function relativizeWorktreePrompt(prompt: string, workingDir: string): string {
+  const checkout = workingDir.replace(/\/+$/, "");
+  if (!checkout) return prompt;
+  return prompt.split(checkout).join(".");
+}
+
 export function buildExecuteOptions(agent?: string, env?: Record<string, string>): SessionOptions {
   return {
     model: "balanced",

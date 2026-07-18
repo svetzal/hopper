@@ -68,6 +68,7 @@ export function makeMockGit(overrides?: Partial<GitGateway>): GitGateway {
     createBranch: mock(async () => {}),
     createWorktree: mock(async () => {}),
     worktreeRemove: mock(async () => {}),
+    statusPorcelain: mock(async () => ""),
     isWorktreeDirty: mock(async () => false),
     stageAll: mock(async () => {}),
     commitAll: mock(async () => {}),

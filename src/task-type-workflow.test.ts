@@ -22,6 +22,7 @@ import {
   normaliseCommitMessage,
   normaliseValidateFallback,
   PLAN_TOOLS,
+  relativizeWorktreePrompt,
   resolveBranchSlugSource,
   resolveValidateOutcome,
   VALIDATE_ALLOWED_TOOLS,
@@ -383,6 +384,20 @@ describe("buildGitOwnershipShimEnv", () => {
       HOPPER_REAL_PATH: "/usr/bin:/bin",
       PATH: "/home/.hopper/git-ownership-shims:/usr/bin:/bin",
     });
+  });
+});
+
+describe("relativizeWorktreePrompt", () => {
+  test("rewrites the original checkout and paths beneath it as worktree-relative", () => {
+    const checkout = "/Users/stacey/Work/project";
+    const prompt = `Edit ${checkout}/src/app.ts, then inspect ${checkout}.`;
+
+    expect(relativizeWorktreePrompt(prompt, checkout)).toBe("Edit ./src/app.ts, then inspect ..");
+    expect(relativizeWorktreePrompt(prompt, checkout)).not.toContain(checkout);
+  });
+
+  test("handles a trailing slash on the stored working directory", () => {
+    expect(relativizeWorktreePrompt("Read /repo/src/a.ts", "/repo/")).toBe("Read ./src/a.ts");
   });
 });
 

@@ -58,6 +58,8 @@ export interface GitGateway {
     baseBranch: string,
   ): Promise<void>;
   worktreeRemove(repoDir: string, worktreePath: string): Promise<void>;
+  /** Return the exact `git status --porcelain` snapshot for a checkout. */
+  statusPorcelain(repoDir: string): Promise<string>;
   isWorktreeDirty(worktreePath: string): Promise<boolean>;
   /**
    * Stage every change in the worktree (`git add -A`). Picks up new files,
@@ -178,9 +180,19 @@ async function worktreeRemove(repoDir: string, worktreePath: string): Promise<vo
   await spawnGit(["worktree", "remove", worktreePath, "--force"], repoDir);
 }
 
+async function statusPorcelain(repoDir: string): Promise<string> {
+  const { exitCode, stdout, stderr } = await spawnGit(["status", "--porcelain"], repoDir, {
+    stdout: true,
+    stderr: true,
+  });
+  if (exitCode !== 0) {
+    throw new Error(`git status --porcelain failed: ${stderr.trim()}`);
+  }
+  return stdout;
+}
+
 async function isWorktreeDirty(worktreePath: string): Promise<boolean> {
-  const { stdout } = await spawnGit(["status", "--porcelain"], worktreePath, { stdout: true });
-  return stdout.trim().length > 0;
+  return (await statusPorcelain(worktreePath)).trim().length > 0;
 }
 
 async function stageAll(worktreePath: string): Promise<void> {
@@ -342,6 +354,7 @@ export function createGitGateway(): GitGateway {
     createBranch,
     createWorktree,
     worktreeRemove,
+    statusPorcelain,
     isWorktreeDirty,
     stageAll,
     commitAll,

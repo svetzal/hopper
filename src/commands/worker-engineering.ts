@@ -31,6 +31,7 @@ import {
   MISSING_MARKER_REASON,
   normaliseBranchSlug,
   normaliseValidateFallback,
+  relativizeWorktreePrompt,
   resolveBranchSlugSource,
   resolveValidateOutcome,
   type ValidateOutcomeWithFallback,
@@ -72,9 +73,9 @@ export type ExecuteValidateContext = Pick<
   EngineeringContext,
   "worktreePath" | "paths" | "hopperHome" | "log"
 > & {
-  item: ClaimedItem;
+  item: EngineeringItem;
   planText: string;
-  deps: Pick<WorkerRunnerDeps, "claude" | "fs" | "profile">;
+  deps: Pick<WorkerRunnerDeps, "claude" | "fs" | "git" | "profile">;
 };
 
 export interface SafeGenerateTextArgs {
@@ -320,7 +321,7 @@ async function runExecuteAttempt(
       item.agent ? `, agent: ${item.agent}` : ""
     }${isRemediation ? ", remediation" : ""})...\nAudit log: ${executeAuditPath}`,
   );
-  const executePrompt = isRemediation
+  const rawExecutePrompt = isRemediation
     ? buildExecuteRemediationPrompt(
         item,
         planText,
@@ -329,6 +330,7 @@ async function runExecuteAttempt(
         attempt,
       )
     : buildExecutePrompt(item, planText);
+  const executePrompt = relativizeWorktreePrompt(rawExecutePrompt, item.workingDir);
   return runPhase({
     claude,
     profile,
@@ -374,7 +376,7 @@ async function runValidateAttempt(
     claude,
     profile,
     itemId: item.id,
-    prompt: buildValidatePrompt(item, planText),
+    prompt: relativizeWorktreePrompt(buildValidatePrompt(item, planText), item.workingDir),
     worktreePath,
     auditFile: validateAuditPath,
     sessionOptions: buildValidateOptions(
@@ -421,7 +423,7 @@ export async function runExecuteValidateLoop(
   ctx: ExecuteValidateContext,
 ): Promise<ExecuteValidateResult> {
   const { item, planText, paths, deps, log } = ctx;
-  const { fs } = deps;
+  const { fs, git } = deps;
   // One execute → validate attempt, then up to `maxRetries` remediation
   // attempts when validate reports FAIL. Each attempt writes its own
   // per-attempt audit file and records phase entries so `hopper show`
@@ -462,6 +464,7 @@ export async function runExecuteValidateLoop(
   while (attempt < maxAttempts) {
     attempt += 1;
 
+    const originalStatusBefore = await git.statusPorcelain(item.workingDir);
     const executeAttempt = await runExecuteAttempt(
       ctx,
       attempt,
@@ -471,6 +474,17 @@ export async function runExecuteValidateLoop(
     );
     executeResults.push(executeAttempt.result);
     previousExecuteResult = executeAttempt.result;
+
+    const originalStatusAfter = await git.statusPorcelain(item.workingDir);
+    const misplacedPaths = resolveChangedCheckoutPaths(originalStatusBefore, originalStatusAfter);
+    if (misplacedPaths.length > 0) {
+      const msg =
+        `Execute phase attempt ${attempt} modified the original checkout instead of the Hopper worktree. ` +
+        `Misplaced files: ${misplacedPaths.join(", ")}. ` +
+        `Changes were left untouched in ${item.workingDir}; worktree + branch preserved.`;
+      const finalResult = await writeEngineeringFailure(msg);
+      return { passed: false, reason: msg, executeResults, validateResults, finalResult };
+    }
 
     if (executeAttempt.terminalFailure?.terminal) {
       const terminalResult = await writeTerminalFailure(executeAttempt.terminalFailure);
@@ -524,6 +538,18 @@ export async function runExecuteValidateLoop(
   return { passed: true, reason: outcome.reason, executeResults, validateResults };
 }
 
+/** List paths whose porcelain status changed between two checkout snapshots. */
+export function resolveChangedCheckoutPaths(before: string, after: string): string[] {
+  if (before === after) return [];
+  const beforeLines = new Set(before.trimEnd().split("\n").filter(Boolean));
+  const afterLines = new Set(after.trimEnd().split("\n").filter(Boolean));
+  const changedLines = [
+    ...[...beforeLines].filter((line) => !afterLines.has(line)),
+    ...[...afterLines].filter((line) => !beforeLines.has(line)),
+  ];
+  return [...new Set(changedLines.map((line) => line.slice(3).trim()).filter(Boolean))].sort();
+}
+
 // ---------------------------------------------------------------------------
 // Engineering pipeline (orchestration)
 // ---------------------------------------------------------------------------
@@ -544,7 +570,7 @@ export async function runPlanPhase(
     claude,
     profile,
     itemId: item.id,
-    prompt: buildPlanPrompt(item),
+    prompt: relativizeWorktreePrompt(buildPlanPrompt(item), item.workingDir),
     worktreePath,
     auditFile: paths.planAuditFile,
     sessionOptions: buildPlanOptions(),
@@ -744,7 +770,7 @@ export async function processEngineeringItem(args: ProcessEngineeringItemArgs): 
     planText,
     paths,
     hopperHome,
-    deps: { claude: deps.claude, fs: deps.fs, profile: deps.profile },
+    deps: { claude: deps.claude, fs: deps.fs, git: deps.git, profile: deps.profile },
     log,
   });
   if (!loopResult.passed) {

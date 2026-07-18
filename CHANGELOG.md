@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Engineering phase prompts now replace original-checkout paths with
+  worktree-relative paths, and execute attempts fail clearly when the original
+  checkout's git status changes, preserving misplaced edits for recovery.
+
 ## [4.1.1] - 2026-07-17
 
 ### Fixed

@@ -34,6 +34,7 @@ import {
   commitEngineeringChanges,
   type EngineeringContext,
   processEngineeringItem,
+  resolveChangedCheckoutPaths,
   resolveWorkBranch,
   runEngineeringPreconditions,
   runPlanPhase,
@@ -106,6 +107,21 @@ function makeMockClaude(): AgentRunner {
 }
 
 const noop: (msg: string) => void = () => {};
+
+describe("resolveChangedCheckoutPaths", () => {
+  test("returns paths whose porcelain entries changed", () => {
+    expect(
+      resolveChangedCheckoutPaths(
+        " M already-dirty.ts\n",
+        " M already-dirty.ts\n M src/wrong.ts\n",
+      ),
+    ).toEqual(["src/wrong.ts"]);
+  });
+
+  test("returns no paths when the original checkout status is unchanged", () => {
+    expect(resolveChangedCheckoutPaths(" M existing.ts\n", " M existing.ts\n")).toEqual([]);
+  });
+});
 
 function makeEngineeringCtx(overrides?: {
   item?: EngineeringItem;
@@ -546,6 +562,53 @@ describe("processEngineeringItem", () => {
     expect(reloaded?.status).toBe("queued");
     expect(reloaded?.requeueReason).toContain("Worktree setup failed");
     expect(deps.claude.runSession).not.toHaveBeenCalled();
+  });
+
+  test("phase prompts do not expose the original checkout path", async () => {
+    const item = makeClaimedItem({
+      id: ITEM_ID,
+      description: "Edit /repo/src/app.ts in /repo.",
+      workingDir: "/repo",
+      branch: "main",
+      type: "engineering",
+      retries: 0,
+    });
+    await store.saveItems([item]);
+    const deps = makeFullDeps();
+
+    await processEngineeringItem({ item, agentName: AGENT_NAME, hopperHome: HOPPER_HOME, deps });
+
+    for (const call of typedMock(deps.claude.runSession).mock.calls) {
+      expect(call[0]).not.toContain("/repo");
+    }
+  });
+
+  test("fails before validate when execute changes the original checkout", async () => {
+    const item = makeClaimedItem({
+      id: ITEM_ID,
+      workingDir: "/repo",
+      branch: "main",
+      type: "engineering",
+      retries: 0,
+    });
+    await store.saveItems([item]);
+    let statusCall = 0;
+    const deps = makeFullDeps({
+      statusPorcelain: mock(async () =>
+        statusCall++ === 0 ? " M pre-existing.ts\n" : " M pre-existing.ts\n M src/wrong.ts\n",
+      ),
+    });
+
+    await processEngineeringItem({ item, agentName: AGENT_NAME, hopperHome: HOPPER_HOME, deps });
+
+    expect(deps.claude.runSession).toHaveBeenCalledTimes(2); // plan + execute; validate never runs
+    expect(deps.git.worktreeRemove).not.toHaveBeenCalled();
+    const resultWrites = typedMock(deps.fs.writeFile).mock.calls.filter(
+      ([path]) => path === `${HOPPER_HOME}/audit/${ITEM_ID}-result.md`,
+    );
+    expect(resultWrites.at(-1)?.[1]).toContain("modified the original checkout");
+    expect(resultWrites.at(-1)?.[1]).toContain("src/wrong.ts");
+    expect(resultWrites.at(-1)?.[1]).toContain("Changes were left untouched");
   });
 
   test("StaleEngineeringBranchError → requeueItem called with stale branch reason", async () => {

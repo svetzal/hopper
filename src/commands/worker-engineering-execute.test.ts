@@ -2,9 +2,9 @@ import { afterAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:t
 import type { AgentRunner, SessionOptions } from "../gateways/agent-runner.ts";
 import type { FsGateway } from "../gateways/fs-gateway.ts";
 import type { Profile } from "../profile.ts";
-import type { PhaseRecord } from "../store.ts";
+import type { EngineeringItem, PhaseRecord } from "../store.ts";
 import * as storeModule from "../store.ts";
-import { callArgs, makeClaimedItem, typedMock } from "../test-helpers.ts";
+import { callArgs, makeClaimedItem, makeMockGit, typedMock } from "../test-helpers.ts";
 import type { EngineeringAuditPaths } from "../worker-workflow.ts";
 import { runExecuteValidateLoop, runPhase } from "./worker-engineering.ts";
 
@@ -63,6 +63,16 @@ function makeMockFs(): FsGateway {
 }
 
 const noop: (msg: string) => void = () => {};
+
+function makeEngineeringItem(overrides: Partial<storeModule.ClaimedItem> = {}): EngineeringItem {
+  return makeClaimedItem({
+    id: ITEM_ID,
+    workingDir: "/repo",
+    branch: "main",
+    type: "engineering",
+    ...overrides,
+  }) as EngineeringItem;
+}
 
 // ---------------------------------------------------------------------------
 // runPhase
@@ -206,7 +216,7 @@ describe("runPhase", () => {
 
 describe("runExecuteValidateLoop", () => {
   test("returns { passed: true } when validate emits PASS on first attempt", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID });
+    const item = makeEngineeringItem();
     const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
         if (prompt.includes("EXECUTE phase")) return { exitCode: 0, result: "done" };
@@ -222,7 +232,7 @@ describe("runExecuteValidateLoop", () => {
       planText: "plan text",
       paths: makePaths(),
       hopperHome: HOPPER_HOME,
-      deps: { claude, fs, profile: TEST_PROFILE },
+      deps: { claude, fs, git: makeMockGit(), profile: TEST_PROFILE },
       log: noop,
     });
 
@@ -232,7 +242,7 @@ describe("runExecuteValidateLoop", () => {
   });
 
   test("returns { passed: false } when execute exits non-zero", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID });
+    const item = makeEngineeringItem();
     const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
         if (prompt.includes("EXECUTE phase")) return { exitCode: 1, result: "error" };
@@ -248,7 +258,7 @@ describe("runExecuteValidateLoop", () => {
       planText: "plan text",
       paths: makePaths(),
       hopperHome: HOPPER_HOME,
-      deps: { claude, fs, profile: TEST_PROFILE },
+      deps: { claude, fs, git: makeMockGit(), profile: TEST_PROFILE },
       log: noop,
     });
 
@@ -258,7 +268,7 @@ describe("runExecuteValidateLoop", () => {
   });
 
   test("returns { passed: false } after exhausting retries", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID, retries: 1 });
+    const item = makeEngineeringItem({ retries: 1 });
     const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
         if (prompt.includes("EXECUTE phase")) return { exitCode: 0, result: "done" };
@@ -274,7 +284,7 @@ describe("runExecuteValidateLoop", () => {
       planText: "plan text",
       paths: makePaths(),
       hopperHome: HOPPER_HOME,
-      deps: { claude, fs, profile: TEST_PROFILE },
+      deps: { claude, fs, git: makeMockGit(), profile: TEST_PROFILE },
       log: noop,
     });
 
@@ -285,7 +295,7 @@ describe("runExecuteValidateLoop", () => {
   });
 
   test("uses remediation prompt for attempt > 1", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID, retries: 1 });
+    const item = makeEngineeringItem({ retries: 1 });
     let validateCalls = 0;
     const sessionCalls: string[] = [];
     const claude: AgentRunner = {
@@ -307,7 +317,7 @@ describe("runExecuteValidateLoop", () => {
       planText: "plan text",
       paths: makePaths(),
       hopperHome: HOPPER_HOME,
-      deps: { claude, fs, profile: TEST_PROFILE },
+      deps: { claude, fs, git: makeMockGit(), profile: TEST_PROFILE },
       log: noop,
     });
 
@@ -318,7 +328,7 @@ describe("runExecuteValidateLoop", () => {
   });
 
   test("accumulates execute and validate results in transcript arrays", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID, retries: 1 });
+    const item = makeEngineeringItem({ retries: 1 });
     let validateCalls = 0;
     const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
@@ -338,7 +348,7 @@ describe("runExecuteValidateLoop", () => {
       planText: "plan text",
       paths: makePaths(),
       hopperHome: HOPPER_HOME,
-      deps: { claude, fs, profile: TEST_PROFILE },
+      deps: { claude, fs, git: makeMockGit(), profile: TEST_PROFILE },
       log: noop,
     });
 
@@ -350,7 +360,7 @@ describe("runExecuteValidateLoop", () => {
   });
 
   test("writes failure result file when execute fails", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID });
+    const item = makeEngineeringItem();
     const paths = makePaths();
     const claude: AgentRunner = {
       runSession: mock(async () => ({ exitCode: 1, result: "broken" })),
@@ -364,7 +374,7 @@ describe("runExecuteValidateLoop", () => {
       planText: "plan",
       paths,
       hopperHome: HOPPER_HOME,
-      deps: { claude, fs, profile: TEST_PROFILE },
+      deps: { claude, fs, git: makeMockGit(), profile: TEST_PROFILE },
       log: noop,
     });
 
@@ -375,7 +385,7 @@ describe("runExecuteValidateLoop", () => {
   });
 
   test("returns terminal failure immediately and does not validate or retry", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID, retries: 2 });
+    const item = makeEngineeringItem({ retries: 2 });
     const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
         if (prompt.includes("EXECUTE phase")) {
@@ -397,7 +407,7 @@ describe("runExecuteValidateLoop", () => {
       planText: "plan",
       paths: makePaths(),
       hopperHome: HOPPER_HOME,
-      deps: { claude, fs, profile: TEST_PROFILE },
+      deps: { claude, fs, git: makeMockGit(), profile: TEST_PROFILE },
       log: noop,
     });
 
@@ -409,7 +419,7 @@ describe("runExecuteValidateLoop", () => {
   });
 
   test("validate without PASS/FAIL marker → generateText fallback assessor called, outcome reflects fallback", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID });
+    const item = makeEngineeringItem();
     const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
         if (prompt.includes("EXECUTE phase")) return { exitCode: 0, result: "done" };
@@ -426,7 +436,7 @@ describe("runExecuteValidateLoop", () => {
       planText: "plan text",
       paths: makePaths(),
       hopperHome: HOPPER_HOME,
-      deps: { claude, fs, profile: TEST_PROFILE },
+      deps: { claude, fs, git: makeMockGit(), profile: TEST_PROFILE },
       log: noop,
     });
 
@@ -435,7 +445,7 @@ describe("runExecuteValidateLoop", () => {
   });
 
   test("maxRetries=0: only one execute+validate attempt even when validate FAILs", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID, retries: 0 });
+    const item = makeEngineeringItem({ retries: 0 });
     const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
         if (prompt.includes("EXECUTE phase")) return { exitCode: 0, result: "done" };
@@ -451,7 +461,7 @@ describe("runExecuteValidateLoop", () => {
       planText: "plan text",
       paths: makePaths(),
       hopperHome: HOPPER_HOME,
-      deps: { claude, fs, profile: TEST_PROFILE },
+      deps: { claude, fs, git: makeMockGit(), profile: TEST_PROFILE },
       log: noop,
     });
 
@@ -461,7 +471,7 @@ describe("runExecuteValidateLoop", () => {
   });
 
   test("execute fails every attempt until exhaustion: all attempt results accumulated", async () => {
-    const item = makeClaimedItem({ id: ITEM_ID, retries: 2 });
+    const item = makeEngineeringItem({ retries: 2 });
     let executeCalls = 0;
     const claude: AgentRunner = {
       runSession: mock(async (prompt: string) => {
@@ -481,7 +491,7 @@ describe("runExecuteValidateLoop", () => {
       planText: "plan text",
       paths: makePaths(),
       hopperHome: HOPPER_HOME,
-      deps: { claude, fs, profile: TEST_PROFILE },
+      deps: { claude, fs, git: makeMockGit(), profile: TEST_PROFILE },
       log: noop,
     });
 
