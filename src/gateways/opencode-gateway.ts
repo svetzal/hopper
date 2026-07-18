@@ -68,12 +68,15 @@ function buildRunSession(deps: OpencodeRunnerDeps) {
     async extractOutcome(output, rawExitCode, bin, cwd, auditFile, _callCtx) {
       const scan = scanOpencodeStream(output);
 
-      // Fetch the canonical session document for the final-result text.
-      let result = "";
+      // Prefer the canonical export, but retain the stream's final text when
+      // export is unavailable or empty. Long opencode sessions can finish
+      // successfully while the post-session export returns nothing.
+      let result = scan.lastText ?? "";
       if (scan.sessionID) {
         const exportDoc = await runOpencodeExport(bin, scan.sessionID, cwd);
         if (exportDoc) {
-          result = extractOpencodeResult(exportDoc);
+          const exportedResult = extractOpencodeResult(exportDoc);
+          if (exportedResult) result = exportedResult;
           await appendToAuditFile(
             auditFile,
             formatSyntheticEvent({

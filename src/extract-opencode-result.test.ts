@@ -24,7 +24,37 @@ describe("scanOpencodeStream", () => {
     ].join("\n");
     const scan = scanOpencodeStream(stream);
     expect(scan.sessionID).toBe("ses_abc");
+    expect(scan.lastText).toBe("PONG");
     expect(scan.errors).toEqual([]);
+  });
+
+  test("retains the last non-empty streamed text as the result fallback", () => {
+    const stream = [
+      JSON.stringify({
+        type: "text",
+        sessionID: "ses_result",
+        part: { type: "text", text: "Checking the implementation." },
+      }),
+      JSON.stringify({
+        type: "text",
+        sessionID: "ses_result",
+        part: { type: "text", text: "  All checks passed.\n\nVALIDATE: PASS  " },
+      }),
+    ].join("\n");
+
+    const scan = scanOpencodeStream(stream);
+    expect(scan.lastText).toBe("All checks passed.\n\nVALIDATE: PASS");
+  });
+
+  test("ignores empty and malformed text events", () => {
+    const stream = [
+      JSON.stringify({ type: "text", part: { type: "text", text: "usable" } }),
+      JSON.stringify({ type: "text", part: { type: "text", text: "   " } }),
+      JSON.stringify({ type: "text", part: { type: "tool", text: "not assistant text" } }),
+      JSON.stringify({ type: "text", part: { type: "text", text: 42 } }),
+    ].join("\n");
+
+    expect(scanOpencodeStream(stream).lastText).toBe("usable");
   });
 
   test("collects error events even when stream ends cleanly", () => {
@@ -64,6 +94,7 @@ describe("scanOpencodeStream", () => {
   test("returns an empty scan for empty input", () => {
     const scan = scanOpencodeStream("");
     expect(scan.sessionID).toBeUndefined();
+    expect(scan.lastText).toBeUndefined();
     expect(scan.errors).toEqual([]);
   });
 

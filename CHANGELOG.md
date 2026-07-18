@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- OpenCode-backed sessions now recover their final assistant text from the
+  JSONL stream when `opencode export` is unavailable or empty, preventing
+  successful `VALIDATE: PASS` results from being misrecorded as failures and
+  triggering unnecessary repair attempts.
 - Engineering phase prompts now replace original-checkout paths with
   worktree-relative paths, and execute attempts fail clearly when the original
   checkout's git status changes, preserving misplaced edits for recovery.

@@ -137,7 +137,10 @@ describe("opencode-gateway", () => {
 
   test("result equals extractOpencodeResult applied to the export document", async () => {
     const auditFile = join(tempDir, "audit.jsonl");
-    await writeControl(RUN_STDOUT_FILE, '{"type":"step_start","sessionID":"ses_xyz789"}\n');
+    await writeControl(
+      RUN_STDOUT_FILE,
+      '{"type":"text","sessionID":"ses_xyz789","part":{"type":"text","text":"stream fallback"}}\n',
+    );
     await writeControl(EXPORT_STDOUT_FILE, makeExportDoc("  trimmed result  "));
 
     const runner = createOpencodeRunner();
@@ -147,15 +150,18 @@ describe("opencode-gateway", () => {
     expect(result).toBe("trimmed result");
   });
 
-  test("when export exits non-zero, result is empty and no export event is appended", async () => {
+  test("when export exits non-zero, result falls back to final streamed text", async () => {
     const auditFile = join(tempDir, "audit.jsonl");
-    await writeControl(RUN_STDOUT_FILE, '{"type":"step_start","sessionID":"ses_fail123"}\n');
+    await writeControl(
+      RUN_STDOUT_FILE,
+      '{"type":"text","sessionID":"ses_fail123","part":{"type":"text","text":"All checks passed.\\n\\nVALIDATE: PASS"}}\n',
+    );
     await writeControl(EXPORT_EXIT_FILE, "1");
 
     const runner = createOpencodeRunner();
     const { result } = await runner.runSession("test prompt", tempDir, auditFile);
 
-    expect(result).toBe("");
+    expect(result).toBe("All checks passed.\n\nVALIDATE: PASS");
 
     const content = await readFile(auditFile, "utf8");
     const hasExportEvent = content
@@ -169,6 +175,33 @@ describe("opencode-gateway", () => {
         }
       });
     expect(hasExportEvent).toBe(false);
+  });
+
+  test("when export has no assistant text, result falls back to final streamed text", async () => {
+    const auditFile = join(tempDir, "audit.jsonl");
+    await writeControl(
+      RUN_STDOUT_FILE,
+      '{"type":"text","sessionID":"ses_empty_export","part":{"type":"text","text":"stream result"}}\n',
+    );
+    await writeControl(EXPORT_STDOUT_FILE, JSON.stringify({ messages: [] }));
+
+    const runner = createOpencodeRunner();
+    const { result } = await runner.runSession("test prompt", tempDir, auditFile);
+
+    expect(result).toBe("stream result");
+  });
+
+  test("when no session ID is emitted, result still uses final streamed text", async () => {
+    const auditFile = join(tempDir, "audit.jsonl");
+    await writeControl(
+      RUN_STDOUT_FILE,
+      '{"type":"text","part":{"type":"text","text":"final answer without session"}}\n',
+    );
+
+    const runner = createOpencodeRunner();
+    const { result } = await runner.runSession("test prompt", tempDir, auditFile);
+
+    expect(result).toBe("final answer without session");
   });
 
   test("effectiveExitCode is 1 when stream has error events even if raw exit is 0", async () => {

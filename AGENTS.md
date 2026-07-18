@@ -55,7 +55,7 @@ integrate/cancel guidance.
 | `src/gateways/git-gateway.ts` | `GitGateway` interface + real implementation (thin wrapper around `git` subprocesses via `Bun.spawn`) |
 | `src/gateways/agent-runner.ts` | Runner-agnostic `AgentRunner` and `SessionOptions` interfaces — the seam between the worker and concrete runners |
 | `src/gateways/claude-gateway.ts` | `AgentRunner` implementation backed by the `claude` CLI. Exposes `createClaudeRunner()` — all callers use `AgentRunner`/`SessionOptions` directly |
-| `src/gateways/opencode-gateway.ts` | `AgentRunner` implementation backed by the `opencode` CLI. Streams to the audit file, side-loads `opencode export` for the canonical result, and decides outcome on (exit code AND no error events). `generateText` (branch slug / commit message / validate fallback) runs through the shared `buildGenerateText`/`buildRunnerRunSession` helpers |
+| `src/gateways/opencode-gateway.ts` | `AgentRunner` implementation backed by the `opencode` CLI. Streams to the audit file, side-loads `opencode export` for the canonical result with the stream's final text as a fallback, and decides outcome on (exit code AND no error events). `generateText` (branch slug / commit message / validate fallback) runs through the shared `buildGenerateText`/`buildRunnerRunSession` helpers |
 | `src/gateways/codex-gateway.ts` | `AgentRunner` implementation backed by `codex exec --json`. Streams Codex JSONL to the audit file and captures the canonical result via `--output-last-message`; craftsperson bodies are prepended to the prompt because Codex has no native `--agent` equivalent. `generateText` runs through the shared `buildGenerateText`/`buildRunnerRunSession` helpers |
 | `src/gateways/opencode-argv.ts` | Pure argv builder for `opencode run --format json` invocations |
 | `src/gateways/opencode-config-content.ts` | Synthesises the `OPENCODE_CONFIG_CONTENT` env var that inlines a craftsperson agent definition for opencode |
@@ -75,7 +75,7 @@ integrate/cancel guidance.
 | `src/gateways/shell-gateway.ts` | `ShellGateway` interface for running a command in a given `cwd` while streaming output to an audit file |
 | `src/gateways/worker-shim-content.ts` | Pure builder for the PATH-shim shell scripts that enforce the investigation sandbox at the binary level (closes the shell-composition bypass) |
 | `src/gateways/worker-shim-gateway.ts` | Materialises PATH-shim scripts on disk; `synchronize` regenerates `~/.hopper/worker-shims/` idempotently at every `hopper worker` startup |
-| `src/extract-opencode-result.ts` | Pure parser for opencode JSONL streams (session ID + error events) and `opencode export` documents (final assistant text) |
+| `src/extract-opencode-result.ts` | Pure parser for opencode JSONL streams (session ID + final text + error events) and `opencode export` documents (canonical final assistant text) |
 | `src/craftsperson-body.ts` | Pure extractor for the system-prompt body of a `~/.claude/agents/<name>.md` craftsperson file (used when inlining into opencode) |
 | `src/craftsperson-resolver.ts` | Pure agent discovery and frontmatter parsing: `AgentCandidate`, `parseAgentFrontmatter`, `detectProjectMarkers`, `buildSelectionPrompt`. I/O lives in `agents-gateway.ts` |
 | `src/add-workflow.ts` | Pure add-command validation: `validateTaskType`, `MAX_RETRIES`, duration/time-spec parsing wired through `parse-time.ts` |

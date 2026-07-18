@@ -2,7 +2,8 @@ import { isRecord } from "./is-record.ts";
 
 /**
  * Parse the JSONL event stream produced by `opencode run --format json` and
- * extract the canonical session result via `opencode export`.
+ * extract the canonical session result via `opencode export`, with the final
+ * streamed text retained as a fallback when export is unavailable.
  *
  * Opencode does not emit a terminal "result" event analogous to claude's
  * `{"type":"result", ...}` line. The stream is a sequence of incremental
@@ -27,8 +28,13 @@ export interface OpencodeStreamEvent {
     name?: string;
     data?: { message?: string };
   };
-  // Additional `part` / type-specific fields exist but aren't needed for
-  // outcome decisions.
+  part?: {
+    type?: string;
+    text?: string;
+    [key: string]: unknown;
+  };
+  // Additional type-specific fields exist but aren't needed for outcome
+  // decisions.
   [key: string]: unknown;
 }
 
@@ -43,6 +49,12 @@ export interface OpencodeStreamScan {
    */
   sessionID?: string;
   /**
+   * Last non-empty text part emitted by the stream. Opencode normally ends
+   * with the assistant's final answer, so this preserves the result when the
+   * post-session `opencode export` call returns nothing.
+   */
+  lastText?: string;
+  /**
    * Error events found in the stream. A non-empty array means the run failed
    * regardless of exit code.
    */
@@ -50,7 +62,8 @@ export interface OpencodeStreamScan {
 }
 
 /**
- * Scan a captured opencode JSONL stream for session ID and error events.
+ * Scan a captured opencode JSONL stream for session ID, final text, and error
+ * events.
  *
  * Tolerant of malformed lines: each line that fails to parse as JSON is
  * skipped (silently — the audit file already has the raw line). Trailing
@@ -75,6 +88,14 @@ export function scanOpencodeStream(raw: string): OpencodeStreamScan {
     const event = parsed as OpencodeStreamEvent;
     if (!scan.sessionID && typeof event.sessionID === "string") {
       scan.sessionID = event.sessionID;
+    }
+    if (
+      event.type === "text" &&
+      event.part?.type === "text" &&
+      typeof event.part.text === "string"
+    ) {
+      const text = event.part.text.trim();
+      if (text) scan.lastText = text;
     }
     if (event.type === "error") {
       const name = event.error?.name ?? "UnknownError";
